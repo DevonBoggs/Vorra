@@ -1,0 +1,258 @@
+/* DevonSYNC Utility Classes
+   Shared hover/transition styles using CSS variables */
+
+/* ── Cards ──────────────────────────────────────────────────────── */
+.sfCard {
+  transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.sfCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,.15);
+  border-color: var(--borderL) !important;
+}
+.sfCard:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.sfBtn {
+  transition: transform .1s ease, box-shadow .2s ease, filter .2s ease;
+}
+.sfBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0,0,0,.2);
+  filter: brightness(1.08);
+}
+.sfBtn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+  filter: brightness(.95);
+}
+
+/* ── Station Cards ──────────────────────────────────────────────── */
+.sfStation {
+  transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+}
+.sfStation:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 30px rgba(0,0,0,.3);
+  border-color: var(--accent55, rgba(34,211,160,.33)) !important;
+}
+.sfStation:active {
+  transform: translateY(0);
+}
+.sfStationPlaying {
+  animation: pulse 2s infinite;
+}
+
+/* ── Navigation ─────────────────────────────────────────────────── */
+.sfNav {
+  transition: all .15s ease !important;
+}
+.sfNav:hover {
+  background: var(--cardH) !important;
+  transform: translateX(2px);
+}
+
+/* ── YouTube Cards ──────────────────────────────────────────────── */
+.sfYtCard {
+  transition: transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s ease, border-color .25s ease, opacity .3s ease;
+}
+.sfYtCard:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 35px rgba(0,0,0,.35);
+}
+.sfYtCard:hover img {
+  filter: brightness(1.15);
+}
+.sfYtCard:active {
+  transform: scale(0.97);
+  transition: transform .1s;
+}
+.sfYtCard img {
+  transition: filter .3s ease;
+}
+
+/* ── Parse Options ──────────────────────────────────────────────── */
+.sfParseOpt {
+  transition: transform .2s cubic-bezier(.4,0,.2,1), box-shadow .2s ease, border-color .2s ease, filter .2s ease;
+}
+.sfParseOpt:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 28px rgba(0,0,0,.3);
+  filter: brightness(1.15);
+  border-color: currentColor !important;
+}
+.sfParseOpt:active {
+  transform: scale(0.98);
+}
+
+/* ── Tasks ───────────────────────────────────────────────────────── */
+.sfTask {
+  transition: transform .12s ease, border-color .15s, box-shadow .15s;
+}
+.sfTask:hover {
+  border-color: var(--borderL) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  transform: translateY(-1px);
+}
+
+/* ── Icon Buttons ───────────────────────────────────────────────── */
+.sfIconBtn {
+  transition: all .12s ease;
+  border-radius: 6px;
+  opacity: .6;
+}
+.sfIconBtn:hover {
+  opacity: 1;
+  background: var(--input) !important;
+  color: var(--text) !important;
+  transform: scale(1.15);
+}
+.sfIconBtn:active {
+  transform: scale(.9);
+}
+
+/* ── Calendar ───────────────────────────────────────────────────── */
+.sfCalCell {
+  transition: background .15s ease, box-shadow .15s ease;
+}
+.sfCalCell:hover {
+  background: var(--input) !important;
+  box-shadow: inset 0 0 0 1px rgba(34,211,160,.2);
+}
+
+.sfCalDay {
+  transition: all .12s ease !important;
+}
+.sfCalDay:hover {
+  background: var(--accentD) !important;
+  transform: scale(1.15);
+  border-radius: 8px !important;
+}
+
+/* ── Exam ────────────────────────────────────────────────────────── */
+.sfExamQ {
+  transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.sfExamQ:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.15);
+  border-color: var(--borderL) !important;
+}
+
+.sfExamOpt {
+  transition: all .12s ease !important;
+}
+.sfExamOpt:hover:not(:disabled) {
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  filter: brightness(1.08);
+}
+.sfExamOpt:active:not(:disabled) {
+  transform: translateX(2px);
+}
+
+/* ── Badges ──────────────────────────────────────────────────────── */
+.sfBadge {
+  transition: all .15s ease;
+}
+.sfBadge:hover {
+  filter: brightness(1.2);
+}
+
+/* ── Stats ───────────────────────────────────────────────────────── */
+.sfStat {
+  transition: transform .15s ease, box-shadow .2s ease;
+}
+.sfStat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.15);
+}
+
+/* ── Sections ────────────────────────────────────────────────────── */
+.sfSection {
+  transition: box-shadow .25s ease, border-color .25s ease;
+}
+.sfSection:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,.1);
+  border-color: var(--borderL) !important;
+}
+
+/* ── Chips ───────────────────────────────────────────────────────── */
+.sfChip {
+  transition: all .12s ease;
+}
+.sfChip:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+.sfChip:active {
+  transform: translateY(0) scale(.97);
+}
+
+/* ── Toggles ─────────────────────────────────────────────────────── */
+.sfToggle {
+  transition: all .12s ease;
+}
+.sfToggle:hover {
+  filter: brightness(1.15);
+  border-color: currentColor !important;
+}
+
+/* ── Input Wrappers ──────────────────────────────────────────────── */
+.sfInputWrap {
+  position: relative;
+  transition: all .15s ease;
+}
+.sfInputWrap:focus-within {
+  box-shadow: 0 0 0 3px var(--accentD);
+  border-color: var(--accent) !important;
+}
+
+.sfInput:hover {
+  border-color: var(--borderL) !important;
+}
+.sfInput:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accentD) !important;
+}
+
+/* ── Profiles ────────────────────────────────────────────────────── */
+.sfProfile {
+  transition: all .15s ease;
+}
+.sfProfile:hover {
+  transform: translateX(3px);
+  box-shadow: 0 3px 12px rgba(0,0,0,.12);
+  border-color: rgba(34,211,160,.27) !important;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────── */
+.sfTab {
+  transition: all .12s ease;
+}
+.sfTab:hover {
+  background: var(--cardH) !important;
+}
+
+/* ── Rows ────────────────────────────────────────────────────────── */
+.sfRow {
+  transition: background .12s ease;
+}
+.sfRow:hover {
+  background: var(--input) !important;
+}
+
+/* ── Glassmorphism ───────────────────────────────────────────────── */
+.glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glassCard {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.06);
+}

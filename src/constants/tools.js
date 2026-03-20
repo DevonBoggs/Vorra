@@ -1,0 +1,72 @@
+// AI Tool Definitions and Course Schema
+
+export const EMPTY_DEEP = {
+  courseCode:"",assessmentType:"",department:"",
+  oaDetails:{format:"",questionCount:0,passingScore:"",timeLimit:"",proctoringTool:"",retakePolicy:""},
+  paDetails:{taskDescription:"",rubricSummary:"",submissionFormat:"",evaluatorNotes:""},
+  competencies:[],learningObjectives:[],
+  topicBreakdown:[],keyTermsAndConcepts:[],commonMistakes:[],
+  officialResources:[],recommendedExternal:[],studyGuideNotes:"",
+  examTips:[],reportedDifficulty:3,averageStudyHours:0,passRate:"",versionInfo:"",
+  knownFocusAreas:[],personalConfidence:{},studyLog:[],
+  preAssessmentScore:null,preAssessmentWeakAreas:[],attemptHistory:[],
+  prerequisites:[],relatedCourses:[],certAligned:"",lastUpdated:"",sourceNotes:"",
+  // Study strategy fields
+  studyStrategy:"", // "Read textbook → practice tests → review weak areas"
+  quickWins:[], // Easy topics to build momentum
+  hardestConcepts:[], // Concepts most students struggle with
+  mnemonics:[], // [{concept,mnemonic}] Memory aids
+  weeklyMilestones:[], // [{week,goals}] Week-by-week plan
+  studyOrder:[], // Recommended order of topics within the course
+  timeAllocation:[], // [{topic,percentage}] How to split study time
+  practiceTestNotes:"", // Pre-assessment and practice test guidance
+  instructorTips:[], // Course instructor tips
+  communityInsights:[], // Reddit/Discord tips from other students
+};
+
+export const CS = {
+  name:{type:"string"},credits:{type:"number"},difficulty:{type:"number"},
+  status:{type:"string",enum:["not_started","in_progress","completed"]},
+  courseCode:{type:"string"},department:{type:"string"},
+  assessmentType:{type:"string",enum:["OA","PA","OA+PA"]},
+  oaDetails:{type:"object",properties:{format:{type:"string"},questionCount:{type:"number"},passingScore:{type:"string"},timeLimit:{type:"string"},proctoringTool:{type:"string"},retakePolicy:{type:"string"}}},
+  paDetails:{type:"object",properties:{taskDescription:{type:"string"},rubricSummary:{type:"string"},submissionFormat:{type:"string"},evaluatorNotes:{type:"string"}}},
+  competencies:{type:"array",items:{type:"object",properties:{code:{type:"string"},title:{type:"string"},description:{type:"string"},weight:{type:"string"}}}},
+  learningObjectives:{type:"array",items:{type:"string"}},
+  topicBreakdown:{type:"array",items:{type:"object",properties:{topic:{type:"string"},subtopics:{type:"array",items:{type:"string"}},weight:{type:"string",enum:["high","medium","low"]},description:{type:"string"}}}},
+  keyTermsAndConcepts:{type:"array",items:{type:"object",properties:{term:{type:"string"},definition:{type:"string"}}}},
+  commonMistakes:{type:"array",items:{type:"string"}},
+  officialResources:{type:"array",items:{type:"object",properties:{title:{type:"string"},type:{type:"string"},provider:{type:"string"},notes:{type:"string"}}}},
+  recommendedExternal:{type:"array",items:{type:"object",properties:{title:{type:"string"},url:{type:"string"},type:{type:"string"},notes:{type:"string"}}}},
+  studyGuideNotes:{type:"string"},examTips:{type:"array",items:{type:"string"}},
+  reportedDifficulty:{type:"number"},averageStudyHours:{type:"number"},passRate:{type:"string"},
+  versionInfo:{type:"string"},knownFocusAreas:{type:"array",items:{type:"string"}},
+  prerequisites:{type:"array",items:{type:"string"}},relatedCourses:{type:"array",items:{type:"string"}},
+  certAligned:{type:"string"},notes:{type:"string"},topics:{type:"string"},
+  // Study strategy fields
+  studyStrategy:{type:"string",description:"Recommended study approach e.g. 'Read textbook chapters 1-4, then practice tests, review weak areas'"},
+  quickWins:{type:"array",items:{type:"string"},description:"Easy topics to tackle first for momentum and confidence"},
+  hardestConcepts:{type:"array",items:{type:"string"},description:"Concepts most students struggle with — need extra focus"},
+  mnemonics:{type:"array",items:{type:"object",properties:{concept:{type:"string"},mnemonic:{type:"string"}}},description:"Memory aids for key concepts"},
+  weeklyMilestones:{type:"array",items:{type:"object",properties:{week:{type:"number"},goals:{type:"string"}}},description:"Week-by-week study plan"},
+  studyOrder:{type:"array",items:{type:"string"},description:"Recommended order to study topics within the course"},
+  timeAllocation:{type:"array",items:{type:"object",properties:{topic:{type:"string"},percentage:{type:"number"}}},description:"How to split study time, e.g. topic:Networking, percentage:40"},
+  practiceTestNotes:{type:"string",description:"Pre-assessment strategy and practice test guidance"},
+  instructorTips:{type:"array",items:{type:"string"},description:"Tips from course instructors or CIs"},
+  communityInsights:{type:"array",items:{type:"string"},description:"Tips from Reddit, Discord, WGU community"},
+};
+
+export const TOOLS = [
+  { name:"add_tasks", description:"Add tasks to study schedule.",
+    input_schema:{type:"object",properties:{tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"}},required:["date","time","endTime","title","category","priority"]}}},required:["tasks"]}},
+  { name:"add_courses", description:"Add WGU courses with DEEP context. Include assessment type, competencies, topic breakdown with exam weights, key terms, study resources, exam tips, difficulty, hours, focus areas, cert alignment, prerequisites.",
+    input_schema:{type:"object",properties:{courses:{type:"array",items:{type:"object",properties:CS,required:["name","credits","difficulty","status"]}}},required:["courses"]}},
+  { name:"update_courses", description:"Update existing courses by name match. Can update any field.",
+    input_schema:{type:"object",properties:{updates:{type:"array",items:{type:"object",properties:{course_name_match:{type:"string",description:"Substring match (case insensitive)"},...CS},required:["course_name_match"]}}},required:["updates"]}},
+  { name:"enrich_course_context", description:"Generate/regenerate deep context for courses. Provide the MOST CURRENT exam intelligence — WGU courses update frequently. Include specific competency codes, exact topic names with weights, concrete study hours per topic, current exam format, and actionable community tips from the last 3 months. When user asks 'what do I need to know to pass', go as deep as possible.",
+    input_schema:{type:"object",properties:{enrichments:{type:"array",items:{type:"object",properties:{course_name_match:{type:"string"},...CS},required:["course_name_match"]}}},required:["enrichments"]}},
+  { name:"generate_study_plan", description:"Generate multi-day study plan with tasks inserted into calendar. Uses course context and topic weights.",
+    input_schema:{type:"object",properties:{summary:{type:"string"},weekly_schedule:{type:"array",items:{type:"object",properties:{course:{type:"string"},hours_per_week:{type:"number"},weeks_estimate:{type:"number"},order:{type:"number"},focus_areas:{type:"array",items:{type:"string"}}},required:["course","hours_per_week","weeks_estimate","order"]}},daily_tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"}},required:["date","time","endTime","title","category","priority"]}}},required:["summary","weekly_schedule","daily_tasks"]}},
+];
+
+export const TOOLS_OPENAI = TOOLS.map(t=>({type:"function",function:{name:t.name,description:t.description,parameters:t.input_schema}}));

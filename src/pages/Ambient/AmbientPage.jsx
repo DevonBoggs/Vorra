@@ -93,7 +93,7 @@ const AmbientPage = () => {
     if (!activeVid || activeVid === commentsFetchedVid) return;
     setComments([]);
     setCommentsNextPage("");
-    const isLive = _ytStats[activeVid]?.live || ytStreams[0]?.type === "live";
+    const isLive = ytStats[activeVid]?.live || ytStreams[0]?.type === "live";
     setChatAvail(isLive);
     setChatTab(isLive ? "chat" : "comments");
     // Fetch comments for the new video
@@ -187,11 +187,11 @@ const AmbientPage = () => {
   const ALL_YT = [...YT_STREAMS, ...customAsStreams];
 
   // [FILTER] Dynamic "Live Now" count — use API data when available, fall back to stream type metadata
-  const liveNowCount = ALL_YT.filter(s => _ytStats[s.vid]?.live || _ytStats[s.vid]?.viewers > 0 || (s.type === "live" && Object.keys(_ytStats).length === 0)).length;
+  const liveNowCount = ALL_YT.filter(s => ytStats[s.vid]?.live || ytStats[s.vid]?.viewers > 0 || (s.type === "live" && Object.keys(ytStats).length === 0)).length;
 
   // [FILTER] Build filtered stream list based on category or special filters
   let ytBase = ytFilterCat === "all" ? ALL_YT :
-    ytFilterCat === "live" ? ALL_YT.filter(s => _ytStats[s.vid]?.live || _ytStats[s.vid]?.viewers > 0 || (s.type === "live" && Object.keys(_ytStats).length === 0)) :
+    ytFilterCat === "live" ? ALL_YT.filter(s => ytStats[s.vid]?.live || ytStats[s.vid]?.viewers > 0 || (s.type === "live" && Object.keys(ytStats).length === 0)) :
     ytFilterCat === "custom" ? customAsStreams :
     YT_PARENT_CATS.some(p => p.key === ytFilterCat) ?
       ALL_YT.filter(s => s.cat.startsWith(ytFilterCat)) :
@@ -207,18 +207,18 @@ const AmbientPage = () => {
     if (ytSort === "views") return (ytStats[b.vid]?.views||0) - (ytStats[a.vid]?.views||0) || (b.pop||3)-(a.pop||3);
     if (ytSort === "popular") {
       // Use API concurrent viewers first, then views, then fallback pop rating
-      const aScore = (_ytStats[a.vid]?.viewers||0)*1000 + (_ytStats[a.vid]?.views||0) + (a.pop||3)*1e6;
-      const bScore = (_ytStats[b.vid]?.viewers||0)*1000 + (_ytStats[b.vid]?.views||0) + (b.pop||3)*1e6;
+      const aScore = (ytStats[a.vid]?.viewers||0)*1000 + (ytStats[a.vid]?.views||0) + (a.pop||3)*1e6;
+      const bScore = (ytStats[b.vid]?.viewers||0)*1000 + (ytStats[b.vid]?.views||0) + (b.pop||3)*1e6;
       return bScore - aScore || a.name.localeCompare(b.name);
     }
     if (ytSort === "name") return a.name.localeCompare(b.name);
     if (ytSort === "category") return (a.cat||"").localeCompare(b.cat||"") || a.name.localeCompare(b.name);
     if (ytSort === "duration") {
-      const aLive = (_ytStats[a.vid]?.live || a.type === "live") ? 1 : 0;
-      const bLive = (_ytStats[b.vid]?.live || b.type === "live") ? 1 : 0;
+      const aLive = (ytStats[a.vid]?.live || a.type === "live") ? 1 : 0;
+      const bLive = (ytStats[b.vid]?.live || b.type === "live") ? 1 : 0;
       if (aLive !== bLive) return bLive - aLive;
-      const aDur = _ytStats[a.vid]?.durationSec || 0;
-      const bDur = _ytStats[b.vid]?.durationSec || 0;
+      const aDur = ytStats[a.vid]?.durationSec || 0;
+      const bDur = ytStats[b.vid]?.durationSec || 0;
       return bDur - aDur || a.name.localeCompare(b.name);
     }
     return 0;

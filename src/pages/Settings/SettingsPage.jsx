@@ -31,6 +31,7 @@ function getAuthHeaders(profile) {
 }
 
 const SettingsPage = ({ data, setData, setPage }) => {
+  const T = useTheme();
   const bp = useBreakpoint();
   const ytStats = useYtStats();
   const [showAdd, setShowAdd] = useState(false);

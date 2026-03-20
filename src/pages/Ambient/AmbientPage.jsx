@@ -12,6 +12,8 @@ import { Badge } from "../../components/ui/Badge.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
 
 const AmbientPage = () => {
+  const T = useTheme();
+  const bp = useBreakpoint();
   const audio = useAudio();
   const health = useStationHealth();
   const ytHealth = useYtHealth();

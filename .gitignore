@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+.vite/
+DevonSYNC.exe
+_launcher.cs
+setup-log.txt
+start-log.txt

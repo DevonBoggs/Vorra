@@ -1,0 +1,53 @@
+{
+  "name": "devonsync",
+  "version": "7.3.0",
+  "description": "WGU Study Planner - AI-powered desktop app",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && set ELECTRON_DEV=1&& electron .\"",
+    "electron:build": "vite build && electron-builder",
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.devonsync.app",
+    "productName": "DevonSYNC",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ]
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "concurrently": "^9.1.2",
+    "electron": "^35.2.1",
+    "electron-builder": "^26.0.12",
+    "vite": "^6.4.1",
+    "wait-on": "^8.0.3"
+  },
+  "overrides": {
+    "tar": "^7.5.11",
+    "@tootallnate/once": "^3.0.1",
+    "semver": "^7.6.3",
+    "ip": "^2.0.1",
+    "braces": "^3.0.3",
+    "micromatch": "^4.0.8",
+    "got": "^12.6.1"
+  }
+}

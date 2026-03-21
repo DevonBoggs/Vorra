@@ -72,6 +72,26 @@ function getAuthHeaders(profile) {
   return h;
 }
 
+/* helper: check if an API key roughly matches the provider's expected format */
+const keyFormatOk = (key, provKey) => {
+  if (!key) return null; // empty = neutral
+  const prov = PROVIDERS[provKey];
+  if (!prov) return null;
+  const hint = prov.keyHint || "";
+  if (hint === "(none needed)") return "optional";
+  // Build a prefix from the hint (everything before the dots)
+  const prefix = hint.replace(/\.+$/, "").replace(/\.+/, "");
+  if (!prefix) return null; // no useful hint
+  return key.startsWith(prefix) ? "match" : "mismatch";
+};
+
+/* helper: find the last-used provider key from existing profiles */
+const lastUsedProvider = (profiles) => {
+  if (!profiles || profiles.length === 0) return null;
+  const last = profiles[profiles.length - 1];
+  return last.provider || null;
+};
+
 const SettingsPage = ({ data, setData, setPage }) => {
   const T = useTheme();
   const bp = useBreakpoint();
@@ -87,6 +107,8 @@ const SettingsPage = ({ data, setData, setPage }) => {
   const [models, setModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [addCategory, setAddCategory] = useState(null);
+  const [verified, setVerified] = useState(false);
+  const [showAdvancedUrl, setShowAdvancedUrl] = useState(false);
   const profiles = data.profiles || [];
 
   const openAdd = (provKey = "anthropic") => {
@@ -95,6 +117,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
     dlog('debug', 'profile', `Opening add: ${provKey}`);
     setForm({ provider: provKey, name: p.name, apiKey: "", baseUrl: p.url, model: p.default });
     setEditId(null); setTestResult(null); setModels(p.models || []);
+    setVerified(false); setShowAdvancedUrl(false);
     setAddCategory(p.cat);
     setShowAdd(true);
   };
@@ -102,12 +125,23 @@ const SettingsPage = ({ data, setData, setPage }) => {
     dlog('debug', 'profile', `Editing: ${prof.name}`);
     setForm({ provider:prof.provider||"custom", name:prof.name, apiKey:prof.apiKey, baseUrl:prof.baseUrl, model:prof.model });
     setEditId(prof.id); setTestResult(null); setModels(PROVIDERS[prof.provider]?.models || []);
+    setVerified(true); setShowAdvancedUrl(false);
     setAddCategory(null);
     setShowAdd(true);
   };
+  const duplicateProfile = (prof) => {
+    dlog('info', 'profile', `Duplicating: ${prof.name}`);
+    const prov = PROVIDERS[prof.provider];
+    setForm({ provider: prof.provider || "custom", name: `Copy of ${prof.name}`, apiKey: prof.apiKey, baseUrl: prof.baseUrl, model: prof.model });
+    setEditId(null); setTestResult(null); setModels(prov?.models || []);
+    setVerified(true); setShowAdvancedUrl(false);
+    setAddCategory(prov?.cat || null);
+    setShowAdd(true);
+  };
   const saveProfile = () => {
+    const isLocalProv = PROVIDERS[form.provider]?.cat === "local";
     if (!form.name) { dlog('warn','profile','No name'); return; }
-    if (!form.apiKey) { dlog('warn','profile','No key'); return; }
+    if (!form.apiKey && !isLocalProv) { dlog('warn','profile','No key'); return; }
     if (!form.baseUrl) { dlog('warn','profile','No URL'); return; }
     dlog('info', 'profile', `Saving: ${form.name} (${form.model}) to ${form.baseUrl}`);
     const prof = { ...form, headerKey: isAnthProvider(form)?"x-api-key":"Authorization", headerPrefix: isAnthProvider(form)?"":"Bearer " };
@@ -122,7 +156,8 @@ const SettingsPage = ({ data, setData, setPage }) => {
   };
 
   const testConnection = async () => {
-    if (!form.apiKey || !form.baseUrl) { setTestResult({ok:false,msg:"Need API key and base URL"}); return; }
+    const isLocalProv = PROVIDERS[form.provider]?.cat === "local";
+    if ((!form.apiKey && !isLocalProv) || !form.baseUrl) { setTestResult({ok:false,msg:"Need API key and base URL"}); return; }
     setTesting(true); setTestResult(null); setModels([]);
     dlog('info','profile',`Testing: ${form.baseUrl}`);
     const headers = getAuthHeaders(form);
@@ -188,7 +223,8 @@ const SettingsPage = ({ data, setData, setPage }) => {
       let rd; try { rd = JSON.parse(rdText); } catch(e) { setTestResult({ok:true,msg:`Connected (${ms}ms) — response wasn't JSON but auth works`}); setTesting(false); return; }
       let got = isAnth ? safeArr(rd.content).map(b=>b.text||"").join("") : (rd.choices?.[0]?.message?.content || "");
       dlog('info','profile',`Test OK: "${got.slice(0,50)}" (${ms}ms)`);
-      setTestResult({ ok: true, msg: `Connected! (${ms}ms) ${fetchedModels.length > 0 ? `· ${fetchedModels.length} models available` : ""}` });
+      setTestResult({ ok: true, msg: `Connected in ${ms}ms${fetchedModels.length > 0 ? ` · ${fetchedModels.length} models available` : ""}` });
+      setVerified(true);
     } catch (e) {
       dlog('error','profile',`Test error`, e.message);
       setTestResult({ ok: false, msg: e.message });
@@ -229,6 +265,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
                 </div>
                 <div style={{display:"flex",gap:4}}>
                   {data.activeProfileId===p.id&&<Badge color={T.accent} bg={T.accentD}>ACTIVE</Badge>}
+                  <button className="sf-icon-btn" title="Duplicate" onClick={e=>{e.stopPropagation();duplicateProfile(p)}} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:4}}><Ic.Copy s={14}/></button>
                   <button className="sf-icon-btn" onClick={e=>{e.stopPropagation();openEdit(p)}} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:4}}><Ic.Edit/></button>
                   <button className="sf-icon-btn" onClick={e=>{e.stopPropagation();removeProfile(p.id)}} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:4}}><Ic.Trash/></button>
                 </div>
@@ -510,14 +547,19 @@ const SettingsPage = ({ data, setData, setPage }) => {
       {showAdd && (
         <Modal title={editId ? "Edit Profile" : "Add AI Profile"} onClose={() => setShowAdd(false)} wide>
           {/* ── Step 1: Category Selection ── */}
-          {!editId && addCategory === null && !form.provider && (
+          {!editId && addCategory === null && !form.provider && (() => {
+            const lastProv = lastUsedProvider(profiles);
+            const lastCat = lastProv && PROVIDERS[lastProv] ? PROVIDERS[lastProv].cat : null;
+            return (
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <p style={{fontSize:fs(12),color:T.dim,marginBottom:4}}>Choose a provider type to get started</p>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
                 {PROVIDER_CATS.map(cat => {
                   const CatIcon = Ic[cat.icon];
+                  const isLast = cat.key === lastCat;
                   return (
-                    <button key={cat.key} className="sf-card" onClick={() => setAddCategory(cat.key)} style={{padding:"20px 16px",borderRadius:12,cursor:"pointer",border:`1.5px solid ${T.border}`,background:T.input,color:T.text,textAlign:"center",transition:"all .2s"}}>
+                    <button key={cat.key} className="sf-card" onClick={() => setAddCategory(cat.key)} style={{padding:"20px 16px",borderRadius:12,cursor:"pointer",border:`1.5px solid ${isLast ? T.accent : T.border}`,background:isLast ? T.accentD : T.input,color:T.text,textAlign:"center",transition:"all .2s",position:"relative"}}>
+                      {isLast && <div style={{position:"absolute",top:6,right:8,fontSize:fs(8),color:T.accent,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Last used</div>}
                       <div style={{marginBottom:8}}>{CatIcon && <CatIcon s={22} c={T.accent}/>}</div>
                       <div style={{fontSize:fs(13),fontWeight:700,marginBottom:4}}>{cat.label}</div>
                       <div style={{fontSize:fs(10),color:T.dim}}>{cat.desc}</div>
@@ -529,7 +571,8 @@ const SettingsPage = ({ data, setData, setPage }) => {
                 + Custom Provider (manual configuration)
               </button>
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Step 2: Provider Grid ── */}
           {!editId && addCategory !== null && addCategory !== "custom" && !form.provider && (
@@ -541,53 +584,110 @@ const SettingsPage = ({ data, setData, setPage }) => {
                 <span style={{fontSize:fs(13),fontWeight:700}}>{PROVIDER_CATS.find(c=>c.key===addCategory)?.label}</span>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
-                {Object.entries(PROVIDERS).filter(([,p]) => p.cat === addCategory).map(([key, p]) => {
+                {(() => { const lp = lastUsedProvider(profiles); return Object.entries(PROVIDERS).filter(([,p]) => p.cat === addCategory).map(([key, p]) => {
                   const ProvIcon = p.icon ? Ic[p.icon] : null;
+                  const isLast = key === lp;
                   return (
-                    <button key={key} className="sf-card" onClick={() => openAdd(key)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${T.border}`,background:T.input,color:T.text,textAlign:"left",transition:"all .15s"}}>
+                    <button key={key} className="sf-card" onClick={() => openAdd(key)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${isLast ? T.accent : T.border}`,background:isLast ? T.accentD : T.input,color:T.text,textAlign:"left",transition:"all .15s",position:"relative"}}>
+                      {isLast && <div style={{position:"absolute",top:3,right:6,fontSize:fs(7),color:T.accent,fontWeight:700,textTransform:"uppercase"}}>Last</div>}
                       {ProvIcon ? <ProvIcon s={20} c={p.color}/> : <div style={{width:12,height:12,borderRadius:"50%",background:p.color,flexShrink:0,boxShadow:`0 0 6px ${p.color}66`}}/>}
                       <span style={{fontSize:fs(12),fontWeight:600}}>{p.name}</span>
                     </button>
                   );
-                })}
+                }); })()}
               </div>
             </div>
           )}
 
-          {/* ── Step 3: Configure Form ── */}
-          {(form.provider || editId) && (
+          {/* ── Step 3: Configure Form (Progressive Disclosure) ── */}
+          {(form.provider || editId) && (() => {
+            const prov = PROVIDERS[form.provider];
+            const isLocal = prov?.cat === "local";
+            const kfmt = keyFormatOk(form.apiKey, form.provider);
+            return (
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {/* Back button (only when adding, not editing) */}
               {!editId && form.provider !== "custom" && (
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
-                  <button className="sf-chip" onClick={() => { setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setModels([]); setTestResult(null); }} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
+                  <button className="sf-chip" onClick={() => { setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setModels([]); setTestResult(null); setVerified(false); }} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
                     Back
                   </button>
-                  {PROVIDERS[form.provider] && (
+                  {prov && (
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:PROVIDERS[form.provider].color}}/>
-                      <span style={{fontSize:fs(13),fontWeight:700}}>{PROVIDERS[form.provider].name}</span>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:prov.color}}/>
+                      <span style={{fontSize:fs(13),fontWeight:700}}>{prov.name}</span>
                     </div>
                   )}
                 </div>
               )}
               {!editId && form.provider === "custom" && (
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
-                  <button className="sf-chip" onClick={() => { setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setAddCategory(null); setModels([]); setTestResult(null); }} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
+                  <button className="sf-chip" onClick={() => { setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setAddCategory(null); setModels([]); setTestResult(null); setVerified(false); }} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
                     Back
                   </button>
                   <span style={{fontSize:fs(13),fontWeight:700}}>Custom Provider</span>
                 </div>
               )}
+
+              {/* Profile Name */}
               <div><Label>Profile Name</Label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. My Claude API"/></div>
+
+              {/* API Key with inline format validation */}
               <div>
-                <Label>API Key {PROVIDERS[form.provider]?.cat === "local" && <span style={{color:T.dim,fontWeight:400}}>(optional)</span>}</Label>
-                <input type="password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={PROVIDERS[form.provider]?.keyHint || (isAnthProvider(form)?"sk-ant-...":"sk-...")}/>
+                <Label>API Key {isLocal ? <span style={{color:T.dim,fontWeight:400}}>(optional)</span> : kfmt === "optional" ? <span style={{color:T.dim,fontWeight:400}}>(optional)</span> : null}</Label>
+                <div style={{position:"relative"}}>
+                  <input type="password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={prov?.keyHint || (isAnthProvider(form)?"sk-ant-...":"sk-...")} style={{paddingRight:32}}/>
+                  {/* Inline key format indicator */}
+                  {form.apiKey && kfmt === "match" && (
+                    <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:T.accent,fontSize:fs(14)}} title="Key format matches expected pattern">&#10003;</span>
+                  )}
+                  {form.apiKey && kfmt === "mismatch" && (
+                    <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:10,height:10,borderRadius:"50%",background:T.orange,display:"inline-block"}} title="Key format may not match expected pattern"/>
+                  )}
+                </div>
+                {prov?.keyHint && prov.keyHint !== "(none needed)" && <div style={{fontSize:fs(9),color:T.dim,marginTop:3}}>Expected format: {prov.keyHint}</div>}
               </div>
-              <div><Label>Base URL</Label><input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://api.openai.com/v1/chat/completions"/></div>
+
+              {/* Base URL — collapsed under Advanced toggle */}
               <div>
+                {!showAdvancedUrl && !editId ? (
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:fs(11),color:T.dim}}>Base URL: <span className="mono" style={{fontSize:fs(10),color:T.soft}}>{form.baseUrl ? (form.baseUrl.length > 50 ? form.baseUrl.slice(0,50)+"..." : form.baseUrl) : "not set"}</span></span>
+                    <button onClick={() => setShowAdvancedUrl(true)} style={{background:"none",border:"none",color:T.accent,fontSize:fs(10),cursor:"pointer",textDecoration:"underline",padding:0}}>Edit</button>
+                  </div>
+                ) : (
+                  <div>
+                    <Label>Base URL</Label>
+                    <input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://api.openai.com/v1/chat/completions"/>
+                  </div>
+                )}
+              </div>
+
+              {/* Test result banner */}
+              {testResult && (
+                <div className="fade" style={{padding:"10px 14px",borderRadius:8,background:testResult.ok?T.accentD:T.redD,border:`1px solid ${testResult.ok?T.accent:T.red}44`,fontSize:fs(12),color:testResult.ok?T.accent:T.red}}>
+                  {testResult.ok?"✓ ":"✗ "}{testResult.msg}
+                </div>
+              )}
+
+              {/* Connect & Verify button (shown when not yet verified) */}
+              {!verified && (
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,marginTop:2}}>
+                  <Btn v="ai" onClick={testConnection} disabled={testing || (!form.apiKey && !isLocal) || !form.baseUrl} style={{width:"100%",justifyContent:"center"}}>
+                    {testing ? (<><span className="spinner" style={{display:"inline-block",width:14,height:14,border:`2px solid rgba(255,255,255,0.3)`,borderTopColor:"#fff",borderRadius:"50%",animation:"spin .6s linear infinite",marginRight:6}}/> Verifying...</>) : (<><span style={{fontSize:fs(16),marginRight:4}}>{"\u26A1"}</span> Connect & Verify</>)}
+                  </Btn>
+                  <button onClick={() => { setVerified(true); setTestResult({ ok: true, msg: "Verification skipped" }); }} style={{background:"none",border:"none",color:T.dim,fontSize:fs(10),cursor:"pointer",textDecoration:"underline",padding:0}}>Skip verification — I know my key works</button>
+                </div>
+              )}
+
+              {/* Model dropdown — locked until verified */}
+              <div className={verified ? "fade" : ""}>
                 <Label>Model</Label>
-                {models.length > 0 ? (
+                {!verified ? (
+                  <div style={{padding:"10px 14px",borderRadius:8,background:T.input,border:`1px solid ${T.border}`,color:T.dim,fontSize:fs(11),opacity:0.6}}>
+                    Verify connection to select model
+                  </div>
+                ) : models.length > 0 ? (
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     <select value={form.model} onChange={e=>setForm({...form,model:e.target.value})}>
                       <option value="">Select a model...</option>
@@ -599,22 +699,25 @@ const SettingsPage = ({ data, setData, setPage }) => {
                   <input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder={isAnthProvider(form)?"claude-sonnet-4-20250514":"gpt-4o"}/>
                 )}
               </div>
-              {/* Test result */}
-              {testResult && (
-                <div style={{padding:"10px 14px",borderRadius:8,background:testResult.ok?T.accentD:T.redD,border:`1px solid ${testResult.ok?T.accent:T.red}44`,fontSize:fs(12),color:testResult.ok?T.accent:T.red}}>
-                  {testResult.ok?"✓ ":"✗ "}{testResult.msg}
-                </div>
-              )}
+
+              {/* Action buttons */}
               <div style={{display:"flex",gap:8,marginTop:4}}>
-                <Btn v="ghost" onClick={testConnection} disabled={testing || !form.apiKey || !form.baseUrl}>
-                  {testing?"Testing...":"Test Connection"}
-                </Btn>
-                <Btn onClick={saveProfile} disabled={!form.name || (!form.apiKey && PROVIDERS[form.provider]?.cat !== "local") || !form.baseUrl}>
-                  {editId?"Save Changes":"Add Profile"}
-                </Btn>
+                {verified && (
+                  <Btn v="ghost" onClick={() => { setVerified(false); setTestResult(null); }} style={{fontSize:fs(11)}}>
+                    Re-test
+                  </Btn>
+                )}
+                {verified && (
+                  <div className="fade">
+                    <Btn onClick={saveProfile} disabled={!form.name || (!form.apiKey && !isLocal) || !form.baseUrl}>
+                      {editId?"Save Changes":"Save Profile"}
+                    </Btn>
+                  </div>
+                )}
               </div>
             </div>
-          )}
+            );
+          })()}
         </Modal>
       )}
     </div>

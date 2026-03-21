@@ -107,6 +107,7 @@ function useCssInjection(T) {
 @keyframes pulse{0%{box-shadow:0 0 0 0 ${T.accentM}}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes glow{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .fade{animation:fadeIn .25s ease-out both}
 .fade-scale{animation:fadeScale .3s ease-out both}
 .slide-up{animation:slideUp .35s cubic-bezier(.4,0,.2,1) both}

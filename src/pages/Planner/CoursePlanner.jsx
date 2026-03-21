@@ -23,7 +23,7 @@ import { ErrorBoundary } from "../../components/ui/ErrorBoundary.jsx";
 
 const CoursePlanner = ({ data, setData, profile, setPage, Btn, LogLine, CtxBadge, CourseDetail }) => {
   const T = useTheme();
-  const STATUS_C = getSTATUS_C();
+  const STATUS_C = getSTATUS_C(T);
   const _bgState = getBgState();
   const bp = useBreakpoint();
   const [showAdd, setShowAdd] = useState(false);

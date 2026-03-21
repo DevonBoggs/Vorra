@@ -9,8 +9,8 @@ const Modal = ({title, onClose, children, wide}) => {
   const handleBdDown = (e) => { if (e.target === bdRef.current) { dlog('debug','modal',`Closed: "${title}" via backdrop`); onClose() } };
   useEffect(() => { dlog('debug','modal',`Opened: "${title}"`); return () => dlog('debug','modal',`Unmounted: "${title}"`); }, [title]);
   return (
-    <div ref={bdRef} onMouseDown={handleBdDown} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(12px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:24}}>
-      <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} className="slide-up" style={{background:T.card,border:`1.5px solid ${T.border}`,borderRadius:18,padding:28,width:"100%",maxWidth:wide?720:480,maxHeight:"85vh",overflowY:"auto",boxShadow:`0 24px 60px rgba(0,0,0,.5), 0 0 0 1px ${T.border}`}}>
+    <div ref={bdRef} onMouseDown={handleBdDown} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(12px)",zIndex:999}}>
+      <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} className="slide-up" style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%, -50%)",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:18,padding:28,width:"calc(100% - 48px)",maxWidth:wide?720:480,maxHeight:"85vh",overflowY:"auto",boxShadow:`0 24px 60px rgba(0,0,0,.5), 0 0 0 1px ${T.border}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <h3 style={{fontSize:fs(17),fontWeight:700}}>{title}</h3>
           <button onClick={()=>{dlog('debug','modal',`Closed: "${title}" via X`);onClose()}} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:4}}><Ic.X/></button>

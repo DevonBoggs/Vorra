@@ -21,6 +21,9 @@ export const INIT = {
   ytApiKey: "",
   studySessions: [],
   studyStreak: { lastStudyDate: "", currentStreak: 0, longestStreak: 0 },
+  plannerConfig: null,
+  planHistory: [],
+  pendingPlan: null, // { planId, tasks: [], summary } — transient, cleared on confirm/discard
 };
 
 export const load = async (k, fb) => {

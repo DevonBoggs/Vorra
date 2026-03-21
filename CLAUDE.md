@@ -2,45 +2,77 @@
 
 ## Project Overview
 
-Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, goals, habits, and focus sessions. Current version: **7.3.0**.
+Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **7.3.0**.
 
 ## Tech Stack
 
 - **UI**: React 18 (JSX, no TypeScript)
 - **Build**: Vite 6 (dev server on port 5173)
 - **Desktop**: Electron 35 (main process in `electron/main.js`)
-- **Styling**: Vanilla CSS with theme system (Dark, Light, Warm, Mono, Ocean)
-- **Data**: localStorage persistence
+- **Styling**: Vanilla CSS + inline styles with theme token system (Dark, Light, Warm, Mono, Ocean)
+- **Data**: localStorage persistence (10MB Electron limit), SQLite backend built but not wired for primary data
 - **Package Manager**: npm
 - **Platform**: Windows (NSIS installer via electron-builder)
 
 ## Project Structure
 
 ```
-vorra/ (currently devonsync-app/)
+vorra/
 ├── src/
-│   ├── App.jsx          # Main app component (~6700 lines on master, modular on ui-visual-updates)
-│   ├── main.jsx         # React root with error boundary
-│   └── streams.js       # YouTube & SomaFM stream data
+│   ├── App.jsx                    # App shell, sidebar nav, routing, shortcuts
+│   ├── main.jsx                   # React root with error boundary
+│   ├── streams.js                 # YouTube & SomaFM stream data
+│   ├── pages/
+│   │   ├── Dashboard/DegreeDashboard.jsx
+│   │   ├── Courses/MyCoursesPage.jsx
+│   │   ├── Planner/StudyPlannerPage.jsx
+│   │   ├── Daily/DailyPage.jsx
+│   │   ├── Calendar/CalendarPage.jsx, MiniCal.jsx
+│   │   ├── Chat/StudyChatPage.jsx
+│   │   ├── Quiz/PracticeExamPage.jsx
+│   │   ├── Report/WeeklyReportPage.jsx
+│   │   ├── Settings/SettingsPage.jsx
+│   │   └── Ambient/AmbientPage.jsx
+│   ├── components/
+│   │   ├── ui/          # Btn, Badge, Modal, Label, PillGroup, etc.
+│   │   ├── icons/       # Icon components + Spin animation
+│   │   ├── course/      # CourseDetail (pill-button section viewer)
+│   │   ├── planner/     # WeeklyAvailabilityEditor, CommitmentEditor
+│   │   ├── widgets/     # Dashboard widgets
+│   │   └── MediaPlayer/ # Study radio player + visualizer
+│   ├── systems/
+│   │   ├── api.js       # AI provider integration, buildSystemPrompt, runAILoop
+│   │   ├── storage.js   # localStorage load/save, INIT schema, migrations
+│   │   ├── background.js # Background task system (survives navigation)
+│   │   ├── timer.js, focus.js, audio.js, youtube.js
+│   │   ├── notifications.js, shortcuts.js, breakpoint.js
+│   │   ├── debug.js, toast.js
+│   │   └── spaced-repetition.js  # FSRS-4.5 engine (built, not yet wired to planner)
+│   ├── constants/
+│   │   ├── tools.js             # AI tool schemas, PROVIDER_QUIRKS
+│   │   ├── universityProfiles.js # School presets (WGU, SNHU, ASU, Purdue)
+│   │   ├── lifeTemplates.js     # 11 schedule presets for study planner
+│   │   ├── categories.js, nav.js
+│   │   └── ...
+│   ├── utils/
+│   │   ├── toolExecution.js     # AI tool handler (add_tasks, generate_study_plan, etc.)
+│   │   ├── courseHelpers.js     # Shared section data, completeness, health indicators
+│   │   ├── availabilityCalc.js  # Weekly availability math, feasibility, derivation
+│   │   ├── planCalculations.js  # Legacy study plan math
+│   │   ├── jsonRepair.js, helpers.js
+│   │   └── ...
+│   └── styles/
+│       ├── tokens.js    # Theme system (useTheme, fs)
+│       └── *.css
 ├── electron/
-│   └── main.js          # Electron main process, local HTTP server on port 19532
-├── public/
-│   └── icon.png
+│   ├── main.js          # Electron main process, local HTTP server (port 19532)
+│   ├── database.js      # SQLite wrapper (better-sqlite3)
+│   ├── preload.js       # contextBridge for window.vorra API
+│   └── backup.js        # Auto-backup system
 ├── dist/                # Vite build output
 ├── index.html           # Entry point
-├── vite.config.js       # Vite configuration
-├── package.json         # Dependencies & scripts
-├── CLAUDE.md            # This file
-└── .claude/
-    ├── commands/        # Slash commands (type / to see all)
-    ├── skills/          # Agent skills (auto-discovered)
-    ├── agents/          # Subagent definitions
-    └── context/         # Design principles & style guides
+└── CLAUDE.md            # This file
 ```
-
-### Branches
-- `master` — monolithic App.jsx (~6700 lines)
-- `ui-visual-updates` — decomposed into 42 modular files (components/, pages/, systems/, styles/, utils/)
 
 ## Commands
 
@@ -50,26 +82,50 @@ npm run build            # Production build to dist/
 npm run electron:dev     # Dev mode: Vite + Electron together
 npm run electron:build   # Production: build + package installer
 npm start                # Run Electron from built files
+start.bat                # Smart launcher: detects changes, rebuilds, runs Electron
 ```
 
 ## Architecture Notes
 
-- **App.jsx is monolithic** (~6700 lines). All state, UI, and logic live here. When modifying, be precise about which section you're editing.
-- **No routing library** — the app uses internal state to switch between views/tabs.
-- **Electron main process** runs a local HTTP server (port 19532) for YouTube proxy/embed functionality.
-- **Context isolation is ON**, Node integration is OFF — communication between main/renderer uses standard web APIs and postMessage.
-- **All user data** is stored in localStorage — there is no backend database.
+- **Modular structure** — pages, components, systems, constants, and utils are separated into dedicated files
+- **App.jsx** is the shell (~500 lines) — sidebar nav, routing, keyboard shortcuts, command palette
+- **No routing library** — uses `usePageNav()` hook with internal state
+- **Electron main process** runs a local HTTP server (port 19532) with no-cache headers for development
+- **Context isolation is ON**, Node integration is OFF
+- **All user data** stored in localStorage via the `data` object (persisted through `save()`/`load()`)
+- **plannerConfig** — new weekly availability system with per-day time windows, commitments, study modes
+- **planHistory** — records of each AI plan generation for progress tracking
+- **pendingPlan** — persisted in `data` to survive navigation (prevents orphaned tasks)
 
 ## Key Features
 
-- Course management with 35+ fields per course
-- AI study plan generation (Anthropic/OpenAI API integration)
-- Degree plan parser (extracts courses from screenshots)
+- Course management with 35+ fields per course, AI enrichment with 14 section categories
+- My Courses: single-page flow (import → enrich → view), selective section regeneration, data health indicators
+- Study Planner: weekly availability timeline editor with drag/resize, life templates, study modes (sequential/parallel/hybrid), pacing styles, block styles, feasibility stats with school-model-aware buffer
+- AI study plan generation with exam prep ramps, spaced review, difficulty ramping, technique guidance
+- Plan progress tracking with nudge system (catch-up suggestions)
+- Degree plan parser (extracts courses from screenshots via vision AI)
 - Study Radio (44 SomaFM + 50 YouTube streams)
-- Practice exam generator
-- Study timer with focus tracking
-- CSV/JSON import/export
-- Multiple themes
+- Practice exam generator with AI
+- Study timer with Pomodoro, focus tracking
+- Study Chat with per-course context
+- Multiple themes (Dark, Light, Warm, Mono, Ocean)
+- University profile system (WGU, SNHU, ASU Online, Purdue Global presets)
+- AI disclaimers across 5 surfaces (first-run modal, course detail, practice exam, study planner, chat)
+
+## Study Planner Features
+
+- **Weekly Availability Editor**: interactive timeline with drag-to-move, edge-resize, 15-min snap
+- **Keyboard shortcuts**: Ctrl+Z/Y undo/redo, Delete/Backspace to remove, arrow keys to nudge, Escape to deselect, click-to-select with visual highlight
+- **Right-click context menus**: on empty space, study blocks, commitment blocks, day labels, time axis header
+- **11 Life Templates**: 9-to-5 Worker, Night Shift, Parent, Full-Time Student, Part-Time Worker, Freelancer, Healthcare (12h), Remote Worker, Career Changer, Retail/Service, Blank Slate
+- **Study Modes**: Sequential (WGU), Parallel (SNHU/ASU), Hybrid interleaving
+- **Pacing Styles**: Steady, Wave, Sprint/Rest
+- **Block Styles**: Standard (60-90m), Pomodoro (25m), Sprint (50m)
+- **Feasibility Dashboard**: 5 stat cards (Total Hours, Weekly Pace, Est. Finish, Daily Need, Buffer/Acceleration/Weekly Slack), school-model-aware
+- **AI Prompt Enhancements**: pre-assessment focus, exam prep ramp-down, post-exam recovery, daily difficulty ramping, study technique guidance, spaced review
+- **Plan Progress Tracker**: overall bar, this-week/today metrics, catch-up nudge system
+- **Daily Page Banner**: inline plan progress visible during study sessions
 
 ## Code Style
 
@@ -77,107 +133,16 @@ npm start                # Run Electron from built files
 - **Single quotes** for strings
 - **Semicolons** at end of statements
 - **2-space indentation**
-- **React.createElement** used in main.jsx (error boundary), JSX everywhere else
-- **Inline styles** are common throughout App.jsx
-- **camelCase** for variables and functions
-- **PascalCase** for component names
+- **Inline styles** with theme tokens (`T.accent`, `T.card`, `T.border`, etc.)
+- **camelCase** for variables/functions, **PascalCase** for components
+- **`fs()`** for responsive font scaling
 
 ## Development Guidelines
 
-1. **Read before editing** — always read the relevant section of App.jsx before making changes, it's large
-2. **Be surgical** — in a 6700-line file, use precise edits with enough context to match uniquely
-3. **Test builds** — run `npm run build` after changes to catch issues early
-4. **Electron security** — never enable nodeIntegration, keep contextIsolation on
-5. **No secrets in code** — API keys should come from user input or environment, never hardcoded
-6. **localStorage limits** — be mindful of the ~5-10MB localStorage limit when adding data features
-7. **Theme compatibility** — when adding UI, ensure it works across all 5 themes
-
-## Slash Commands
-
-| Command | Purpose |
-|---|---|
-| `/commit` | Conventional commits with emoji |
-| `/create-pr` | Branch + commit + pull request |
-| `/pr-review #N` | Multi-role code review |
-| `/fix-github-issue #N` | Analyze and fix a GitHub issue |
-| `/todo add "task"` | Manage project todos |
-| `/create-hook` | Set up Claude Code hooks |
-| `/release` | Changelog + version bump |
-| `/add-to-changelog 7.4.0 added "..."` | Add changelog entry |
-| `/update-branch-name` | Rename branch based on work |
-| `/test-plan "feature"` | Create a testing plan |
-| `/evaluate` | Full repository audit |
-| `/optimize "target"` | Performance analysis + 3 fixes |
-| `/design-review` | UI/UX review with design principles |
-| `/security-review` | OWASP-based security scan |
-| `/code-review` | Pragmatic code review |
-| `/diff-review` | Security-focused PR/commit review (Trail of Bits) |
-
-## Agent Skills (auto-discovered from .claude/skills/)
-
-### Superpowers (Core SDLC)
-- **brainstorming** — Socratic design refinement before implementation
-- **writing-plans** — Bite-sized implementation plans with exact steps
-- **subagent-driven-development** — Execute plans with 2-stage review per task
-- **test-driven-development** — RED-GREEN-REFACTOR cycle
-- **systematic-debugging** — 4-phase root cause analysis
-- **verification-before-completion** — Evidence before assertions
-- **dispatching-parallel-agents** — Run independent investigations concurrently
-- **requesting-code-review** / **receiving-code-review** — Code review workflow
-- **finishing-a-development-branch** — Merge/PR decision workflow
-- **using-git-worktrees** — Isolated workspaces for parallel work
-
-### Trail of Bits (Security)
-- **differential-review** — Security-focused PR review with adversarial analysis
-- **insecure-defaults** — Detect hardcoded secrets, weak crypto, fail-open behavior
-- **supply-chain-risk-auditor** — Dependency threat assessment
-
-### CCPM (Project Management)
-- **ccpm** — Spec-driven PM: PRDs → Epics → GitHub Issues → Parallel Execution → Tracking
-  - Uses bash scripts for status: `bash .claude/skills/ccpm/references/scripts/status.sh`
-
-### Fullstack Dev Skills
-- **react-expert** — React 18/19 patterns, hooks, performance, state management
-- **javascript-pro** — Modern ES2023+, async patterns, Node.js APIs, Web Workers
-- **typescript-pro** — Advanced generics, type guards, utility types
-- **fullstack-guardian** — End-to-end feature implementation with security
-
-### Context Engineering Kit
-- **reflexion** — Self-reflection and iterative improvement
-- **kaizen** — Continuous improvement patterns
-- **tdd** — Test-driven development patterns
-
-### Compound Engineering
-- **ce-brainstorm** / **ce-ideate** — Ideation workflows
-- **ce-plan** — Planning with compound improvement loops
-- **ce-review** — Code review that learns from mistakes
-- **ce-work** — Execution with git worktrees and task tracking
-
-### Other Skills
-- **web-asset-generator** — Generate favicons, app icons, OG images from logos/emoji
-
-## Agents (in .claude/agents/)
-
-| Agent | Source | Purpose |
-|---|---|---|
-| `code-reviewer` | Superpowers | Senior code reviewer with architecture focus |
-| `design-review-agent` | Design Review Workflow | 7-phase UI/UX review with Playwright |
-| `pragmatic-code-review` | Code Review Workflow | Practical code quality review |
-| `security-auditor` | Trail of Bits | Security-focused code auditor |
-| `bug-hunter` | Compound Engineering | Find and fix bugs systematically |
-
-## External Tools (install separately)
-
-### Claude Squad — Parallel agent management
-```bash
-# Requires Go. Install from: https://github.com/smtg-ai/claude-squad
-# brew install claude-squad  (macOS)
-# Or: curl -fsSL https://raw.githubusercontent.com/smtg-ai/claude-squad/main/install.sh | bash
-```
-
-### Parry — Prompt injection scanner
-```bash
-# Requires Rust/Cargo or uvx. Install from: https://github.com/vaporif/parry
-# Needs HuggingFace token for ML models
-# uvx parry-guard hook  (add to settings.json hooks)
-```
+1. **Read before editing** — understand the component structure before making changes
+2. **Test builds** — run `npm run build` after changes to catch issues early
+3. **Electron security** — never enable nodeIntegration, keep contextIsolation on
+4. **No secrets in code** — API keys come from user input, never hardcoded
+5. **localStorage limits** — 10MB in Electron; chatHistories is the fastest-growing data
+6. **Theme compatibility** — ensure UI works across all 5 themes
+7. **No-cache headers** — Electron's local server sends no-cache headers to prevent stale assets

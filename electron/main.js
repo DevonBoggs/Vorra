@@ -131,6 +131,12 @@ window.addEventListener('message',e=>{
       let filePath = path.join(distPath, parsed.pathname === '/' ? 'index.html' : parsed.pathname);
       const ext = path.extname(filePath).toLowerCase();
       fs.readFile(filePath, (err, data) => {
+        if (!err) {
+          // Prevent Chromium from caching stale assets
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
         if (err) {
           fs.readFile(path.join(distPath, 'index.html'), (e2, d2) => {
             if (e2) { res.writeHead(404); res.end('Not found'); }

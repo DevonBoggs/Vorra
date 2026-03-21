@@ -237,7 +237,22 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
     const activeCourseNames = (data.courses||[]).filter(c=>c.status!=="completed").map((c,i)=>`${i+1}. ${c.name} (~${c.averageStudyHours||"?"}h est)`).join(", ");
     const existingToday = safeArr(data.tasks?.[date]).map(t=>`${t.time}-${t.endTime} ${t.title} [${t.done?"done":"pending"}]`).join("; ");
     const todayCtx = existingToday ? `\nExisting tasks today: ${existingToday}` : "\nNo existing tasks today.";
-    const startCtx = data.studyStartTime ? ` Start time: ${data.studyStartTime}.` : "";
+    // Derive start time from weekly availability or fall back to legacy
+    const derivedStart = (() => {
+      const pc = data.plannerConfig;
+      if (!pc?.weeklyAvailability) return data.studyStartTime || '';
+      const dow = new Date(date + 'T12:00:00').getDay();
+      const day = pc.weeklyAvailability[dow];
+      if (day?.available && day.windows?.length) return day.windows[0].start;
+      // Fall back to earliest across all days
+      let earliest = '';
+      for (let d = 0; d < 7; d++) {
+        const dy = pc.weeklyAvailability[d];
+        if (dy?.available && dy.windows?.length && (!earliest || dy.windows[0].start < earliest)) earliest = dy.windows[0].start;
+      }
+      return earliest || data.studyStartTime || '';
+    })();
+    const startCtx = derivedStart ? ` Start time: ${derivedStart}.` : "";
 
     const presets = {
       school: `Plan my study sessions for ${fmtDateLong(date)}. Courses (priority order): ${activeCourseNames}. ${data.studyHoursPerDay||4}h of study.${startCtx}${todayCtx}\nInclude study blocks (1-2h max) with 10-15 min breaks between them. Use specific course names and topics in titles.`,
@@ -440,6 +455,39 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
           </div>
         </div>
       )}
+
+      {/* Plan progress banner — shows today's plan tasks */}
+      {(() => {
+        const lastPlan = (data.planHistory || []).slice(-1)[0];
+        if (!lastPlan) return null;
+        const planTasks = safeArr(tasks).filter(t => t.planId === lastPlan.planId);
+        if (planTasks.length === 0) return null;
+        const done = planTasks.filter(t => t.done).length;
+        const total = planTasks.length;
+        const doneMins = planTasks.filter(t => t.done).reduce((s, t) => {
+          const st = parseTime(t.time), et = parseTime(t.endTime);
+          return s + (st && et ? Math.max(0, et.mins - st.mins) : 0);
+        }, 0);
+        const totalMins = planTasks.reduce((s, t) => {
+          const st = parseTime(t.time), et = parseTime(t.endTime);
+          return s + (st && et ? Math.max(0, et.mins - st.mins) : 0);
+        }, 0);
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const color = pct >= 100 ? T.accent : pct >= 50 ? T.blue : T.soft;
+        return (
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>Today{'\u2019'}s Plan: {done}/{total} tasks</span>
+                <span style={{ fontSize: fs(10), color, fontWeight: 600 }}>{Math.round(doneMins / 60 * 10) / 10}h / {Math.round(totalMins / 60 * 10) / 10}h</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: T.input, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2, background: color, transition: 'width .3s' }} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Time Conflict Warning — current day */}
       {conflicts.size > 0 && view === "day" && (

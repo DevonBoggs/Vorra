@@ -7,6 +7,7 @@ import { toast } from "./toast.js";
 import { bgNewAbort, bgStream, bgSet, bgLog, getBgState } from "./background.js";
 import { TOOLS, TOOLS_OPENAI, getProviderQuirks } from "../constants/tools.js";
 import { repairTruncatedJSON } from "../utils/jsonRepair.js";
+import { deriveStartTime as deriveStartTimeFromAvailability } from "../utils/availabilityCalc.js";
 
 // ── Constants ────────────────────────────────────────────────────────
 export const APP_VERSION = "7.3.0";
@@ -457,6 +458,8 @@ export function fmtCtx(c, idx, creditLabel = 'credits') {
   if (safeArr(c.examTips).length>0) s += `\n     Tips: ${safeArr(c.examTips).slice(0,3).join('; ')}`;
   if (c.averageStudyHours) s += `\n     ~${c.averageStudyHours}h avg`;
   if (c.passRate) s += ` | ${c.passRate}`;
+  if (c.preAssessmentScore != null) s += `\n     Pre-assessment: ${c.preAssessmentScore}%`;
+  if (safeArr(c.preAssessmentWeakAreas).length>0) s += `\n     Weak areas: ${safeArr(c.preAssessmentWeakAreas).join('; ')}`;
   if (c.studyStrategy) s += `\n     Strategy: ${c.studyStrategy}`;
   if (safeArr(c.quickWins).length>0) s += `\n     Quick wins: ${safeArr(c.quickWins).join('; ')}`;
   if (safeArr(c.hardestConcepts).length>0) s += `\n     Hardest: ${safeArr(c.hardestConcepts).join('; ')}`;
@@ -564,6 +567,11 @@ export function buildSystemPrompt(data, ctx = "") {
   const startDate = data.studyStartDate || todayStr();
   const earlyFinishDate = data.targetCompletionDate || "";
 
+  // Derive start time from weekly availability (or fall back to legacy field)
+  const derivedStartTime = data.plannerConfig
+    ? deriveStartTimeFromAvailability(data.plannerConfig)
+    : (data.studyStartTime || '08:00');
+
   // Calculate estimates for context
   const totalEstHours = active.reduce((s, c) => s + (c.averageStudyHours > 0 ? c.averageStudyHours : ([0,20,35,50,70,100][c.difficulty||3]||50)), 0);
   const rawDays = Math.ceil(totalEstHours / hrsPerDay);
@@ -588,7 +596,7 @@ DEGREE STATS:
 - Total: ${totalCU} ${creditLabel} | Completed: ${doneCU} ${creditLabel} | Remaining: ${remainCU} ${creditLabel} (${active.length} courses)
 - Est. total study hours remaining: ~${totalEstHours}h (at current pace: ~${rawDays} study days)
 - Study hours/day: ${hrsPerDay}h
-- Study start: ${startDate}${data.studyStartTime ? ` at ${data.studyStartTime}` : ""} | Target completion: ${earlyFinishDate || "Not set"} | Term end: ${data.targetDate || "Not set"}
+- Study start: ${startDate} at ${derivedStartTime} | Target completion: ${earlyFinishDate || "Not set"} | Term end: ${data.targetDate || "Not set"}
 - Exception dates (no studying): ${(() => {
     if (exDates.length === 0) return "None";
     if (exDates.length <= 10) return exDates.join(", ");
@@ -605,7 +613,7 @@ DEGREE STATS:
 
 IMPORTANT RULES:
 - The course list ORDER reflects the user's chosen priority. Course #1 should be studied first. COMPLETE one course fully before starting the next. Do NOT mix courses on the same day (except transition days).
-- When generating tasks with generate_study_plan, skip exception dates. Start from the study start date${data.studyStartTime ? ` at ${data.studyStartTime} (the student has limited hours on day one)` : ""}.
+- When generating tasks with generate_study_plan, skip exception dates. Start from the study start date at ${derivedStartTime}.
 - CATEGORY TAGS: "study" (new material), "review" (revision), "exam-prep" (practice tests), "exam-day" (actual assessment day), "project" (project/paper writing), "class" (live sessions), "break" (rest). Always schedule an "exam-day" task when a course ends.
 - When enriching courses, include ALL fields: assessment type/details, competencies with weights, topic breakdown with weights, key terms, common mistakes, official+community resources, assessment tips, known focus areas, avg study hours, cert alignment, prerequisites. ALSO include study strategy fields: studyStrategy (recommended approach), quickWins (easy topics first), hardestConcepts (need extra focus), mnemonics (memory aids as {concept,mnemonic}), weeklyMilestones ({week,goals}), studyOrder (topic sequence), timeAllocation ({topic,percentage}), practiceTestNotes, instructorTips, communityInsights.
 - When the user asks "what do I need to know to pass", use enrich_course_context with comprehensive data.

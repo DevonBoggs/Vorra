@@ -10,6 +10,7 @@ import { useYtStats, fetchYtStats, useYtHealth, useYtCheckProgress, checkYtStrea
 import { Modal } from "../../components/ui/Modal.jsx";
 import { Label } from "../../components/ui/Label.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
+import { Btn } from "../../components/ui/Btn.jsx";
 import { INIT } from "../../systems/storage.js";
 
 const PRESETS = {
@@ -218,7 +219,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
             {Object.entries(THEMES).map(([key, theme]) => {
               const active = (data.theme || "dark") === key;
               return (
-                <button key={key} onClick={() => { setData(d => ({...d, theme: key})); setTheme(key); syncT(); toast(`Theme: ${theme.name}`, "success"); }} style={{
+                <button key={key} onClick={() => { setData(d => ({...d, theme: key})); setThemeGlobal(key); toast(`Theme: ${theme.name}`, "success"); }} style={{
                   flex:1, padding:"12px 8px", borderRadius:10, cursor:"pointer", textAlign:"center",
                   border: `2px solid ${active ? theme.accent : theme.border}`,
                   background: theme.bg, color: theme.text, transition:"all .2s"
@@ -312,7 +313,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
                   if (imported._customStreams) { localStorage.setItem('ds-custom-streams', JSON.stringify(imported._customStreams)); delete imported._customStreams; }
                   delete imported._meta;
                   setData(d => ({...d, ...imported}));
-                  if (imported.theme) { setTheme(imported.theme); syncT(); }
+                  if (imported.theme) { setThemeGlobal(imported.theme); }
                   toast("Backup restored", "success");
                 } catch (err) { toast("Invalid file: " + err.message, "error"); }
               };

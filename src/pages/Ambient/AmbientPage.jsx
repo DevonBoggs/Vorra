@@ -10,6 +10,7 @@ import { YT_STREAMS, YT_CATS, YT_PARENT_CATS } from "../../streams.js";
 import { VolumeBar } from "../../components/ui/VolumeBar.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
+import { Btn } from "../../components/ui/Btn.jsx";
 
 const AmbientPage = () => {
   const T = useTheme();

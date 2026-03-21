@@ -48,6 +48,35 @@ window.addEventListener('message',function(e){
 </body></html>`;
 }
 
+// Check if a port is in use and attempt to kill the stale process
+function killStaleProcess(port) {
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    // Windows: find PID using port, then kill it
+    exec(`netstat -ano | findstr :${port} | findstr LISTENING`, (err, stdout) => {
+      if (err || !stdout.trim()) { resolve(false); return; }
+      const lines = stdout.trim().split('\n');
+      const pids = new Set();
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && pid !== '0' && pid !== String(process.pid)) pids.add(pid);
+      }
+      if (pids.size === 0) { resolve(false); return; }
+      console.log(`[DevonSYNC] Killing stale process(es) on port ${port}: PIDs ${[...pids].join(', ')}`);
+      let killed = 0;
+      for (const pid of pids) {
+        exec(`taskkill /PID ${pid} /F`, (e) => {
+          killed++;
+          if (e) console.log(`[DevonSYNC] Could not kill PID ${pid}: ${e.message}`);
+          else console.log(`[DevonSYNC] Killed stale PID ${pid}`);
+          if (killed >= pids.size) resolve(true);
+        });
+      }
+    });
+  });
+}
+
 function startLocalServer() {
   const distPath = path.join(__dirname, '..', 'dist');
   const mimeTypes = {
@@ -55,7 +84,7 @@ function startLocalServer() {
     '.json':'application/json','.png':'image/png','.jpg':'image/jpeg',
     '.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2',
   };
-  return new Promise((resolve) => {
+  return new Promise(async (resolve, reject) => {
     localServer = http.createServer((req, res) => {
       const parsed = url.parse(req.url, true);
       if (parsed.pathname === '/yt-proxy') {
@@ -91,7 +120,7 @@ window.addEventListener('message',e=>{
 </script></body></html>`);
         return;
       }
-      
+
       let filePath = path.join(distPath, parsed.pathname === '/' ? 'index.html' : parsed.pathname);
       const ext = path.extname(filePath).toLowerCase();
       fs.readFile(filePath, (err, data) => {
@@ -106,7 +135,37 @@ window.addEventListener('message',e=>{
         }
       });
     });
-    localServer.listen(PORT, '127.0.0.1', () => resolve());
+
+    // Handle EADDRINUSE: kill stale process and retry once
+    localServer.on('error', async (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`[DevonSYNC] Port ${PORT} in use — attempting to kill stale process...`);
+        const killed = await killStaleProcess(PORT);
+        if (killed) {
+          // Wait a moment for the port to free up, then retry
+          setTimeout(() => {
+            localServer.listen(PORT, '127.0.0.1', () => {
+              console.log(`[DevonSYNC] Server started on port ${PORT} (after clearing stale process)`);
+              resolve();
+            });
+          }, 500);
+        } else {
+          const msg = `Port ${PORT} is already in use and could not be freed.\n\nAnother instance of DevonSYNC may be running.\nClose it and try again, or restart your computer.`;
+          console.error(`[DevonSYNC] ${msg}`);
+          const { dialog } = require('electron');
+          dialog.showErrorBox('DevonSYNC — Port Conflict', msg);
+          app.quit();
+        }
+      } else {
+        console.error(`[DevonSYNC] Server error: ${err.message}`);
+        reject(err);
+      }
+    });
+
+    localServer.listen(PORT, '127.0.0.1', () => {
+      console.log(`[DevonSYNC] Server started on port ${PORT}`);
+      resolve();
+    });
   });
 }
 
@@ -155,5 +214,17 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
-app.on('window-all-closed', () => { if (localServer) localServer.close(); if (process.platform !== 'darwin') app.quit(); });
+// Ensure clean shutdown on all exit paths
+function shutdownServer() {
+  if (localServer) {
+    try { localServer.close(); } catch (_e) {}
+    localServer = null;
+  }
+}
+
+app.on('window-all-closed', () => { shutdownServer(); if (process.platform !== 'darwin') app.quit(); });
+app.on('before-quit', shutdownServer);
+app.on('will-quit', shutdownServer);
+process.on('SIGINT', () => { shutdownServer(); process.exit(0); });
+process.on('SIGTERM', () => { shutdownServer(); process.exit(0); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

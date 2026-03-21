@@ -466,6 +466,49 @@ const SettingsPage = ({ data, setData, setPage }) => {
           }}>Reset All Data</Btn>
         </div>
       </div>
+      {/* Profile Add/Edit Modal */}
+      {showAdd && (
+        <Modal title={editId ? "Edit Profile" : "Add AI Profile"} onClose={() => setShowAdd(false)} wide>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {/* Provider presets */}
+            {!editId && (
+              <div style={{display:"flex",gap:6,marginBottom:4}}>
+                {Object.entries(PRESETS).map(([k, p]) => (
+                  <button key={k} className="sf-chip" onClick={() => setForm(f => ({...f, provider:k, name:p.name, baseUrl:p.url, model:p.model}))} style={{flex:1,padding:"8px 0",borderRadius:8,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${form.provider===k?T.accent:T.border}`,background:form.provider===k?T.accentD:T.input,color:form.provider===k?T.accent:T.soft,textAlign:"center"}}>{p.name}</button>
+                ))}
+              </div>
+            )}
+            <div><Label>Profile Name</Label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. My Claude API"/></div>
+            <div><Label>API Key</Label><input type="password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={isAnthProvider(form)?"sk-ant-...":"sk-..."}/></div>
+            <div><Label>Base URL</Label><input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://api.anthropic.com/v1/messages"/></div>
+            <div>
+              <Label>Model</Label>
+              {models.length > 0 ? (
+                <select value={form.model} onChange={e=>setForm({...form,model:e.target.value})}>
+                  <option value="">Select a model...</option>
+                  {models.map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder={isAnthProvider(form)?"claude-sonnet-4-20250514":"gpt-4o"}/>
+              )}
+            </div>
+            {/* Test result */}
+            {testResult && (
+              <div style={{padding:"10px 14px",borderRadius:8,background:testResult.ok?T.accentD:T.redD,border:`1px solid ${testResult.ok?T.accent:T.red}44`,fontSize:fs(12),color:testResult.ok?T.accent:T.red}}>
+                {testResult.ok?"✓ ":"✗ "}{testResult.msg}
+              </div>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <Btn v="ghost" onClick={testConnection} disabled={testing || !form.apiKey || !form.baseUrl}>
+                {testing?"Testing...":"Test Connection"}
+              </Btn>
+              <Btn onClick={saveProfile} disabled={!form.name || !form.apiKey || !form.baseUrl}>
+                {editId?"Save Changes":"Add Profile"}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

@@ -2,17 +2,16 @@ import { useState, useEffect, useMemo } from "react";
 import { useTheme, fs } from "../../styles/tokens.js";
 import Ic from "../../components/icons/index.jsx";
 import { todayStr, diffDays, minsToStr, parseTime } from "../../utils/helpers.js";
-import { getCAT, getSTATUS_C, STATUS_L, STUDY_CATS } from "../../constants/categories.js";
+import { getSTATUS_C, STATUS_L, STUDY_CATS } from "../../constants/categories.js";
 import { useBreakpoint } from "../../systems/breakpoint.js";
 import { toast } from "../../systems/toast.js";
 import { Badge } from "../../components/ui/Badge.jsx";
-import { ProgressBar } from "../../components/ui/ProgressBar.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { safeArr } from "../../utils/toolExecution.js";
+import { WidgetGrid } from "../../components/widgets/WidgetGrid.jsx";
 
 const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   const T = useTheme();
-  const CAT = getCAT(T);
   const STATUS_C = getSTATUS_C(T);
   const bp = useBreakpoint();
   const [filter, setFilter] = useState("all");
@@ -23,7 +22,6 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   const totalCU = courses.reduce((s,c) => s + (c.credits||0), 0);
   const doneCU = courses.filter(c => c.status === "completed").reduce((s,c) => s + (c.credits||0), 0);
   const remainCU = totalCU - doneCU;
-  const pctComplete = totalCU > 0 ? Math.round((doneCU/totalCU)*100) : 0;
   const daysLeft = data.targetDate ? Math.max(0, diffDays(todayStr(), data.targetDate)) : null;
   const hrsPerDay = data.studyHoursPerDay || 4;
   const activeCourses = courses.filter(c => c.status !== "completed");
@@ -109,15 +107,8 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   };
   const estFinish = calcFinish(hrsPerDay);
 
-  // Next study blocks from tasks
   const tasks = data.tasks || {};
   const today = todayStr();
-  const upcomingBlocks = [];
-  for (let i=0; i<7 && upcomingBlocks.length < 5; i++) {
-    const d = new Date(); d.setDate(d.getDate()+i); const ds = d.toISOString().split("T")[0];
-    const dayTasks = safeArr(tasks[ds]).filter(t => !t.done && t.category === "study");
-    dayTasks.forEach(t => upcomingBlocks.push({...t, date:ds}));
-  }
 
   // Study check-in prompt logic
   useEffect(() => {
@@ -163,49 +154,15 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         </div>
       )}
 
-      {/* Progress & Stats */}
-      <div style={{marginBottom:20}}>
-        <div style={{display:"grid",gridTemplateColumns:`auto repeat(${bp.sm?3:4},1fr)`,gap:12}}>
-          {/* Progress Ring — spans 2 rows */}
-          <div className="sf-stat" style={{gridRow:"1/3",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:20,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minWidth:140}}>
-            <svg width="100" height="100" viewBox="0 0 90 90">
-              <circle cx="45" cy="45" r="38" fill="none" stroke={T.bg2} strokeWidth="7"/>
-              <circle cx="45" cy="45" r="38" fill="none" stroke={T.accent} strokeWidth="7" strokeLinecap="round"
-                strokeDasharray={`${2*Math.PI*38*pctComplete/100} ${2*Math.PI*38}`}
-                transform="rotate(-90 45 45)" style={{transition:"stroke-dasharray .5s"}}/>
-              <text x="45" y="42" textAnchor="middle" fill={T.text} fontSize="20" fontWeight="800" fontFamily="Outfit,sans-serif">{pctComplete}%</text>
-              <text x="45" y="56" textAnchor="middle" fill={T.dim} fontSize="9">{doneCU}/{totalCU} CU</text>
-            </svg>
-            <div style={{fontSize:fs(9),color:T.soft,marginTop:6,fontWeight:600}}>Degree Progress</div>
-          </div>
-          {/* Top row: 4 stats */}
-          {[
-            {l:"Remaining CU",v:remainCU,c:T.orange},
-            {l:"Days to Goal",v:daysToGoal??"—",c:daysToGoal!=null&&daysToGoal<60?T.red:daysToGoal!=null&&daysToGoal<90?T.orange:T.blue,sub:goalDate?new Date(goalDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"}):"set target"},
-            {l:"Term Ends",v:daysToTermEnd!=null?daysToTermEnd+"d":"\u2014",c:termEndDate?T.soft:T.dim,sub:termEndDate?new Date(termEndDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"2-digit"}):"not set"},
-            {l:"Scheduled",v:scheduledHrs>0?`${scheduledHrs}h`:"\u2014",c:scheduledHrs>=totalEstHrs?T.accent:scheduledHrs>0?T.blue:T.dim,sub:studyDatesWithTasks.length>0?`${studyDatesWithTasks.length} study days`:"no plan yet"},
-          ].map((s,i)=>(
-            <div key={i} className="sf-stat" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 16px",textAlign:"center"}}>
-              <div style={{fontSize:fs(9),color:T.dim,textTransform:"uppercase",letterSpacing:.5,fontWeight:600,marginBottom:4}}>{s.l}</div>
-              <div style={{fontSize:fs(22),fontWeight:800,color:s.c,fontFamily:"'Outfit',sans-serif"}}>{s.v}</div>
-              {s.sub&&<div style={{fontSize:fs(9),color:T.dim}}>{s.sub}</div>}
-            </div>
-          ))}
-          {/* Bottom row: 4 stats */}
-          {[
-            {l:"Est. Days",v:rawDaysNeeded||"\u2014",c:T.purple,sub:`${totalEstHrs}h \u00F7 ${hrsPerDay}h/day \u00B7 from Course Planner`},
-            {l:"Today's Study",v:`${Math.round(todayMins/6)/10}h`,c:todayMins>0?T.accent:T.dim},
-            {l:"Study Streak",v:`${streak.currentStreak}d`,c:streak.currentStreak>=7?T.accent:streak.currentStreak>=3?T.orange:T.dim},
-            {l:"Avg Pace (14d)",v:avgHrsPerDay14>0?`${avgHrsPerDay14}h/d`:"\u2014",c:avgHrsPerDay14>=hrsPerDay?T.accent:avgHrsPerDay14>0?T.orange:T.dim},
-          ].map((s,i)=>(
-            <div key={"b"+i} className="sf-stat" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 16px",textAlign:"center"}}>
-              <div style={{fontSize:fs(9),color:T.dim,textTransform:"uppercase",letterSpacing:.5,fontWeight:600,marginBottom:4}}>{s.l}</div>
-              <div style={{fontSize:fs(22),fontWeight:800,color:s.c,fontFamily:"'Outfit',sans-serif"}}>{s.v}</div>
-              {s.sub&&<div style={{fontSize:fs(9),color:T.dim}}>{s.sub}</div>}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Customizable Widget Grid */}
+      <WidgetGrid
+        widgets={data.dashboardWidgets}
+        data={data}
+        setData={setData}
+        setPage={setPage}
+        setDate={setDate}
+        Btn={Btn}
+      />
 
       {/* Global Schedule Conflicts */}
       {globalConflicts.totalConflicts > 0 && (
@@ -309,54 +266,6 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         );
       })()}
 
-      {/* Today's Tasks — ALL categories */}
-      {(() => {
-        const todayTasks = safeArr(tasks[today]).sort((a,b)=>(parseTime(a.time)?.mins??9999)-(parseTime(b.time)?.mins??9999));
-        const done = todayTasks.filter(t=>t.done).length;
-        if (todayTasks.length === 0) return null;
-        return (
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <h3 style={{fontSize:fs(14),fontWeight:700}}>Today's Schedule</h3>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:fs(11),color:done===todayTasks.length?T.accent:T.soft}}>{done}/{todayTasks.length} done</span>
-                <button onClick={()=>setPage("daily")} style={{background:T.accentD,border:`1px solid ${T.accent}44`,borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:fs(11),color:T.accent,fontWeight:600}}>View All \u2192</button>
-              </div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              {todayTasks.slice(0,8).map(t => {
-                const c = CAT[t.category]||CAT.other;
-                return (
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",borderRadius:8,background:t.done?T.bg2:T.input,opacity:t.done?0.5:1}}>
-                    <div style={{width:3,height:20,borderRadius:2,background:c.fg,flexShrink:0}}/>
-                    <span style={{fontSize:fs(10),color:T.dim,minWidth:40,fontFamily:"'JetBrains Mono',monospace"}}>{t.time||"\u2014"}</span>
-                    <span style={{flex:1,fontSize:fs(11),color:t.done?T.dim:T.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:t.done?"line-through":"none"}}>{t.title}</span>
-                    <Badge color={c.fg} bg={c.bg}>{c.l}</Badge>
-                    {t.done&&<Ic.Check s={12} c={T.accent}/>}
-                  </div>
-                );
-              })}
-              {todayTasks.length > 8 && <div style={{fontSize:fs(10),color:T.dim,textAlign:"center",padding:4}}>+{todayTasks.length-8} more tasks</div>}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Upcoming Study Blocks */}
-      {upcomingBlocks.length > 0 && (
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-          <h3 style={{fontSize:fs(14),fontWeight:700,marginBottom:10}}>{"\ud83d\udcc5"} Upcoming Study Blocks</h3>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {upcomingBlocks.slice(0,5).map((t,i) => (
-              <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",borderRadius:8,background:T.input}}>
-                <span style={{fontSize:fs(10),color:T.dim,minWidth:50,fontFamily:"'JetBrains Mono',monospace"}}>{t.date===todayStr()?"Today":new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
-                <span style={{fontSize:fs(10),color:T.blue,minWidth:45,fontFamily:"'JetBrains Mono',monospace"}}>{t.time||"\u2014"}</span>
-                <span style={{flex:1,fontSize:fs(12),color:T.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Per-Course Study Time */}
       {Object.keys(courseHours).length > 0 && (

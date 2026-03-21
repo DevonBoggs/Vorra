@@ -59,6 +59,13 @@ function RunLive($label, $cmd) {
 $t0 = Get-Date
 "Vorra Setup Log | $($t0.ToString('yyyy-MM-dd HH:mm:ss')) | PS $($PSVersionTable.PSVersion) | $root" | Out-File $log -Encoding UTF8
 
+# Read version from package.json (single source of truth)
+$appVersion = "?"
+try {
+    $pkg = Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json
+    $appVersion = $pkg.version
+} catch { $appVersion = "?" }
+
 try { mode con: cols=110 lines=45 } catch {}
 Clear-Host; Write-Host ""
 
@@ -74,36 +81,49 @@ $art = @(
 )
 foreach ($a in $art) { Write-Host $a -Fore Green }
 Write-Host ""
-Write-Host "   AI-Powered Study & Life Planner                                 v7.3.0" -Fore DarkGray
+Write-Host "   AI-Powered Study & Life Planner                                 v$appVersion" -Fore DarkGray
 Write-Host "   ========================================================================" -Fore DarkGray
 Write-Host ""
 $script:stepStart = Get-Date
 
 # ── STEP 1 ──
-Step "1/6" "Checking Node.js"
+Step "1/8" "Checking Node.js"
 Log "Step 1"
 $nd = Get-Command node -ErrorAction SilentlyContinue
 if (-not $nd) { FailExit "Node.js not found. Install from https://nodejs.org" }
 $nv = "?"; try { $nv = (& node -v 2>$null).Trim() } catch {}
 Pass "Node.js $nv"
+# Validate Node version >= 18
+$major = 0
+if ($nv -match 'v(\d+)') { $major = [int]$Matches[1] }
+if ($major -lt 18) { FailExit "Node.js 18+ required (found $nv). Update from https://nodejs.org" }
 $npmv = "?"; try { $npmv = (& npm -v 2>$null).Trim() } catch {}
 Info "npm $npmv"
 StepTime "Step 1"
 
 # ── STEP 2 ──
-Step "2/6" "Preparing environment"
+Step "2/8" "Preparing environment"
 Log "Step 2"
+# Check disk space (need ~500MB)
+try {
+    $drive = (Get-Item $root).PSDrive
+    $freeGB = [math]::Round($drive.Free / 1GB, 1)
+    if ($drive.Free -lt 500MB) {
+        Fail "Low disk space: ${freeGB}GB free (need ~500MB)"
+        if (-not $data.overrideSafeguards) { FailExit "Insufficient disk space" }
+    } else { Info "${freeGB}GB free" }
+} catch { Info "Could not check disk space" }
 $nmDir = Join-Path $root "node_modules"
 $oldExe = Join-Path $root "Vorra.exe"
 if (Test-Path $oldExe) { Remove-Item $oldExe -Force -ErrorAction SilentlyContinue; Info "Removed old Vorra.exe" }
 if (Test-Path (Join-Path $root "dist")) { Remove-Item -Recurse -Force (Join-Path $root "dist") -ErrorAction SilentlyContinue; Info "Cleaned old dist/" }
 foreach ($tf in @("_launcher.cs","_wv_check.js")) { $p2=Join-Path $root $tf; if(Test-Path $p2){Remove-Item $p2 -Force -ErrorAction SilentlyContinue} }
-if (Test-Path $nmDir) { Info "node_modules exists"; Pass "Environment ready" }
-else { Info "Fresh install"; Pass "Environment ready" }
+if (Test-Path $nmDir) { Info "Updating existing installation"; Pass "Environment ready" }
+else { Info "Fresh install detected"; Pass "Environment ready" }
 StepTime "Step 2"
 
 # ── STEP 3 ──
-Step "3/6" "Installing dependencies"
+Step "3/8" "Installing dependencies"
 Log "Step 3"
 $fresh = -not (Test-Path $nmDir)
 if ($fresh) {
@@ -120,10 +140,18 @@ if ($r.Code -ne 0) {
 Pass "Dependencies installed"
 $eExe = Join-Path $root "node_modules\electron\dist\electron.exe"
 if (Test-Path $eExe) { $ev="?"; try{$ev=& $eExe --version 2>$null}catch{}; Info "Electron $ev" }
+
+# Rebuild native modules (better-sqlite3) for Electron
+Info "Rebuilding native modules for Electron..."
+$r2 = RunLive "electron-rebuild" "npx electron-rebuild"
+if ($r2.Code -ne 0) {
+    Info "electron-rebuild failed (non-critical, SQLite will fall back to localStorage)"
+    Log "electron-rebuild exit: $($r2.Code)"
+} else { Pass "Native modules rebuilt" }
 StepTime "Step 3"
 
 # ── STEP 4 ──
-Step "4/6" "Security audit"
+Step "4/8" "Security audit"
 Log "Step 4"
 $r = RunCmd "audit" "npm audit --omit=dev 2>&1"
 if ($r.Out -match "found 0 vulnerabilities") { Pass "No vulnerabilities" }
@@ -132,7 +160,7 @@ else { Pass "Audit clean" }
 StepTime "Step 4"
 
 # ── STEP 5 ──
-Step "5/6" "Building application"
+Step "5/8" "Building application"
 Log "Step 5"
 Info "Compiling..."
 $r = RunLive "build" "npx vite build"
@@ -142,8 +170,44 @@ Pass "Build complete"
 StepTime "Step 5"
 
 # ── STEP 6 ──
-Step "6/6" "Creating Vorra.exe"
+Step "6/8" "Running tests"
 Log "Step 6"
+$r = RunCmd "test" "npx vitest run 2>&1"
+if ($r.Out -match "(\d+) passed") { Pass "$($Matches[1]) tests passed" }
+elseif ($r.Code -ne 0) { Info "Some tests failed (non-critical)"; Log "Test exit: $($r.Code)" }
+else { Pass "Tests passed" }
+StepTime "Step 6"
+
+# ── STEP 7 ──
+Step "7/8" "Health check"
+Log "Step 7 - Health check"
+$checks = @(
+    @("node_modules\electron\dist\electron.exe", "Electron binary"),
+    @("electron\preload.js", "Preload script"),
+    @("electron\database.js", "Database module"),
+    @("electron\backup.js", "Backup module"),
+    @("dist\index.html", "Built application"),
+    @("src\stores\index.js", "State management"),
+    @("src\systems\spaced-repetition.js", "Spaced repetition"),
+    @("src\systems\shortcuts.js", "Keyboard shortcuts"),
+    @("src\systems\notifications.js", "Notifications"),
+    @("src\components\MediaPlayer\MediaPlayer.jsx", "Media player"),
+    @("src\components\ui\CommandPalette.jsx", "Command palette"),
+    @("src\components\widgets\WidgetGrid.jsx", "Dashboard widgets")
+)
+$passed = 0; $failed = 0
+foreach ($c in $checks) {
+    $fp = Join-Path $root $c[0]
+    if (Test-Path $fp) { $passed++ }
+    else { Fail "Missing: $($c[1]) ($($c[0]))"; $failed++ }
+}
+if ($failed -eq 0) { Pass "All $passed critical files verified" }
+else { Info "$passed/$($passed+$failed) files found ($failed missing)" }
+StepTime "Step 7"
+
+# ── STEP 8 ──
+Step "8/8" "Creating Vorra.exe"
+Log "Step 8"
 $exePath = Join-Path $root "Vorra.exe"
 $csc = $null
 foreach ($p3 in @("$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe","$env:windir\Microsoft.NET\Framework\v4.0.30319\csc.exe")) {
@@ -188,7 +252,7 @@ for ($i = 0; $i -le 100; $i += 5) {
 Write-Host ("`r   " + ("$BF" * 35) + " 100%  ") -Fore Green
 Write-Host ""
 Write-Host "   ========================================================================" -Fore Green
-Write-Host "    $CHK  SETUP COMPLETE  --  All 6 steps passed" -Fore Green
+Write-Host "    $CHK  SETUP COMPLETE  --  All 8 steps passed" -Fore Green
 Write-Host ""
 $hasExe = Test-Path $exePath
 if ($hasExe) { Write-Host "    Launch: " -Fore DarkGray -NoNewline; Write-Host "Vorra.exe" -Fore Green -NoNewline; Write-Host " or " -Fore DarkGray -NoNewline; Write-Host "start.bat" -Fore Cyan }

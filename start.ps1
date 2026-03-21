@@ -10,6 +10,14 @@ function Fail($msg) { Write-Host "   $CROSS  $msg" -Fore Red; Log "FAIL: $msg" }
 function WriteGradient($text) { Write-Host $text -Fore Green }
 
 "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] Quick Start`r`nRoot: $root" | Out-File $log -Encoding UTF8
+
+# Read version from package.json (single source of truth)
+$appVersion = "?"
+try {
+    $pkg = Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json
+    $appVersion = $pkg.version
+} catch { $appVersion = "?" }
+
 try { mode con: cols=115 lines=30 } catch {}
 Clear-Host; Write-Host ""
 
@@ -25,7 +33,7 @@ $artLines = @(
 )
 foreach ($line in $artLines) { WriteGradient $line }
 Write-Host ""
-Write-Host "   AI-Powered Study & Life Planner                                 v7.3.0" -Fore DarkGray
+Write-Host "   AI-Powered Study & Life Planner                                 v$appVersion" -Fore DarkGray
 Write-Host "   ========================================================================" -Fore DarkGray
 Write-Host ""
 
@@ -36,8 +44,28 @@ Pass "Node.js $((& node -v 2>$null).Trim())"
 if (-not (Test-Path $electronExe)) { Fail "Dependencies missing - run setup.bat"; Read-Host "   Enter to exit"; exit 1 }
 Pass "Electron"
 
-$distF = Join-Path $root "dist\index.html"; $srcF = Join-Path $root "src\App.jsx"
-$rebuild = (-not (Test-Path $distF)) -or ((Test-Path $srcF) -and (Test-Path $distF) -and ((Get-Item $srcF).LastWriteTime -gt (Get-Item $distF).LastWriteTime))
+# Non-blocking check for available updates
+try {
+    $gitCheck = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCheck -and (Test-Path (Join-Path $root ".git"))) {
+        $fetch = & git -C $root fetch --dry-run 2>&1
+        if ($fetch) { Write-Host "   !  Updates may be available — run: git pull && setup.bat" -Fore Yellow; Log "Updates available" }
+    }
+} catch {}
+
+$distF = Join-Path $root "dist\index.html"
+$rebuild = -not (Test-Path $distF)
+if (-not $rebuild) {
+    $distTime = (Get-Item $distF).LastWriteTime
+    # Check if ANY source file is newer than the build
+    $newerSrc = Get-ChildItem -Path (Join-Path $root "src") -Recurse -File | Where-Object { $_.LastWriteTime -gt $distTime } | Select-Object -First 1
+    if ($newerSrc) { $rebuild = $true }
+    # Also check electron/ and index.html
+    $newerElectron = Get-ChildItem -Path (Join-Path $root "electron") -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $distTime } | Select-Object -First 1
+    if ($newerElectron) { $rebuild = $true }
+    $indexHtml = Join-Path $root "index.html"
+    if ((Test-Path $indexHtml) -and ((Get-Item $indexHtml).LastWriteTime -gt $distTime)) { $rebuild = $true }
+}
 if ($rebuild) {
     Write-Host "   !  Build outdated - rebuilding..." -Fore Yellow; Log "Rebuilding"
     $pi = New-Object System.Diagnostics.ProcessStartInfo

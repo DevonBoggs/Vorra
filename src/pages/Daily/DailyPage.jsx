@@ -17,6 +17,7 @@ import { BufferedInput } from "../../components/ui/BufferedInput.jsx";
 import { ProgressBar } from "../../components/ui/ProgressBar.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { Label } from "../../components/ui/Label.jsx";
+import { SortableList, SortableItem } from "../../components/ui/SortableList.jsx";
 
 const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
   const T = useTheme();
@@ -41,11 +42,13 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
   const[pomTime,setPomTime]=useState(25*60);
   const[pomBreak,setPomBreak]=useState(false);
   const[showTemplates,setShowTemplates]=useState(false);
-  const[dragTask,setDragTask]=useState(null);
+  const[manualOrder,setManualOrder]=useState(null); // array of task ids when user has manually reordered
   const[expandedWeekDays,setExpandedWeekDays]=useState({});
   const pomRef=useRef(null);
   const isToday=date===todayStr();
   useEffect(()=>{const iv=setInterval(()=>setNow(nowMins()),30000);return()=>clearInterval(iv)},[]);
+  // Reset manual order when date changes
+  useEffect(()=>{setManualOrder(null)},[date]);
 
   // Week dates starting from current date's Monday
   const getWeekDates = (d) => {
@@ -56,7 +59,13 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
   };
   const weekDates = useMemo(() => getWeekDates(date), [date]);
 
-  const sorted=useMemo(()=>[...tasks].sort((a,b)=>(parseTime(a.time)?.mins??9999)-(parseTime(b.time)?.mins??9999)),[tasks]);
+  const sorted=useMemo(()=>{
+    if(manualOrder){
+      const orderMap=new Map(manualOrder.map((id,i)=>[id,i]));
+      return [...tasks].sort((a,b)=>(orderMap.get(a.id)??9999)-(orderMap.get(b.id)??9999));
+    }
+    return [...tasks].sort((a,b)=>(parseTime(a.time)?.mins??9999)-(parseTime(b.time)?.mins??9999));
+  },[tasks,manualOrder]);
   const filtered = catFilter === "all" ? sorted : sorted.filter(t => t.category === catFilter);
   const completed=tasks.filter(t=>t.done).length;
   const currentId=useMemo(()=>{if(!isToday)return null;for(const t of sorted){const s=parseTime(t.time),e=parseTime(t.endTime);if(s&&e&&now>=s.mins&&now<e.mins&&!t.done)return t.id}return null},[sorted,now,isToday]);
@@ -114,23 +123,10 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
     toast(`Template "${tmpl.name}" applied: ${newTasks.length} tasks added`, "success");
   };
 
-  // Drag-to-reorder tasks
-  const handleTaskDragStart = (e, taskId) => { setDragTask(taskId); e.dataTransfer.effectAllowed = "move"; };
-  const handleTaskDrop = (e, targetId) => {
-    e.preventDefault();
-    if(!dragTask || dragTask === targetId) { setDragTask(null); return; }
-    const dragIdx = sorted.findIndex(t=>t.id===dragTask);
-    const targetIdx = sorted.findIndex(t=>t.id===targetId);
-    if(dragIdx < 0 || targetIdx < 0) { setDragTask(null); return; }
-    // Swap the times of the dragged task and target
-    const dTask = sorted[dragIdx], tTask = sorted[targetIdx];
-    setTasks(tasks.map(t => {
-      if(t.id === dTask.id) return {...t, time:tTask.time, endTime:tTask.endTime};
-      if(t.id === tTask.id) return {...t, time:dTask.time, endTime:dTask.endTime};
-      return t;
-    }));
-    setDragTask(null);
-    toast("Tasks swapped","info");
+  // Drag-to-reorder tasks via @dnd-kit
+  const handleTaskReorder = (reorderedList) => {
+    setManualOrder(reorderedList.map(t => t.id));
+    toast('Tasks reordered', 'info');
   };
 
   // Smart carryforward: incomplete tasks from yesterday
@@ -327,13 +323,13 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
     </div>
   );
 
-  // Task card renderer
-  const renderTask = (t) => {
+  // Task card renderer — used inside SortableItem
+  const renderTaskCard = (t) => {
     const c=CAT[t.category]||CAT.other,s=parseTime(t.time),e=parseTime(t.endTime),dur=s&&e?e.mins-s.mins:null,isCur=t.id===currentId;
     const hasConflict = conflicts.has(t.id);
     const isExamDay = t.category === "exam-day";
-    return (<div key={t.id} className="fade sf-task" draggable onDragStart={e=>handleTaskDragStart(e,t.id)} onDragOver={e=>e.preventDefault()} onDrop={e=>handleTaskDrop(e,t.id)}
-      style={{display:"flex",alignItems:"stretch",background:isExamDay?`${c.bg}`:t.done?`${T.input}88`:hasConflict?T.redD:dragTask===t.id?T.purpleD:T.card,border:`1.5px solid ${isExamDay?c.fg+"55":hasConflict?T.red+"55":isCur?T.accent+"55":dragTask===t.id?T.purple:T.border}`,borderRadius:12,overflow:"hidden",opacity:t.done?.5:dragTask===t.id?.6:1,boxShadow:isExamDay?`0 0 16px ${c.fg}18`:isCur?`0 0 20px ${T.accentD}`:"0 1px 4px rgba(0,0,0,.08)",cursor:"grab"}}>
+    return (<div className="fade sf-task"
+      style={{display:"flex",alignItems:"stretch",background:isExamDay?`${c.bg}`:t.done?`${T.input}88`:hasConflict?T.redD:T.card,border:`1.5px solid ${isExamDay?c.fg+"55":hasConflict?T.red+"55":isCur?T.accent+"55":T.border}`,borderRadius:12,overflow:"hidden",opacity:t.done?.5:1,boxShadow:isExamDay?`0 0 16px ${c.fg}18`:isCur?`0 0 20px ${T.accentD}`:"0 1px 4px rgba(0,0,0,.08)"}}>
       <div style={{width:3,background:hasConflict?T.red:c.fg,flexShrink:0}}/>
       <div style={{padding:"10px 14px",minWidth:100,display:"flex",flexDirection:"column",justifyContent:"center",borderRight:`1px solid ${T.border}`}}>
         <span className="mono" style={{fontSize:fs(13),fontWeight:600,color:hasConflict?T.red:isCur?T.accent:T.text}}>{s?fmtTime(s.h,s.m):"\u2014"}</span>
@@ -362,6 +358,13 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
       </div>
     </div>);
   };
+
+  // Wrapped task renderer for SortableList — adds SortableItem with drag handle
+  const renderTask = (t) => (
+    <SortableItem key={t.id} id={t.id} handleColor={T.dim} dragHandleStyle={{borderRadius:'12px 0 0 12px',background:T.input,borderRight:`1px solid ${T.border}`}}>
+      {renderTaskCard(t)}
+    </SortableItem>
+  );
 
   // Date navigation helpers
   const navDate = (delta) => {
@@ -552,7 +555,20 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
       {/* Content */}
       {view==="week" ? renderWeekView() : (
         filtered.length===0 ? <div style={{padding:"50px 0",textAlign:"center"}}><div style={{fontSize:fs(40),marginBottom:12,opacity:.3}}>\📋</div><p style={{color:T.dim,fontSize:fs(13)}}>{catFilter!=="all"?"No tasks in this category":"No tasks for this day"}</p></div>
-        : <div style={{display:"flex",flexDirection:"column",gap:5}}>{filtered.map(renderTask)}</div>
+        : <>
+          {manualOrder && (
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontSize:fs(10),color:T.dim}}>Custom order active</span>
+              <button onClick={()=>setManualOrder(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 10px",fontSize:fs(10),color:T.soft,cursor:"pointer",fontWeight:600}}>Reset to time order</button>
+            </div>
+          )}
+          <SortableList
+            items={filtered}
+            keyExtractor={t => t.id}
+            onReorder={handleTaskReorder}
+            renderItem={renderTask}
+          />
+        </>
       )}
 
       {showRestructure && (

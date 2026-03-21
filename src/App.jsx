@@ -12,17 +12,24 @@ import { useBreakpoint } from "./systems/breakpoint.js";
 import { useTimer, timerStop, timerPause, fmtElapsed } from "./systems/timer.js";
 import { useFocus, focusPulseYes } from "./systems/focus.js";
 import { useApiStatus, APP_VERSION } from "./systems/api.js";
-import { STATIONS, useAudio, audioStop, audioPauseToggle, audioSetVolume, audioNext, audioPrev } from "./systems/audio.js";
-import { useYtStreams, ytPauseToggle, ytPauseAll, ytSetVolume, ytClearAll, ytNext, ytPrev, useFavs, toggleFav } from "./systems/youtube.js";
+import { useAudio, audioStop, audioPauseToggle, audioNext, audioPrev } from "./systems/audio.js";
+import { useYtStreams, ytPauseAll, ytClearAll, ytNext, ytPrev, useFavs } from "./systems/youtube.js";
 
 // ── Components ─────────────────────────────────────────────────────
 import Ic from "./components/icons/index.jsx";
-import { VolumeBar } from "./components/ui/VolumeBar.jsx";
 import { Label } from "./components/ui/Label.jsx";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary.jsx";
+import { MediaPlayer } from "./components/MediaPlayer/MediaPlayer.jsx";
+import { CommandPalette } from "./components/ui/CommandPalette.jsx";
 
 // ── Constants ──────────────────────────────────────────────────────
 import { NAV } from "./constants/nav.js";
+
+// ── Router ─────────────────────────────────────────────────────────
+import { usePageNav } from "./routes.jsx";
+
+// ── Shortcuts ──────────────────────────────────────────────────────
+import { registerShortcuts } from "./systems/shortcuts.js";
 // categories used by page components via props
 
 // ── Pages ──────────────────────────────────────────────────────────
@@ -183,8 +190,10 @@ export default function App() {
   const T = useTheme();
   const [data, setDataRaw] = useState(INIT);
   const [loaded, setLoaded] = useState(false);
-  const [page, setPage] = useState("dashboard");
+  const { page, setPage } = usePageNav();
   const [profilePicker, setProfilePicker] = useState(false);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [recentPages, setRecentPages] = useState([]);
   const apiStatus = useApiStatus();
   const [date, setDate] = useState(todayStr());
   const [calOpen, setCalOpen] = useState(true);
@@ -253,17 +262,56 @@ export default function App() {
     if (data.fontScale) { setFontScale(data.fontScale); }
   }, [data.theme, data.fontScale]);
 
-  if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: T.bg, color: T.accent, fontSize: 24, fontWeight: 800 }}>Loading...</div>;
+  // Track recent pages for command palette
+  useEffect(() => {
+    setRecentPages(prev => {
+      const filtered = prev.filter(p => p !== page);
+      return [page, ...filtered].slice(0, 5);
+    });
+  }, [page]);
 
-  // Media player bar data
-  const isSoma = !!audioIndicator.playing;
-  const isYT = ytStreams.length > 0;
-  const showPlayer = isSoma || isYT;
+  // Keyboard shortcuts
+  useEffect(() => {
+    const unsubscribe = registerShortcuts(window, (id) => {
+      if (id === 'command-palette') { setCmdOpen(o => !o); return; }
+      if (id.startsWith('go-')) {
+        const target = id.replace('go-', '');
+        setPage(target);
+        return;
+      }
+      if (id === 'toggle-sidebar') { setSideCollapsed(c => !c); return; }
+      if (id === 'toggle-timer') { if (timer.running) timerStop(); return; }
+      if (id === 'pause-timer') { if (timer.running) timerPause(); return; }
+      if (id === 'media-play-pause') { if (audioIndicator.playing) audioPauseToggle(); if (ytStreams.length > 0) ytPauseAll(); return; }
+      if (id === 'media-stop') { if (audioIndicator.playing) audioStop(); if (ytStreams.length > 0) ytClearAll(); return; }
+      if (id === 'media-next') { if (audioIndicator.playing) audioNext(); else if (ytStreams.length > 0) ytNext(); return; }
+      if (id === 'media-prev') { if (audioIndicator.playing) audioPrev(); else if (ytStreams.length > 0) ytPrev(); return; }
+      if (id === 'zoom-in') { setData(d => ({ ...d, uiZoom: Math.min(200, (d.uiZoom || 100) + 10) })); return; }
+      if (id === 'zoom-out') { setData(d => ({ ...d, uiZoom: Math.max(50, (d.uiZoom || 100) - 10) })); return; }
+      if (id === 'zoom-reset') { setData(d => ({ ...d, uiZoom: 100 })); return; }
+    });
+    return unsubscribe;
+  }, [audioIndicator.playing, ytStreams.length, timer.running]);
+
+  // Command palette action handler
+  const handleCmdAction = useCallback(({ type, target }) => {
+    setCmdOpen(false);
+    if (type === 'navigate') setPage(target);
+    if (type === 'action') {
+      if (target === 'toggle-sidebar') setSideCollapsed(c => !c);
+      if (target === 'toggle-timer') { if (timer.running) timerStop(); }
+      if (target === 'media-play-pause') { if (audioIndicator.playing) audioPauseToggle(); if (ytStreams.length > 0) ytPauseAll(); }
+      if (target === 'media-stop') { if (audioIndicator.playing) audioStop(); if (ytStreams.length > 0) ytClearAll(); }
+    }
+  }, [timer.running, audioIndicator.playing, ytStreams.length]);
+
+  if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: T.bg, color: T.accent, fontSize: 24, fontWeight: 800 }}>Loading...</div>;
 
   return (
     <ErrorBoundary>
       <div style={{ display: "flex", height: "100vh", background: T.bg, color: T.text, fontFamily: "'Outfit','Inter',sans-serif", zoom: (data.uiZoom || 100) / 100 }}>
         <ToastContainer />
+        <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmdAction} courses={data.courses || []} recentPages={recentPages} />
 
         {/* ══ SIDEBAR ══════════════════════════════════════════════ */}
         <aside ref={sideRef} style={{ width: sideCollapsed ? 56 : sideW, minWidth: sideCollapsed ? 56 : 180, maxWidth: 360, height: "100vh", background: `linear-gradient(180deg, ${T.panel}, ${T.bg2})`, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, position: "relative", transition: sideCollapsed ? "none" : "width .2s cubic-bezier(.4,0,.2,1)" }}>
@@ -382,114 +430,15 @@ export default function App() {
               </div>
             )}
 
-            {/* Unified Media Player */}
-            {showPlayer && (() => {
-              const station = isSoma ? STATIONS.find(s => s.id === audioIndicator.playing) : null;
-              const somaAllPaused = isSoma ? audioIndicator.paused : true;
-              const ytAllPaused = isYT ? ytStreams.every(s => s.paused) : true;
-              const allPaused = somaAllPaused && ytAllPaused;
-              const levels = audioIndicator.levels || new Array(16).fill(0);
-              const sourceCount = (isSoma ? 1 : 0) + (isYT ? 1 : 0);
-              const accentColor = sourceCount > 1 ? T.purple : isSoma ? T.accent : T.blue;
-              const BARS = 24;
-              const barData = [];
-              const now = Date.now();
-              const ytBands = [];
-              if (isYT && !ytAllPaused) {
-                const t = now / 1000;
-                for (let b = 0; b < 8; b++) {
-                  const freq = 0.8 + b * 0.6, amp = b < 2 ? 35 : b < 5 ? 28 : 18, phase = b * 1.7;
-                  const val = amp + Math.sin(t * freq + phase) * amp * 0.6 + Math.sin(t * (freq * 2.3) + phase * 0.5) * amp * 0.3 + Math.cos(t * 0.4 + b) * amp * 0.2 + (Math.random() * 6 - 3);
-                  ytBands.push(Math.max(4, Math.min(85, val)));
-                }
-              }
-              for (let i = 0; i < BARS; i++) {
-                const center = Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
-                let val = 0;
-                if (allPaused) { val = 0; }
-                else if (isSoma && !audioIndicator.paused) {
-                  const fi = (i / BARS) * (levels.length - 1);
-                  const lo = Math.floor(fi), hi = Math.min(lo + 1, levels.length - 1);
-                  val = levels[lo] + (levels[hi] - levels[lo]) * (fi - lo);
-                }
-                if (isYT && !ytAllPaused && ytBands.length > 0) {
-                  const bi = (i / BARS) * (ytBands.length - 1);
-                  const blo = Math.floor(bi), bhi = Math.min(blo + 1, ytBands.length - 1);
-                  val = Math.max(val, ytBands[blo] + (ytBands[bhi] - ytBands[blo]) * (bi - blo));
-                }
-                val = Math.max(0, Math.min(100, val));
-                const h = allPaused ? 1 : Math.max(1, Math.round(val * 0.52));
-                const hue = allPaused ? 0 : isSoma && isYT ? (280 - center * 60) : isSoma ? (140 - center * 90) : (0 + center * 30);
-                barData.push({ h, hue, sat: allPaused ? 0 : isYT && !isSoma ? 70 + val * 0.3 : 55 + val * 0.45, lit: allPaused ? 25 : isYT && !isSoma ? 35 + val * 0.3 : 30 + val * 0.25, val });
-              }
-              return (
-                <div style={{ borderTop: `2px solid ${accentColor}33`, background: `linear-gradient(180deg,${isSoma && isYT ? `${T.purple}22` : isSoma ? T.accentD : T.blueD}66,${T.bg})` }}>
-                  {/* Visualizer */}
-                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 1.5, height: 56, padding: "12px 8px 0", position: "relative" }}>
-                    {barData.map((b, i) => (<div key={i} style={{ flex: 1, maxWidth: 6, borderRadius: 2, height: b.h, background: allPaused ? T.dim : `hsl(${b.hue},${b.sat}%,${b.lit}%)`, boxShadow: !allPaused && b.val > 40 ? `0 0 6px hsla(${b.hue},80%,55%,.5)` : "none", transition: "height 50ms ease-out" }} />))}
-                    <div style={{ position: "absolute", bottom: -2, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 1.5, transform: "scaleY(-0.2)", transformOrigin: "top", opacity: 0.08, pointerEvents: "none", filter: "blur(1px)" }}>
-                      {barData.map((b, i) => <div key={i} style={{ flex: 1, maxWidth: 6, borderRadius: 2, height: b.h, background: `hsl(${b.hue},${b.sat}%,${b.lit}%)` }} />)}
-                    </div>
-                  </div>
-                  {/* Now playing */}
-                  <div style={{ textAlign: "center", padding: "6px 10px 2px", overflow: "hidden" }}>
-                    {isSoma && (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                        <Ic.Radio s={14} c={T.accent} />
-                        <div style={{ fontSize: fs(13), fontWeight: 700, color: T.accent, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{station?.name}</div>
-                        <button onClick={() => toggleFav('soma', station?.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: fs(14), color: favs.soma?.includes(station?.id) ? T.yellow : T.dim }}>{favs.soma?.includes(station?.id) ? "\u2605" : "\u2606"}</button>
-                      </div>
-                    )}
-                    {isYT && ytStreams.map((s, i) => (
-                      <div key={s.vid} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: s.paused ? 0.5 : 1, transition: "opacity .2s" }}>
-                        <div style={{ fontSize: fs(12), fontWeight: 600, color: s.paused ? T.dim : T.blue, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>{i === 0 && <Ic.YT s={14} c={s.paused ? T.dim : T.blue} />} {s.paused && <Ic.IcPause s={10} c={T.dim} />}{s.name}</div>
-                        <button onClick={() => toggleFav('yt', s.vid)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: fs(12), color: favs.yt?.includes(s.vid) ? T.yellow : T.dim }}>{favs.yt?.includes(s.vid) ? "\u2605" : "\u2606"}</button>
-                      </div>
-                    ))}
-                    <div style={{ fontSize: fs(9), color: accentColor, marginTop: 2, fontWeight: 500 }}>
-                      {[isSoma && "SomaFM", isYT && "YouTube"].filter(Boolean).join(" + ")}
-                    </div>
-                  </div>
-                  {/* Transport */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "4px 10px 6px" }}>
-                    <button onClick={isSoma ? audioPrev : ytPrev} style={{ background: T.input, border: `1px solid ${T.border}`, borderRadius: 8, padding: "7px 12px", cursor: "pointer", color: T.soft, lineHeight: 1 }}><Ic.IcSkipB s={16} c={T.soft} /></button>
-                    <button onClick={() => { if (isSoma) audioPauseToggle(); if (isYT) ytPauseAll(); }} style={{ background: allPaused ? `${accentColor}22` : T.input, border: `2px solid ${allPaused ? accentColor : T.border}`, borderRadius: 10, padding: "8px 22px", cursor: "pointer", color: allPaused ? accentColor : T.soft, lineHeight: 1 }}>{allPaused ? <Ic.IcPlay s={20} c={accentColor} /> : <Ic.IcPause s={20} c={T.soft} />}</button>
-                    <button onClick={() => { if (isSoma) audioStop(); if (isYT) ytClearAll(); }} style={{ background: T.redD, border: `1px solid ${T.red}33`, borderRadius: 8, padding: "7px 12px", cursor: "pointer", color: T.red, lineHeight: 1 }}><Ic.IcStop s={16} c={T.red} /></button>
-                    <button onClick={isSoma ? audioNext : ytNext} style={{ background: T.input, border: `1px solid ${T.border}`, borderRadius: 8, padding: "7px 12px", cursor: "pointer", color: T.soft, lineHeight: 1 }}><Ic.IcSkipF s={16} c={T.soft} /></button>
-                  </div>
-                  {/* Volume — SomaFM */}
-                  {isSoma && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 10px 6px" }}>
-                      <Ic.Radio s={11} c={T.dim} />
-                      <span style={{ cursor: "pointer" }} onClick={() => audioSetVolume(Math.max(0, audioIndicator.volume - 0.05))}><Ic.IcVolLow s={13} c={T.dim} /></span>
-                      <VolumeBar value={audioIndicator.volume} onChange={audioSetVolume} />
-                      <span style={{ cursor: "pointer" }} onClick={() => audioSetVolume(Math.min(1, audioIndicator.volume + 0.05))}><Ic.IcVolHi s={13} c={T.dim} /></span>
-                      <span style={{ fontSize: fs(10), color: T.dim, minWidth: 26, textAlign: "right", fontFamily: "'JetBrains Mono',monospace" }}>{Math.round(audioIndicator.volume * 100)}</span>
-                    </div>
-                  )}
-                  {/* YouTube per-stream volume */}
-                  {isYT && ytStreams.map(s => (
-                    <div key={s.vid} style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px 5px" }}>
-                      <button onClick={() => ytPauseToggle(s.vid)} style={{ background: s.paused ? `${T.blue}22` : T.input, border: `1px solid ${s.paused ? T.blue : T.border}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", flexShrink: 0 }}>
-                        {s.paused ? <Ic.IcPlay s={12} c={T.blue} /> : <Ic.IcPause s={12} c={T.dim} />}
-                      </button>
-                      <span style={{ fontSize: fs(10), color: s.paused ? T.dim : T.blue, minWidth: 52, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>{s.name.length > 8 ? s.name.slice(0, 8) + "..." : s.name}</span>
-                      <span style={{ cursor: "pointer" }} onClick={() => ytSetVolume(Math.max(0, s.volume - 5), s.vid)}><Ic.IcVolLow s={11} c={T.dim} /></span>
-                      <VolumeBar value={s.volume / 100} onChange={v => ytSetVolume(v * 100, s.vid)} />
-                      <span style={{ cursor: "pointer" }} onClick={() => ytSetVolume(Math.min(100, s.volume + 5), s.vid)}><Ic.IcVolHi s={11} c={T.dim} /></span>
-                      <span style={{ fontSize: fs(9), color: T.dim, minWidth: 20, textAlign: "right", fontFamily: "'JetBrains Mono',monospace" }}>{s.volume}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
+            {/* Unified Media Player (extracted component) */}
+            <MediaPlayer audioIndicator={audioIndicator} ytStreams={ytStreams} favs={favs} />
 
             {/* Study timer in sidebar */}
             {timer.running && (
               <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, background: T.accentD }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div>
-                    <div style={{ fontSize: fs(22), fontWeight: 800, color: T.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmtElapsed(timer.elapsed)}</div>
+                    <div style={{ fontSize: fs(22), fontWeight: 800, color: timer.remaining <= 60000 && timer.durationMs > 0 ? T.orange : T.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmtElapsed(timer.durationMs > 0 ? timer.remaining : timer.elapsed)}</div>
                     <div style={{ fontSize: fs(10), color: T.soft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{timer.taskTitle}</div>
                   </div>
                   <div style={{ display: "flex", gap: 4 }}>

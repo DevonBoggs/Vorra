@@ -1,12 +1,17 @@
-const { app, BrowserWindow, session, shell, screen } = require('electron');
+const { app, BrowserWindow, session, shell, screen, ipcMain, Notification } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const url = require('url');
+const database = require('./database');
+const backup = require('./backup');
 
 
 let mainWindow;
 let localServer;
+let db;
+let isShuttingDown = false;
+const activeConnections = new Set();
 const PORT = 19532;
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
@@ -66,7 +71,7 @@ function killStaleProcess(port) {
       console.log(`[Vorra] Killing stale process(es) on port ${port}: PIDs ${[...pids].join(', ')}`);
       let killed = 0;
       for (const pid of pids) {
-        exec(`taskkill /PID ${pid} /F`, (e) => {
+        exec(`taskkill /PID ${pid} /F /T`, (e) => {
           killed++;
           if (e) console.log(`[Vorra] Could not kill PID ${pid}: ${e.message}`);
           else console.log(`[Vorra] Killed stale PID ${pid}`);
@@ -136,6 +141,12 @@ window.addEventListener('message',e=>{
       });
     });
 
+    // Track all connections for forceful cleanup on shutdown
+    localServer.on('connection', (socket) => {
+      activeConnections.add(socket);
+      socket.on('close', () => activeConnections.delete(socket));
+    });
+
     // Handle EADDRINUSE: kill stale process and retry once
     localServer.on('error', async (err) => {
       if (err.code === 'EADDRINUSE') {
@@ -182,6 +193,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     autoHideMenuBar: true,
   });
@@ -208,23 +220,170 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// Register IPC handlers for database, backup, notifications, and platform
+function registerIpcHandlers() {
+  // Database channels
+  ipcMain.handle('db:get', (_event, key) => {
+    return database.getValue(key);
+  });
+
+  ipcMain.handle('db:set', (_event, key, value) => {
+    database.setValue(key, value);
+  });
+
+  ipcMain.handle('db:getAll', () => {
+    return database.getAllData();
+  });
+
+  ipcMain.handle('db:export', () => {
+    return database.exportData();
+  });
+
+  ipcMain.handle('db:import', (_event, jsonStr) => {
+    const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+    // Support wrapped format { version, data } and raw key-value format
+    const data = parsed.data || parsed;
+    database.importData(data);
+  });
+
+  ipcMain.handle('db:getPath', () => {
+    return database.getDbPath();
+  });
+
+  // Backup channels
+  ipcMain.handle('backup:save', (_event, customPath) => {
+    return backup.saveBackup(database, customPath || undefined);
+  });
+
+  ipcMain.handle('backup:restore', (_event, filePath) => {
+    return backup.restoreBackup(database, filePath);
+  });
+
+  ipcMain.handle('backup:list', () => {
+    return backup.listBackups();
+  });
+
+  ipcMain.handle('backup:auto', () => {
+    backup.autoBackup(database);
+  });
+
+  // Notification channels
+  ipcMain.handle('notify:show', (_event, title, body, options = {}) => {
+    if (Notification.isSupported()) {
+      const notif = new Notification({
+        title,
+        body,
+        silent: options.silent || false,
+        icon: options.icon || path.join(__dirname, '..', 'public', 'icon.png'),
+      });
+      notif.show();
+    }
+  });
+
+  ipcMain.handle('notify:badge', (_event, count) => {
+    if (mainWindow) {
+      // Windows: overlay icon or flash taskbar
+      if (count > 0) {
+        mainWindow.setTitle(`(${count}) Vorra v${require('../package.json').version || '7.3.0'}`);
+        mainWindow.flashFrame(true);
+      } else {
+        mainWindow.setTitle(`Vorra v${require('../package.json').version || '7.3.0'}`);
+        mainWindow.flashFrame(false);
+      }
+    }
+  });
+
+  // Platform channel (sync for immediate access in preload)
+  ipcMain.on('platform:version', (event) => {
+    event.returnValue = require('../package.json').version || '7.3.0';
+  });
+
+  console.log('[Vorra] IPC handlers registered');
+}
+
+// Single instance lock — prevent duplicate launches that orphan processes
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  console.log('[Vorra] Another instance is running — quitting');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   app.userAgentFallback = CHROME_UA;
+
+  // Initialize SQLite database
+  db = database.initDB();
+  registerIpcHandlers();
+
+  // Auto-backup on startup
+  try {
+    backup.autoBackup(database);
+  } catch (err) {
+    console.error('[Vorra] Startup auto-backup failed:', err.message);
+  }
+
   await startLocalServer();
   createWindow();
 });
 
 // Ensure clean shutdown on all exit paths
-function shutdownServer() {
+function shutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log('[Vorra] Shutting down...');
+
+  // 1. Destroy all BrowserWindows to force renderer/GPU/utility teardown
+  for (const win of BrowserWindow.getAllWindows()) {
+    try { win.destroy(); } catch (_e) {}
+  }
+
+  // 2. Remove session interceptors
+  try {
+    session.defaultSession.webRequest.onHeadersReceived(null);
+  } catch (_e) {}
+
+  // 3. Force-close HTTP server and all active connections
   if (localServer) {
-    try { localServer.close(); } catch (_e) {}
+    try {
+      localServer.close();
+      if (typeof localServer.closeAllConnections === 'function') {
+        localServer.closeAllConnections();
+      }
+      for (const socket of activeConnections) {
+        try { socket.destroy(); } catch (_e) {}
+      }
+      activeConnections.clear();
+    } catch (_e) {}
     localServer = null;
   }
+
+  // 4. Close database
+  database.closeDB();
 }
 
-app.on('window-all-closed', () => { shutdownServer(); if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', shutdownServer);
-app.on('will-quit', shutdownServer);
-process.on('SIGINT', () => { shutdownServer(); process.exit(0); });
-process.on('SIGTERM', () => { shutdownServer(); process.exit(0); });
+app.on('window-all-closed', () => {
+  shutdown();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', shutdown);
+
+app.on('will-quit', () => {
+  shutdown();
+  // Failsafe: force exit after 3 seconds if cleanup hangs
+  setTimeout(() => {
+    console.error('[Vorra] Shutdown timeout — forcing exit');
+    process.exit(0);
+  }, 3000).unref();
+});
+
+process.on('SIGINT', () => { shutdown(); process.exit(0); });
+process.on('SIGTERM', () => { shutdown(); process.exit(0); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

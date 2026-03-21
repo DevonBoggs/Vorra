@@ -13,9 +13,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && set ELECTRON_DEV=1&& electron .\"",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV=1 electron .\"",
     "electron:build": "vite build && electron-builder",
-    "start": "electron ."
+    "start": "electron .",
+    "setup": "node scripts/setup.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "postinstall": "electron-rebuild || echo 'electron-rebuild skipped (non-critical)'"
   },
   "build": {
     "appId": "com.vorra.app",
@@ -33,19 +38,43 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*",
+      "node_modules/prebuild-install/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
     ]
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "better-sqlite3": "^12.8.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.13.1",
+    "tinykeys": "^3.0.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.5.2",
     "concurrently": "^9.1.2",
+    "cross-env": "^10.1.0",
     "electron": "^35.2.1",
     "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
+    "jsdom": "^29.0.1",
+    "typescript": "^5.9.3",
     "vite": "^6.4.1",
+    "vitest": "^4.1.0",
     "wait-on": "^8.0.3"
   },
   "overrides": {

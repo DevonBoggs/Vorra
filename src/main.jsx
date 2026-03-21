@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles/global.css';
 import App from './App';
+import { AppRouter } from './routes.jsx';
 
 class RootErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null, info: null }; }
@@ -30,7 +31,9 @@ class RootErrorBoundary extends Component {
 ReactDOM.createRoot(document.getElementById('root')).render(
   React.createElement(React.StrictMode, null,
     React.createElement(RootErrorBoundary, null,
-      React.createElement(App)
+      React.createElement(AppRouter, null,
+        React.createElement(App)
+      )
     )
   )
 );

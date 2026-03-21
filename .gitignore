@@ -2,7 +2,10 @@ node_modules/
 dist/
 release/
 .vite/
-DevonSYNC.exe
+.env
+.env.*
+*.exe
 _launcher.cs
 setup-log.txt
 start-log.txt
+*.log

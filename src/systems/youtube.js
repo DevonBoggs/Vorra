@@ -6,12 +6,9 @@ import { toast } from "./toast.js";
 import { YT_STREAMS } from "../streams.js";
 
 // ── YouTube API Key ─────────────────────────────────────────────────
-// [SECURITY] Built-in YouTube Data API key — XOR encrypted, decoded at runtime
-// The key is never stored as plaintext in the source
-const _xk = "X3n0"; // XOR key
-const _ek = [25,122,20,81,11,74,45,89,29,95,2,64,54,64,47,96,107,30,13,65,53,81,52,97,108,99,63,29,42,127,57,68,18,3,93,124,10,2,90];
-export const DEFAULT_YT_API_KEY = _ek.map((c,i) => String.fromCharCode(c ^ _xk.charCodeAt(i % _xk.length))).join('');
-export function getYtApiKey(data) { return data?.ytApiKey || DEFAULT_YT_API_KEY; }
+// User must provide their own YouTube Data API key in Settings → Integrations
+export const DEFAULT_YT_API_KEY = "";
+export function getYtApiKey(data) { return data?.ytApiKey || ""; }
 
 // ── Multi-Stream State ──────────────────────────────────────────────
 // YouTube multi-stream playback (up to 4 concurrent)
@@ -362,7 +359,8 @@ export async function checkYtStreamHealth() {
 
   // Use YouTube Data API for fast batch verification (50 per call)
   let apiKey;
-  try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('ds-v1') || '{}')); } catch(_) { apiKey = DEFAULT_YT_API_KEY; }
+  try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('ds-v1') || '{}')); } catch(_) { apiKey = ""; }
+  if (!apiKey) { _ytCheckProgress = { active: false, phase: 'No API key — add one in Settings', done: 0, total: 0 }; ytCheckNotify(); return; }
 
   const allVids = YT_STREAMS.map(s => s.vid);
   let up = 0, down = 0, checked = new Set();
@@ -469,12 +467,14 @@ setInterval(checkYtStreamHealth, 10 * 60 * 1000); // every 10 min
 setTimeout(() => {
   try {
     const d = JSON.parse(localStorage.getItem('ds-v1') || '{}');
-    fetchYtStats(getYtApiKey(d));
-  } catch(_e) { fetchYtStats(DEFAULT_YT_API_KEY); }
+    const k = getYtApiKey(d);
+    if (k) fetchYtStats(k);
+  } catch(_e) { /* no key */ }
 }, 5000);
 setInterval(() => {
   try {
     const d = JSON.parse(localStorage.getItem('ds-v1') || '{}');
-    fetchYtStats(getYtApiKey(d));
-  } catch(_e) { fetchYtStats(DEFAULT_YT_API_KEY); }
+    const k = getYtApiKey(d);
+    if (k) fetchYtStats(k);
+  } catch(_e) { /* no key */ }
 }, 10 * 60 * 1000);

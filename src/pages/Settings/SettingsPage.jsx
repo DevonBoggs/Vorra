@@ -349,13 +349,13 @@ const SettingsPage = ({ data, setData, setPage }) => {
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <span style={{fontSize:fs(14)}}>📊</span>
             <div style={{fontSize:fs(13),fontWeight:700}}>YouTube Data API</div>
-            <Badge color={data.ytApiKey?T.blue:T.accent} bg={data.ytApiKey?T.blueD:T.accentD}>{data.ytApiKey?"Custom Key":"Built-in"}</Badge>
+            <Badge color={data.ytApiKey?T.blue:T.dim} bg={data.ytApiKey?T.blueD:T.bg2}>{data.ytApiKey?"Active":"Not Set"}</Badge>
           </div>
-          <p style={{fontSize:fs(11),color:T.dim,marginBottom:8}}>Enables live stats, stream detection, and viewer counts in Study Radio. Override below if the built-in key hits rate limits.</p>
+          <p style={{fontSize:fs(11),color:T.dim,marginBottom:8}}>Enables live stats, stream detection, and viewer counts in Study Radio. Get a free key from the Google Cloud Console.</p>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <input value={data.ytApiKey||""} onChange={e=>setData(d=>({...d,ytApiKey:e.target.value}))} placeholder="Using built-in key" type="password" autoComplete="off" style={{flex:1,fontSize:fs(11)}} />
-            <Btn small v="ai" onClick={()=>{fetchYtStats(getYtApiKey(data));toast("Fetching stats...","info")}}>Refresh</Btn>
-            {data.ytApiKey && <Btn small v="ghost" onClick={()=>{setData(d=>({...d,ytApiKey:""}));toast("Reverted to built-in","info")}}>Reset</Btn>}
+            <input value={data.ytApiKey||""} onChange={e=>setData(d=>({...d,ytApiKey:e.target.value}))} placeholder="Enter YouTube Data API v3 key" type="password" autoComplete="off" style={{flex:1,fontSize:fs(11)}} />
+            <Btn small v="ai" onClick={()=>{const k=getYtApiKey(data);if(!k){toast("Add an API key first","warn");return;}fetchYtStats(k);toast("Fetching stats...","info")}}>Refresh</Btn>
+            {data.ytApiKey && <Btn small v="ghost" onClick={()=>{setData(d=>({...d,ytApiKey:""}));toast("API key removed","info")}}>Clear</Btn>}
           </div>
           {Object.keys(ytStats).length > 0 ? (
             <div style={{marginTop:6,fontSize:fs(10),color:T.accent,display:"flex",gap:12}}>

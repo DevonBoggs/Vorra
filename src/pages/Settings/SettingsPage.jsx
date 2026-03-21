@@ -17,6 +17,7 @@ import { INIT } from "../../systems/storage.js";
 const PRESETS = {
   anthropic: { name:"Anthropic", url:"https://api.anthropic.com/v1/messages", model:"claude-sonnet-4-20250514" },
   openai: { name:"OpenAI", url:"https://api.openai.com/v1/chat/completions", model:"gpt-4o" },
+  zai: { name:"Z.AI", url:"https://api.zukijourney.com/v1/chat/completions", model:"claude-sonnet-4-20250514" },
   custom: { name:"Custom", url:"", model:"" },
 };
 function getAuthHeaders(profile) {
@@ -176,6 +177,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
           <div style={{display:"flex",gap:6}}>
             <Btn small v="ai" onClick={()=>openAdd("anthropic")}>+ Anthropic</Btn>
             <Btn small v="secondary" onClick={()=>openAdd("openai")}>+ OpenAI</Btn>
+            <Btn small v="secondary" onClick={()=>openAdd("zai")}>+ Z.AI</Btn>
             <Btn small v="ghost" onClick={()=>openAdd("custom")}>+ Custom</Btn>
           </div>
         </div>

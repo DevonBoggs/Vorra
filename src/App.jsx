@@ -348,18 +348,32 @@ export default function App() {
 
             {/* Profile picker dropdown */}
             {profilePicker && !sideCollapsed && (
-              <div style={{ padding: "4px 10px 8px", borderTop: `1px solid ${T.border}`, background: T.panel, flexShrink: 0, maxHeight: 200, overflowY: "auto" }}>
+              <div style={{ padding: "4px 10px 8px", borderTop: `1px solid ${T.border}`, background: T.panel, flexShrink: 0, maxHeight: 280, overflowY: "auto" }}>
                 {(data.profiles || []).length > 0 ? (data.profiles || []).map(p => {
                   const isActive = p.id === data.activeProfileId;
                   return (
-                    <button key={p.id} onClick={(e) => { e.stopPropagation(); setData(d => ({ ...d, activeProfileId: p.id })); dlog('info', 'profile', `Switched to ${p.name}`); toast(`Active: ${p.name}`, "success"); setProfilePicker(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: isActive ? T.accentD : T.input, border: `1.5px solid ${isActive ? T.accent + "55" : "transparent"}`, width: "100%", textAlign: "left", marginBottom: 3, transition: "all .1s" }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: isActive ? T.accent : T.dim, boxShadow: isActive ? `0 0 6px ${T.accent}` : "none", flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: fs(12), fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
-                        <div style={{ fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono',monospace" }}>{p.model?.slice(0, 24)}</div>
-                      </div>
-                      {isActive && <span style={{ fontSize: fs(8), color: T.accent, fontWeight: 800, letterSpacing: "0.5px" }}>ACTIVE</span>}
-                    </button>
+                    <div key={p.id} style={{ marginBottom: 3 }}>
+                      <button onClick={(e) => { e.stopPropagation(); setData(d => ({ ...d, activeProfileId: p.id })); dlog('info', 'profile', `Switched to ${p.name}`); toast(`Active: ${p.name}`, "success"); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: isActive ? T.accentD : T.input, border: `1.5px solid ${isActive ? T.accent + "55" : "transparent"}`, width: "100%", textAlign: "left", transition: "all .1s" }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: isActive ? T.accent : T.dim, boxShadow: isActive ? `0 0 6px ${T.accent}` : "none", flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: fs(12), fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                          <div style={{ fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono',monospace" }}>{p.model?.slice(0, 24)}</div>
+                        </div>
+                        {isActive && <span style={{ fontSize: fs(8), color: T.accent, fontWeight: 800, letterSpacing: "0.5px" }}>ACTIVE</span>}
+                      </button>
+                      {/* Model selector for active profile */}
+                      {isActive && (
+                        <div style={{ padding: "6px 10px 4px 28px", display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
+                          <span style={{ fontSize: fs(9), color: T.dim, fontWeight: 600, whiteSpace: "nowrap" }}>MODEL</span>
+                          <input
+                            value={p.model || ""}
+                            onChange={e => { const newModel = e.target.value; setData(d => ({ ...d, profiles: d.profiles.map(pr => pr.id === p.id ? { ...pr, model: newModel } : pr) })); }}
+                            placeholder="model name"
+                            style={{ fontSize: fs(10), padding: "4px 8px", borderRadius: 6, background: T.input, border: `1px solid ${T.border}`, color: T.text, fontFamily: "'JetBrains Mono',monospace", flex: 1, minWidth: 0 }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   );
                 }) : (
                   <button onClick={(e) => { e.stopPropagation(); setPage("settings"); setProfilePicker(false); }} style={{ width: "100%", padding: "10px", borderRadius: 8, border: `1px dashed ${T.accent}44`, background: "transparent", color: T.accent, fontSize: fs(11), cursor: "pointer", fontWeight: 600 }}>+ Add AI Profile</button>

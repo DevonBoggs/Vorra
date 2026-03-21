@@ -17,7 +17,7 @@ import { INIT } from "../../systems/storage.js";
 const PRESETS = {
   anthropic: { name:"Anthropic", url:"https://api.anthropic.com/v1/messages", model:"claude-sonnet-4-20250514" },
   openai: { name:"OpenAI", url:"https://api.openai.com/v1/chat/completions", model:"gpt-4o" },
-  zai: { name:"Z.AI", url:"https://api.z.ai/api/coding/paas/v4", model:"claude-sonnet-4-20250514" },
+  zai: { name:"Z.AI", url:"https://api.z.ai/api/coding/paas/v4/chat/completions", model:"glm-5-turbo" },
   custom: { name:"Custom", url:"", model:"" },
 };
 function getAuthHeaders(profile) {

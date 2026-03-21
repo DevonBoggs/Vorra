@@ -6,6 +6,7 @@ import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'r
 // Route configuration mapping nav keys to paths
 export const ROUTES = {
   dashboard: '/',
+  courses:   '/courses',
   planner:   '/planner',
   daily:     '/daily',
   calendar:  '/calendar',

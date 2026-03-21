@@ -14,7 +14,7 @@ export const createSettingsSlice = (set, get) => ({
   overrideSafeguards: false,
   exceptionDates: [],
   userContext: '',
-  universityProfile: '',
+  universityProfile: null,
 
   // ── UI Preferences ────────────────────────────────────────────────
   theme: 'dark',

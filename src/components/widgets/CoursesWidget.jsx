@@ -4,6 +4,7 @@ import { useTheme, fs } from '../../styles/tokens.js';
 import { getSTATUS_C, STATUS_L } from '../../constants/categories.js';
 import { Badge } from '../../components/ui/Badge.jsx';
 import { safeArr } from '../../utils/toolExecution.js';
+import { hasCtx } from '../../utils/courseHelpers.js';
 
 const CoursesWidget = ({ data, setData, setPage }) => {
   const T = useTheme();
@@ -11,8 +12,6 @@ const CoursesWidget = ({ data, setData, setPage }) => {
   const courses = data.courses || [];
   const active = courses.filter(c => c.status !== 'completed');
   const [editingId, setEditingId] = useState(null);
-
-  const hasCtx = c => safeArr(c.competencies).length > 0 || safeArr(c.topicBreakdown).length > 0 || safeArr(c.examTips).length > 0;
 
   const changeStatus = (courseId, newStatus) => {
     setData(prev => ({
@@ -30,7 +29,7 @@ const CoursesWidget = ({ data, setData, setPage }) => {
         All courses completed! {courses.length === 0 && (
           <span
             style={{ color: T.accent, cursor: 'pointer', textDecoration: 'underline' }}
-            onClick={() => setPage('planner')}
+            onClick={() => setPage('courses')}
           >
             Add courses
           </span>

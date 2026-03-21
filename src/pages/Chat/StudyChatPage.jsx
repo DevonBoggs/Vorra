@@ -11,6 +11,7 @@ import { Badge } from "../../components/ui/Badge.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
 import { uid, todayStr, fileToBase64 } from "../../utils/helpers.js";
 import { getSTATUS_C, STATUS_L } from "../../constants/categories.js";
+import { hasCtx } from "../../utils/courseHelpers.js";
 
 export const StudyChatPage=({data,setData,profile,Btn})=>{
   const T = useTheme();
@@ -30,8 +31,6 @@ export const StudyChatPage=({data,setData,profile,Btn})=>{
   const course=data.courses?.find(c=>c.id===selCourse);
   const chatKey=selCourse||"_general";
   const messages=data.chatHistories?.[chatKey]||[];
-  const hasCtx = c => safeArr(c?.competencies).length>0||safeArr(c?.topicBreakdown).length>0||safeArr(c?.examTips).length>0;
-
   useEffect(()=>{messagesEnd.current?.scrollIntoView({behavior:"smooth"})},[messages.length]);
 
   const handleImg=(e)=>{
@@ -191,11 +190,36 @@ Be concise, encouraging, and actionable.`;
         const code = part.replace(/^```\w*\n?/,"").replace(/```$/,"");
         return <pre key={i} style={{background:T.bg2,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 14px",fontSize:fs(11),fontFamily:"'JetBrains Mono',monospace",overflow:"auto",margin:"6px 0",whiteSpace:"pre-wrap"}}>{code}</pre>;
       }
+      // HTML-escape before applying markdown regexes to prevent XSS
+      const escaped = part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       // Bold, inline code
-      const html = part.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code style="background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;font-size:12px;font-family:JetBrains Mono,monospace">$1</code>');
+      const html = escaped.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code style="background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;font-size:12px;font-family:JetBrains Mono,monospace">$1</code>');
       return <span key={i} dangerouslySetInnerHTML={{__html:html}}/>;
     });
   };
+
+  // Search-filtered messages
+  const filteredMessages = useMemo(() => {
+    if (!searchQ) return messages;
+    const q = searchQ.toLowerCase();
+    return messages.filter(m => (m.content || '').toLowerCase().includes(q));
+  }, [messages, searchQ]);
+
+  // Highlight matching text in message content
+  const highlightMatch = useCallback((text, query) => {
+    if (!query || !text) return text;
+    const q = query.toLowerCase();
+    const t = text.toLowerCase();
+    const idx = t.indexOf(q);
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark style={{ background: `${T.accent}44`, color: T.text, borderRadius: 2, padding: '0 1px' }}>{text.slice(idx, idx + query.length)}</mark>
+        {text.slice(idx + query.length)}
+      </>
+    );
+  }, [T.accent, T.text]);
 
   // Chat stats
   const msgCount = messages.length;
@@ -277,11 +301,32 @@ Be concise, encouraging, and actionable.`;
         <span style={{fontSize:fs(12),fontWeight:600}}>{course.name}</span>
         <Badge color={STATUS_C[course.status]||T.dim} bg={(STATUS_C[course.status]||T.dim)+"22"}>{STATUS_L[course.status]||course.status}</Badge>
         {course.assessmentType&&<Badge color={T.blue} bg={T.blueD}>{course.assessmentType}</Badge>}
-        {hasCtx(course)?<Badge color={T.accent} bg={T.accentD}>ENRICHED — full context available</Badge>:<Badge color={T.orange} bg={T.orangeD}>Basic — enrich in Course Planner for better answers</Badge>}
+        {hasCtx(course)?<Badge color={T.accent} bg={T.accentD}>ENRICHED — full context available</Badge>:<Badge color={T.orange} bg={T.orangeD}>Basic — enrich in My Courses for better answers</Badge>}
         <span style={{fontSize:fs(10),color:T.dim,marginLeft:"auto"}}>{msgCount} messages</span>
       </div>}
 
       {!profile&&<div style={{padding:"40px 0",textAlign:"center",color:T.dim}}><p style={{fontSize:fs(13)}}>Connect an AI profile in Settings to start chatting.</p></div>}
+
+      {/* Search bar */}
+      {profile && messages.length > 0 && (
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexShrink:0}}>
+          <div style={{flex:1,display:'flex',alignItems:'center',background:T.input,border:`1px solid ${T.border}`,borderRadius:9,padding:'0 12px',gap:8}}>
+            <Ic.IcSearch s={14} c={T.dim} />
+            <input
+              value={searchQ}
+              onChange={e => setSearchQ(e.target.value)}
+              placeholder="Search messages..."
+              style={{flex:1,background:'none',border:'none',outline:'none',color:T.text,fontSize:fs(12),padding:'8px 0',fontFamily:"'DM Sans',sans-serif",caretColor:T.accent}}
+            />
+            {searchQ && (
+              <button onClick={() => setSearchQ('')} style={{background:'none',border:'none',color:T.dim,cursor:'pointer',display:'flex',alignItems:'center',padding:2}}>
+                <Ic.X s={12} />
+              </button>
+            )}
+          </div>
+          {searchQ && <span style={{fontSize:fs(10),color:T.dim,flexShrink:0}}>{filteredMessages.length}/{messages.length}</span>}
+        </div>
+      )}
 
       {/* Messages */}
       {profile&&<div style={{flex:1,overflowY:"auto",marginBottom:10,display:"flex",flexDirection:"column",gap:8}}>
@@ -310,10 +355,12 @@ Be concise, encouraging, and actionable.`;
             );
           })()}
         </div>}
-        {messages.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+        {filteredMessages.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
           <div style={{maxWidth:"78%",padding:"10px 14px",borderRadius:12,fontSize:fs(13),lineHeight:1.6,background:m.role==="user"?T.accent:T.card,color:m.role==="user"?"#060e09":T.text,border:m.role==="user"?"none":`1px solid ${T.border}`,whiteSpace:"pre-wrap"}}>
             {m.hasImage&&<span style={{fontSize:fs(10),opacity:.7}}>📷 Image attached<br/></span>}
-            {m.role==="assistant"?renderMd(m.content):m.content}
+            {searchQ
+              ? (m.role==="assistant" ? renderMd(m.content) : highlightMatch(m.content, searchQ))
+              : (m.role==="assistant" ? renderMd(m.content) : m.content)}
           </div>
         </div>)}
         {loading&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",color:T.soft,fontSize:fs(12)}}><Ic.Spin s={14}/> Thinking...</div>}

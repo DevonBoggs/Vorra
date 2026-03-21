@@ -9,6 +9,9 @@ import { Badge } from "../../components/ui/Badge.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { safeArr } from "../../utils/toolExecution.js";
 import { WidgetGrid } from "../../components/widgets/WidgetGrid.jsx";
+import { hasCtx } from "../../utils/courseHelpers.js";
+import { CourseDetail } from "../../components/course/CourseDetail.jsx";
+import { ErrorBoundary } from "../../components/ui/ErrorBoundary.jsx";
 
 const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   const T = useTheme();
@@ -16,6 +19,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   const bp = useBreakpoint();
   const [filter, setFilter] = useState("all");
   const [showCheckin, setShowCheckin] = useState(false);
+  const [expanded, setExpanded] = useState({});
   const courses = data.courses || [];
   const sessions = data.studySessions || [];
   const streak = data.studyStreak || { lastStudyDate:"", currentStreak:0, longestStreak:0 };
@@ -131,13 +135,11 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
 
   // Course filter
   const filtered = filter === "all" ? courses : courses.filter(c => c.status === filter);
-  const hasCtx = c => safeArr(c.competencies).length>0||safeArr(c.topicBreakdown).length>0||safeArr(c.examTips).length>0;
-
   return (
     <div className="fade">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
         <div><h1 style={{fontSize:fs(24),fontWeight:800,marginBottom:2}}>Degree Dashboard</h1><p style={{color:T.dim,fontSize:fs(13)}}>Your degree progress at a glance</p></div>
-        <Btn v="ai" onClick={()=>setPage("planner")}><Ic.Edit s={14}/> Course Planner</Btn>
+        <Btn v="ai" onClick={()=>setPage("courses")}><Ic.Edit s={14}/> My Courses</Btn>
       </div>
 
       {/* Study Check-in Prompt */}
@@ -183,7 +185,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
       {scheduledHrs > 0 && totalEstHrs > 0 && scheduledHrs < totalEstHrs * 0.9 && (
         <div style={{padding:"10px 14px",borderRadius:10,background:T.blueD,border:`1px solid ${T.blue}33`,fontSize:fs(11),color:T.blue,marginBottom:16}}>
           {"\ud83d\udcc5"} Your calendar has {scheduledHrs}h of study scheduled but courses need ~{totalEstHrs}h total. {Math.round(scheduledHrs/totalEstHrs*100)}% coverage{lastScheduledDate ? ` \u2014 last scheduled day: ${new Date(lastScheduledDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}` : ""}.
-          {scheduledHrs < totalEstHrs * 0.5 && " Consider regenerating your study plan in Course Planner to fill in the remaining weeks."}
+          {scheduledHrs < totalEstHrs * 0.5 && " Consider regenerating your study plan in Study Planner to fill in the remaining weeks."}
         </div>
       )}
 
@@ -199,7 +201,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
       {/* Hours/day config warning */}
       {hrsPerDay < 2 && totalEstHrs > 0 && (
         <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-          \u26A0\uFE0F Hours/day is set to {hrsPerDay}h \u2014 this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Course Planner</span>
+          \u26A0\uFE0F Hours/day is set to {hrsPerDay}h \u2014 this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Study Planner</span>
         </div>
       )}
       {estFinish && data.targetDate && estFinish > data.targetDate && (
@@ -307,26 +309,34 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
       {filtered.length === 0 ? (
         <div style={{padding:"30px",textAlign:"center",color:T.dim,fontSize:fs(13)}}>
           {courses.length===0?"No courses yet. ":"No courses match this filter. "}
-          <span style={{color:T.accent,cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>{courses.length===0?"Go to Course Planner":"Show all"}</span>
+          <span style={{color:T.accent,cursor:"pointer",textDecoration:"underline"}} onClick={()=>{if(courses.length===0)setPage("courses");else setFilter("all")}}>{courses.length===0?"Go to My Courses":"Show all"}</span>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:16}}>
           {filtered.map((c,i)=>(
-            <div key={c.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 14px",display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:4,height:32,borderRadius:2,background:STATUS_C[c.status]||T.dim,flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <span style={{fontSize:fs(12),fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-                  <Badge color={STATUS_C[c.status]||T.dim} bg={(STATUS_C[c.status]||T.dim)+"22"}>{STATUS_L[c.status]||c.status}</Badge>
-                  {hasCtx(c)?<Badge color={T.accent} bg={T.accentD}>ENRICHED</Badge>:c.status!=="completed"&&<Badge color={T.orange} bg={T.orangeD}>NEEDS ENRICHMENT</Badge>}
+            <div key={c.id} className="sf-card" style={{background:T.card,border:`1px solid ${expanded[c.id]?T.accent+"44":T.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setExpanded(e=>({...e,[c.id]:!e[c.id]}))}>
+                <div style={{width:4,height:32,borderRadius:2,background:STATUS_C[c.status]||T.dim,flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:fs(12),fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                    <Badge color={STATUS_C[c.status]||T.dim} bg={(STATUS_C[c.status]||T.dim)+"22"}>{STATUS_L[c.status]||c.status}</Badge>
+                    {hasCtx(c)?<Badge color={T.accent} bg={T.accentD}>ENRICHED</Badge>:c.status!=="completed"&&<Badge color={T.orange} bg={T.orangeD}>NEEDS ENRICHMENT</Badge>}
+                  </div>
+                  <div style={{fontSize:fs(10),color:T.dim,display:"flex",gap:8,marginTop:2}}>
+                    <span>{c.credits||0} CU</span>
+                    <span>{"\u2605".repeat(c.difficulty||0)}{"\u2606".repeat(5-(c.difficulty||0))}</span>
+                    {c.assessmentType&&<span>{c.assessmentType}</span>}
+                    {courseHours[c.name]&&<span style={{color:T.accent}}>{"\u23F1"} {Math.round((courseHours[c.name]||0)/6)/10}h studied</span>}
+                  </div>
                 </div>
-                <div style={{fontSize:fs(10),color:T.dim,display:"flex",gap:8,marginTop:2}}>
-                  <span>{c.credits||0} CU</span>
-                  <span>{"\u2605".repeat(c.difficulty||0)}{"\u2606".repeat(5-(c.difficulty||0))}</span>
-                  {c.assessmentType&&<span>{c.assessmentType}</span>}
-                  {courseHours[c.name]&&<span style={{color:T.accent}}>\u23F1 {Math.round((courseHours[c.name]||0)/6)/10}h studied</span>}
-                </div>
+                <span style={{fontSize:fs(10),color:T.dim,transition:"transform .2s",transform:expanded[c.id]?"rotate(180deg)":"rotate(0)",flexShrink:0}}>{"\u25BC"}</span>
               </div>
+              {expanded[c.id] && (
+                <div style={{padding:"0 14px 12px",borderTop:`1px solid ${T.border}`}}>
+                  <ErrorBoundary><CourseDetail c={c}/></ErrorBoundary>
+                </div>
+              )}
             </div>
           ))}
         </div>

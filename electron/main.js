@@ -16,6 +16,7 @@ const PORT = 19532;
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
 function ytProxyHTML(videoId, mute) {
+  const safeVid = (videoId || '').replace(/[^a-zA-Z0-9_-]/g, '');
   return `<!DOCTYPE html><html><head>
 <meta charset="utf-8">
 <meta name="referrer" content="strict-origin-when-cross-origin">
@@ -29,17 +30,17 @@ document.head.appendChild(tag);
 var player,isMuted=${mute?'true':'false'};
 function onYouTubeIframeAPIReady(){
   player=new YT.Player('player',{
-    videoId:'${videoId}',
+    videoId:'${safeVid}',
     playerVars:{autoplay:1,rel:0,modestbranding:1,iv_load_policy:3${mute?',mute:1':''}},
     events:{
       onReady:function(e){
         if(isMuted)e.target.mute();
         var d=e.target.getVideoData?e.target.getVideoData():{};
         var dur=e.target.getDuration?e.target.getDuration():0;
-        window.parent.postMessage({type:'yt-ready',vid:'${videoId}',isLive:!!d.isLive,duration:dur,title:d.title||''},'*');
+        window.parent.postMessage({type:'yt-ready',vid:'${safeVid}',isLive:!!d.isLive,duration:dur,title:d.title||''},'*');
       },
-      onError:function(e){window.parent.postMessage({type:'yt-error',vid:'${videoId}',code:e.data},'*')},
-      onStateChange:function(e){window.parent.postMessage({type:'yt-state',vid:'${videoId}',state:e.data},'*')}
+      onError:function(e){window.parent.postMessage({type:'yt-error',vid:'${safeVid}',code:e.data},'*')},
+      onStateChange:function(e){window.parent.postMessage({type:'yt-state',vid:'${safeVid}',state:e.data},'*')}
     }
   });
 }
@@ -93,13 +94,14 @@ function startLocalServer() {
     localServer = http.createServer((req, res) => {
       const parsed = url.parse(req.url, true);
       if (parsed.pathname === '/yt-proxy') {
+        const vid = (parsed.query.v || '').replace(/[^a-zA-Z0-9_-]/g, '');
         const mute = parsed.query.mute === '1';
         res.writeHead(200, { 'Content-Type': 'text/html', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
-        res.end(ytProxyHTML(parsed.query.v || '', mute));
+        res.end(ytProxyHTML(vid, mute));
         return;
       }
       if (parsed.pathname === '/yt-chat') {
-        const vid = parsed.query.v || '';
+        const vid = (parsed.query.v || '').replace(/[^a-zA-Z0-9_-]/g, '');
         res.writeHead(200, { 'Content-Type': 'text/html', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
         res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}

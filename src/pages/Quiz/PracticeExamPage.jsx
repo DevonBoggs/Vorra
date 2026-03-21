@@ -45,7 +45,7 @@ const PracticeExamPage = ({ data, setData, profile, Btn, Label }) => {
     toast("Generating practice exam...", "info");
     const diffPrompt = difficulty === "easy" ? "Make questions introductory-level." : difficulty === "hard" ? "Make questions challenging — focus on edge cases, exceptions, and deep understanding." : "Mix easy, medium, and hard questions.";
     const topicFocus = safeArr(course.topicBreakdown).length > 0 ? `Focus on topics (weighted by importance): ${safeArr(course.topicBreakdown).map(t=>`${t.topic} (${t.weight||"?"})`).join(", ")}` : "";
-    const sys = `You are a practice exam generator. Create exactly ${count} multiple-choice questions for: ${course.name}.
+    const examContext = `You are generating a practice exam. Create exactly ${count} multiple-choice questions for: ${course.name}.
 ${topicFocus}
 ${safeArr(course.competencies).length > 0 ? `Competencies/objectives to cover: ${safeArr(course.competencies).slice(0,10).map(c=>`${c.code||""} ${c.title}`).join("; ")}` : ""}
 ${safeArr(course.knownFocusAreas).length > 0 ? `Known high-weight areas: ${safeArr(course.knownFocusAreas).join(", ")}` : ""}
@@ -56,6 +56,7 @@ ${diffPrompt}
 Each question must have exactly 4 answer choices. Weight questions by topic importance.
 Respond ONLY with a JSON array. Each item: {"question":"...","options":["A","B","C","D"],"correct":0,"explanation":"...","difficulty":"easy|medium|hard"}
 Where correct is the 0-based index of the right answer. No markdown, no backticks, no preamble.`;
+    const sys = buildSystemPrompt(data, examContext);
     try {
       const headers = getAuthHeaders(profile);
       const isAnth = isAnthProvider(profile);

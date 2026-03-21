@@ -175,14 +175,14 @@ const WidgetGrid = ({ widgets, data, setData, setPage, setDate, Btn }) => {
                 )}
                 {!editMode && id === 'courses' && (
                   <button
-                    onClick={() => setPage('planner')}
+                    onClick={() => setPage('courses')}
                     style={{
                       background: T.accentD, border: `1px solid ${T.accent}44`, borderRadius: 6,
                       padding: '4px 10px', cursor: 'pointer', fontSize: fs(10),
                       color: T.accent, fontWeight: 600
                     }}
                   >
-                    Planner
+                    Courses
                   </button>
                 )}
                 {!editMode && id === 'upcoming' && (

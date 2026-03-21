@@ -5,10 +5,23 @@ import { useState, useEffect } from "react";
 import { dlog } from "./debug.js";
 import { toast } from "./toast.js";
 import { bgNewAbort, bgStream, bgSet, bgLog, getBgState } from "./background.js";
-import { TOOLS, TOOLS_OPENAI } from "../constants/tools.js";
+import { TOOLS, TOOLS_OPENAI, getProviderQuirks } from "../constants/tools.js";
+import { repairTruncatedJSON } from "../utils/jsonRepair.js";
 
 // ── Constants ────────────────────────────────────────────────────────
 export const APP_VERSION = "7.3.0";
+
+// Strip API keys from error messages to prevent accidental leakage
+function sanitizeErrorText(text) {
+  if (!text) return '';
+  return text
+    .replace(/sk-ant-[a-zA-Z0-9_-]{20,}/g, 'sk-ant-***')
+    .replace(/sk-[a-zA-Z0-9_-]{20,}/g, 'sk-***')
+    .replace(/gsk_[a-zA-Z0-9_-]{20,}/g, 'gsk_***')
+    .replace(/xai-[a-zA-Z0-9_-]{20,}/g, 'xai-***')
+    .replace(/Bearer\s+[a-zA-Z0-9_-]{20,}/gi, 'Bearer ***')
+    .slice(0, 200);
+}
 
 const STATUS_L = { not_started: "Not Started", in_progress: "In Progress", completed: "Completed" };
 
@@ -74,10 +87,15 @@ export function guessModelsUrl(baseUrl) {
 // ----------------------------------------------------------------------
 // AI CALLER with tool-use protocol
 // ----------------------------------------------------------------------
-export async function callAIWithTools(profile, systemPrompt, messages, imageData = null) {
+export async function callAIWithTools(profile, systemPrompt, messages, imageData = null, toolOverride = null) {
   const isAnth = isAnthProvider(profile);
   dlog('api','api',`Calling: ${profile.name} (${profile.model})`, {provider:isAnth?"anthropic":"openai",msgs:messages.length,hasImg:!!imageData});
   const headers = getAuthHeaders(profile);
+
+  const toolSet = toolOverride || TOOLS;
+  const toolSetOAI = toolOverride
+    ? toolOverride.map(t => ({type:"function", function:{name:t.name, description:t.description, parameters:t.input_schema}}))
+    : TOOLS_OPENAI;
 
   // Build the last user message content (may include image)
   let processedMessages = [...messages];
@@ -93,11 +111,19 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
     }
   }
 
+  const quirks = getProviderQuirks(profile);
+
   let body;
-  if (isAnth) {
-    body = { model: profile.model, max_tokens: 16384, system: systemPrompt, messages: processedMessages, tools: TOOLS };
+  if (quirks.noToolSupport) {
+    // Provider does not support tool calling — omit tools entirely
+    body = isAnth
+      ? { model: profile.model, max_tokens: 16384, system: systemPrompt, messages: processedMessages }
+      : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt }, ...processedMessages] };
+  } else if (isAnth) {
+    body = { model: profile.model, max_tokens: 16384, system: systemPrompt, messages: processedMessages, tools: toolSet };
   } else {
-    body = { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt }, ...processedMessages], tools: TOOLS_OPENAI };
+    body = { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt }, ...processedMessages], tools: toolSetOAI };
+    if (quirks.requireToolChoice) body.tool_choice = "auto";
   }
 
   let res;
@@ -113,16 +139,23 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
   if (!res.ok && imageData && (res.status === 400 || res.status === 422)) {
     dlog('warn','api',`Got ${res.status} with image attached — retrying without image (model may not support vision)`);
     const plainMsgs = messages; // original messages without image
-    const retryBody = isAnth
-      ? { model: profile.model, max_tokens: 16384, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs, tools: TOOLS }
-      : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs], tools: TOOLS_OPENAI };
+    let retryBody;
+    if (quirks.noToolSupport) {
+      retryBody = isAnth
+        ? { model: profile.model, max_tokens: 16384, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs }
+        : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs] };
+    } else {
+      retryBody = isAnth
+        ? { model: profile.model, max_tokens: 16384, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs, tools: toolSet }
+        : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs], tools: toolSetOAI };
+    }
     try {
       res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(retryBody) });
       dlog('api','api',`Retry response: HTTP ${res.status}`); setApiStatus(res.ok, res.status);
     } catch(e) { setApiStatus(false, 0, e.message); throw new Error(`Retry failed: ${e.message}`); }
   }
 
-  if (!res.ok) { const t = await res.text(); dlog('error','api',`API error ${res.status}`,t.slice(0,500)); throw new Error(`API ${res.status}: ${t.slice(0, 400)}`); }
+  if (!res.ok) { const t = await res.text(); dlog('error','api',`API error ${res.status}`,t.slice(0,500)); throw new Error(`API ${res.status}: ${sanitizeErrorText(t)}`); }
 
   // Read as text first to handle truncated/empty responses
   let rawText;
@@ -134,7 +167,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
   try { data = JSON.parse(rawText); }
   catch(e) {
     dlog('error','api',`JSON parse failed (${rawText.length} chars)`, rawText.slice(0, 500));
-    throw new Error(`Invalid JSON from API (${rawText.length} chars). Response may have been truncated. First 200 chars: ${rawText.slice(0,200)}`);
+    throw new Error(`Invalid JSON from API (${rawText.length} chars). Response may have been truncated. First 200 chars: ${sanitizeErrorText(rawText)}`);
   }
 
   // Parse response — handle thinking models (Qwen, DeepSeek) that wrap content in <think> tags
@@ -169,13 +202,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
         const raw = tc.function?.arguments || "";
         let repaired = null;
         try {
-          // Try closing open brackets/braces
-          let fixed = raw;
-          const opens = (fixed.match(/\[/g)||[]).length - (fixed.match(/\]/g)||[]).length;
-          const braces = (fixed.match(/\{/g)||[]).length - (fixed.match(/\}/g)||[]).length;
-          for (let i=0;i<opens;i++) fixed += "]";
-          for (let i=0;i<braces;i++) fixed += "}";
-          repaired = JSON.parse(fixed);
+          repaired = repairTruncatedJSON(raw);
           dlog('info','api',`Repaired truncated JSON for ${tc.function?.name}`);
         } catch(e2) {
           dlog('error','api',`Could not repair JSON for ${tc.function?.name}`, raw.slice(0,300));
@@ -190,11 +217,21 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
 // ----------------------------------------------------------------------
 // STREAMING API CALLER (SSE) — shows live text as it arrives
 // ----------------------------------------------------------------------
-export async function callAIStream(profile, systemPrompt, messages, imageData = null, onChunk = null) {
+export async function callAIStream(profile, systemPrompt, messages, imageData = null, onChunk = null, toolOverride = null) {
+  const quirks = getProviderQuirks(profile);
+  if (quirks.disableStreamingWithTools) {
+    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
+  }
+
   const isAnth = isAnthProvider(profile);
   dlog('api','api',`Streaming call: ${profile.name} (${profile.model})`);
   const headers = getAuthHeaders(profile);
   const signal = getBgState().abortCtrl?.signal;
+
+  const toolSet = toolOverride || TOOLS;
+  const toolSetOAI = toolOverride
+    ? toolOverride.map(t => ({type:"function", function:{name:t.name, description:t.description, parameters:t.input_schema}}))
+    : TOOLS_OPENAI;
 
   let processedMessages = [...messages];
   if (imageData && processedMessages.length > 0) {
@@ -210,10 +247,16 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   }
 
   let body;
-  if (isAnth) {
-    body = { model:profile.model, max_tokens:16384, stream:true, system:systemPrompt, messages:processedMessages, tools:TOOLS };
+  if (quirks.noToolSupport) {
+    // Provider does not support tool calling — omit tools entirely
+    body = isAnth
+      ? { model:profile.model, max_tokens:16384, stream:true, system:systemPrompt, messages:processedMessages }
+      : { model:profile.model, max_tokens:16384, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages] };
+  } else if (isAnth) {
+    body = { model:profile.model, max_tokens:16384, stream:true, system:systemPrompt, messages:processedMessages, tools:toolSet };
   } else {
-    body = { model:profile.model, max_tokens:16384, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages], tools:TOOLS_OPENAI };
+    body = { model:profile.model, max_tokens:16384, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages], tools:toolSetOAI };
+    if (quirks.requireToolChoice) body.tool_choice = "auto";
   }
 
   let res;
@@ -230,7 +273,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   if (!res.ok) {
     // If streaming fails (some endpoints don't support it), fall back to non-streaming
     dlog('warn','api',`Stream not supported (HTTP ${res.status}), falling back`);
-    return callAIWithTools(profile, systemPrompt, messages, imageData);
+    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
   }
 
   // Parse SSE stream
@@ -243,10 +286,15 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   // OpenAI tool call accumulation
   const toolCallMap = {}; // index -> {id, name, arguments}
   let stopReason = "stop";
+  const STREAM_READ_TIMEOUT_MS = 90000; // 90s — if no data arrives for this long, assume stalled
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      // Race reader.read() against a timeout to prevent indefinite hangs
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Stream read timeout — no data received for 90s. The provider may not support streaming tool calls.')), STREAM_READ_TIMEOUT_MS)
+      );
+      const { done, value } = await Promise.race([reader.read(), timeoutPromise]);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
@@ -315,6 +363,13 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
     }
   } catch (e) {
     dlog('error','api',`Stream read error: ${e.message}`);
+    try { reader.cancel(); } catch(_) {}
+    // If we timed out with very little data, fall back to non-streaming
+    const totalAccum = Object.values(toolCallMap).reduce((s,t) => s + t.arguments.length, 0);
+    if (e.message.includes('Stream read timeout') && totalAccum < 100 && fullText.length < 100) {
+      dlog('warn','api',`Stream timed out with minimal data (${totalAccum} tool chars, ${fullText.length} text chars) — falling back to non-streaming`);
+      return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
+    }
   }
 
   // Parse accumulated tool calls
@@ -323,14 +378,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   const toolCalls = Object.values(toolCallMap).map(tc => {
     let input = {};
     try {
-      if (tc.arguments) {
-        let fixed = tc.arguments;
-        const opens = (fixed.match(/\[/g)||[]).length - (fixed.match(/\]/g)||[]).length;
-        const braces = (fixed.match(/\{/g)||[]).length - (fixed.match(/\}/g)||[]).length;
-        for (let i=0;i<opens;i++) fixed += "]";
-        for (let i=0;i<braces;i++) fixed += "}";
-        input = JSON.parse(fixed);
-      }
+      if (tc.arguments) input = repairTruncatedJSON(tc.arguments);
     } catch(e) { dlog('warn','api',`Stream tool parse failed for ${tc.name}`,tc.arguments?.slice(0,300)); }
     return { id: tc.id, name: tc.name, input };
   }).filter(tc => tc.name);
@@ -369,7 +417,7 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
   dlog('api','api','Continuing after tool results');
   const res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
   dlog('api','api',`Continue response: HTTP ${res.status}`); setApiStatus(res.ok, res.status);
-  if (!res.ok) { const t = await res.text(); dlog('error','api',`Continue error ${res.status}`,t.slice(0,500)); throw new Error(`API ${res.status}: ${t.slice(0, 400)}`); }
+  if (!res.ok) { const t = await res.text(); dlog('error','api',`Continue error ${res.status}`,t.slice(0,500)); throw new Error(`API ${res.status}: ${sanitizeErrorText(t)}`); }
 
   let rawText;
   try { rawText = await res.text(); } catch(e) { throw new Error(`Failed to read continue response: ${e.message}`); }
@@ -378,7 +426,7 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
 
   let data;
   try { data = JSON.parse(rawText); }
-  catch(e) { dlog('error','api',`Continue JSON parse failed (${rawText.length} chars)`,rawText.slice(0,500)); throw new Error(`Invalid JSON in continue (${rawText.length} chars): ${rawText.slice(0,200)}`); }
+  catch(e) { dlog('error','api',`Continue JSON parse failed (${rawText.length} chars)`,rawText.slice(0,500)); throw new Error(`Invalid JSON in continue (${rawText.length} chars): ${sanitizeErrorText(rawText)}`); }
 
   if (isAnth) {
     const text = safeArr(data.content).filter(b=>b.type==="text").map(b=>b.text).join("");
@@ -399,8 +447,8 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
 // ----------------------------------------------------------------------
 // SYSTEM PROMPT (deep context)
 // ----------------------------------------------------------------------
-export function fmtCtx(c, idx) {
-  let s = `${idx+1}. ${c.name} (${c.credits||0} CU, ${STATUS_L[c.status]||c.status}, diff ${c.difficulty||3}/5)`;
+export function fmtCtx(c, idx, creditLabel = 'credits') {
+  let s = `${idx+1}. ${c.name} (${c.credits||0} ${creditLabel}, ${STATUS_L[c.status]||c.status}, diff ${c.difficulty||3}/5)`;
   if (c.assessmentType) s += ` [${c.assessmentType}]`;
   if (c.certAligned) s += ` → ${c.certAligned}`;
   if (safeArr(c.competencies).length>0) s += `\n     Competencies: ${safeArr(c.competencies).map(x=>`${x.code||''} ${x.title} (${x.weight||'?'})`).join('; ')}`;
@@ -418,6 +466,84 @@ export function fmtCtx(c, idx) {
   return s;
 }
 
+export function universityContextBlock(profile) {
+  if (!profile || !profile.name) return '';
+  const p = profile;
+  let block = `\n${p.shortName || p.name} CONTEXT:\n`;
+
+  // Education model
+  if (p.educationModel === 'competency-based') {
+    block += '- Uses competency-based education. Students demonstrate mastery, not accumulate seat time.\n';
+    block += '- Courses can be completed as fast as the student can demonstrate competency.\n';
+  } else if (p.educationModel === 'credit-hour') {
+    block += '- Uses traditional credit-hour system with structured course schedules.\n';
+  } else if (p.educationModel === 'quarter') {
+    block += '- Uses quarter system (~10-week terms).\n';
+  }
+
+  // Grading
+  if (p.gradingSystem === 'pass-fail') {
+    block += '- Grading is pass/fail. "Passing" means meeting all competency thresholds.\n';
+  } else if (p.gradingSystem === 'letter-grade') {
+    block += '- Uses letter grades (A-F). GPA matters for academic standing.\n';
+  } else if (p.gradingSystem === 'percentage') {
+    block += '- Uses percentage-based grading.\n';
+  }
+
+  // Assessment model
+  if (p.assessmentModel === 'oa-pa') {
+    block += '- Assessments are OA (Objective Assessment — proctored exam) and PA (Performance Assessment — written project/paper).\n';
+    block += '- OA question pools and competency codes are regularly updated.\n';
+  } else if (p.assessmentModel === 'midterm-final') {
+    block += '- Courses typically have midterm and final exams, plus possible quizzes and homework.\n';
+  } else if (p.assessmentModel === 'continuous') {
+    block += '- Uses continuous assessment (regular assignments, quizzes, participation).\n';
+  } else if (p.assessmentModel === 'mixed') {
+    block += '- Uses mixed assessment: exams, projects, papers, participation, and possibly presentations.\n';
+  }
+
+  // Credit units
+  if (p.creditUnit && p.creditUnitLabel) {
+    block += `- Credit system: ${p.creditUnitLabel} (${p.creditUnit}).\n`;
+  }
+
+  // Term structure
+  if (p.termStructure === '6-month-term') {
+    block += '- Term length: 6 months. Students can take as many courses as they can complete per term.\n';
+  } else if (p.termStructure === 'semester') {
+    block += '- Semester system: ~16-week terms, typically Fall and Spring.\n';
+  } else if (p.termStructure === 'quarter') {
+    block += '- Quarter system: ~10-week terms.\n';
+  } else if (p.termStructure === 'self-paced') {
+    block += '- Self-paced learning — no fixed term dates.\n';
+  }
+
+  // LMS
+  if (p.lms && p.lms !== 'custom') {
+    const lmsNames = { canvas: 'Canvas', blackboard: 'Blackboard', d2l: 'D2L Brightspace', moodle: 'Moodle' };
+    block += `- LMS: ${lmsNames[p.lms] || p.lms}.\n`;
+  }
+
+  // Resources
+  if (p.communityResources && p.communityResources.length > 0) {
+    block += `- Community resources: ${p.communityResources.join(', ')}.\n`;
+    block += `- For resources, prefer: official course materials > instructor tips > ${p.communityResources[0]} > YouTube study guides > Quizlet.\n`;
+  }
+
+  // Competency-based specific additions
+  if (p.educationModel === 'competency-based') {
+    block += '- Competency codes (e.g. C188.1.1) map to specific exam sections. Include these when enriching courses.\n';
+    block += '- 1 CU ≈ 15-25 study hours typically, but varies widely by course.\n';
+  }
+
+  // Custom context from user
+  if (p.customContext) {
+    block += `- Additional context: ${p.customContext}\n`;
+  }
+
+  return block;
+}
+
 export function buildSystemPrompt(data, ctx = "") {
   const courses = data.courses || [];
   const active = courses.filter(c => c.status !== "completed");
@@ -426,8 +552,12 @@ export function buildSystemPrompt(data, ctx = "") {
   const doneCU = done.reduce((s,c)=>s+(c.credits||0),0);
   const remainCU = totalCU - doneCU;
 
-  const activeStr = active.length > 0 ? active.map((c,i) => fmtCtx(c,i)).join("\n\n") : "No remaining courses.";
-  const doneStr = done.length > 0 ? done.map(c => `  ✅ ${c.name} (${c.credits} CU)`).join("\n") : "None completed yet.";
+  const uniObj = data.universityProfile; // structured object or legacy string or null
+  const uniLabel = uniObj?.shortName || uniObj?.name || (typeof uniObj === 'string' && uniObj ? uniObj : 'their university');
+  const creditLabel = uniObj?.creditUnitLabel || uniObj?.creditUnit || 'credits';
+
+  const activeStr = active.length > 0 ? active.map((c,i) => fmtCtx(c,i,creditLabel)).join("\n\n") : "No remaining courses.";
+  const doneStr = done.length > 0 ? done.map(c => `  ✅ ${c.name} (${c.credits} ${creditLabel})`).join("\n") : "None completed yet.";
 
   const exDates = safeArr(data.exceptionDates);
   const hrsPerDay = data.studyHoursPerDay || 4;
@@ -438,11 +568,7 @@ export function buildSystemPrompt(data, ctx = "") {
   const totalEstHours = active.reduce((s, c) => s + (c.averageStudyHours > 0 ? c.averageStudyHours : ([0,20,35,50,70,100][c.difficulty||3]||50)), 0);
   const rawDays = Math.ceil(totalEstHours / hrsPerDay);
 
-  const uniProfile = data.universityProfile || "";
-  const isWGU = uniProfile.toLowerCase() === "wgu";
-  const uniLabel = isWGU ? "WGU (Western Governors University)" : uniProfile ? uniProfile : "their university";
-
-  return `You are Vorra v${APP_VERSION}, an AI study & life planner and tutor for a student${uniProfile ? ` at ${uniLabel}` : ""}.
+  return `You are Vorra v${APP_VERSION}, an AI study & life planner and tutor for a student${uniObj ? ` at ${uniLabel}` : ""}.
 Today: ${fmtDateLong(todayStr())}.
 
 TOOLS AVAILABLE (always use tools for actions, never raw JSON):
@@ -459,7 +585,7 @@ COMPLETED:
 ${doneStr}
 
 DEGREE STATS:
-- Total: ${totalCU} CU | Completed: ${doneCU} CU | Remaining: ${remainCU} CU (${active.length} courses)
+- Total: ${totalCU} ${creditLabel} | Completed: ${doneCU} ${creditLabel} | Remaining: ${remainCU} ${creditLabel} (${active.length} courses)
 - Est. total study hours remaining: ~${totalEstHours}h (at current pace: ~${rawDays} study days)
 - Study hours/day: ${hrsPerDay}h
 - Study start: ${startDate}${data.studyStartTime ? ` at ${data.studyStartTime}` : ""} | Target completion: ${earlyFinishDate || "Not set"} | Term end: ${data.targetDate || "Not set"}
@@ -500,14 +626,7 @@ ACCURACY & SELF-VERIFICATION:
 - Cross-reference internally: if a topic weight says "high" but the competency description seems niche, re-examine. If study hours seem too low for the difficulty, adjust.
 - When listing resources, only include ones you're confident still exist. Dead links and renamed resources waste the student's time.
 - Distinguish between "what the university officially states" vs "what students commonly report" — both are valuable, but they should be labeled differently.
-${isWGU ? `
-WGU-SPECIFIC CONTEXT:
-- WGU uses competency-based education. Assessments are OA (Objective Assessment — proctored exam) and PA (Performance Assessment — written project/paper).
-- WGU courses change frequently — OA question pools, competency codes, and resources are regularly updated.
-- For resources, prefer: official WGU course materials > Course Instructor (CI) tips > r/WGU subreddit > YouTube study guides > Quizlet.
-- Competency codes (e.g. C188.1.1) map to specific exam sections. Include these when enriching courses.
-- 1 CU ≈ 15-25 study hours typically, but varies widely by course.
-` : ""}${data.userContext ? `\nUSER PREFERENCES:\n${data.userContext}` : ""}
+${universityContextBlock(uniObj)}${data.userContext ? `\nUSER PREFERENCES:\n${data.userContext}` : ""}
 ${ctx ? `\nCONTEXT:\n${ctx}` : ""}`;
 }
 
@@ -515,6 +634,9 @@ ${ctx ? `\nCONTEXT:\n${ctx}` : ""}`;
 // AI LOOP HELPER
 // ----------------------------------------------------------------------
 export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true) {
+  if (typeof executeTools !== 'function') {
+    dlog('error','api','runAILoop called without executeTools function — tool calls will not be processed');
+  }
   dlog('info','api',`AI loop start (stream=${useStream})`);
   bgNewAbort(); // Create new AbortController for this operation
   const logs = [];
@@ -530,12 +652,17 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
     dlog('error','api','Initial call failed',e.message);
     return {logs:[{type:"error",content:e.message}],finalText:""};
   }
-  let loops = 5, finalText = "";
+  const quirks = getProviderQuirks(profile);
+  let loops = quirks.maxToolLoops || 5, finalText = "";
   while (loops-- > 0) {
     if (getBgState().abortCtrl?.signal?.aborted) { logs.push({type:"error",content:"⛔ Cancelled"}); break; }
     if (resp.text) { logs.push({type:"text",content:resp.text}); finalText += (finalText?" ":"") + resp.text; bgStream(""); }
     if (resp.toolCalls.length > 0) {
       for (const tc of resp.toolCalls) logs.push({type:"tool_call",content:`🔧 ${tc.name}(${JSON.stringify(tc.input).slice(0,300)})`});
+      if (typeof executeTools !== 'function') {
+        logs.push({type:"error",content:"Bug: executeTools not provided to runAILoop — tool calls cannot be processed. This is a coding error."});
+        break;
+      }
       const results = executeTools(resp.toolCalls, data, setData);
       for (const r of results) logs.push({type:"tool_result",content:`✅ ${r.result}`});
       try { resp = await continueAfterTools(profile, sys, msgs, resp.toolCalls, results); }

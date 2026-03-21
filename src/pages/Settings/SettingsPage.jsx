@@ -13,6 +13,10 @@ import { Badge } from "../../components/ui/Badge.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { TOOLS } from "../../constants/tools.js";
 import { INIT } from "../../systems/storage.js";
+import {
+  UNIVERSITY_PRESETS, EDUCATION_MODELS, GRADING_SYSTEMS, ASSESSMENT_MODELS,
+  CREDIT_UNITS, LMS_PLATFORMS, TERM_STRUCTURES, EMPTY_UNIVERSITY_PROFILE
+} from "../../constants/universityProfiles.js";
 
 const PROVIDERS = {
   // ── Direct API (sorted by popularity) ──
@@ -22,8 +26,8 @@ const PROVIDERS = {
   gemini:    { cat:"direct", name:"Google Gemini", icon:"ProvGemini",   url:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", models:["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"], default:"gemini-2.5-flash", keyHint:"AIza...", color:"#4285f4" },
   mistral:   { cat:"direct", name:"Mistral",      icon:"ProvMistral",   url:"https://api.mistral.ai/v1/chat/completions", models:["mistral-large-latest","mistral-small-latest","codestral-latest","mistral-medium-latest"], default:"mistral-large-latest", keyHint:"...", color:"#ff7000" },
   xai:       { cat:"direct", name:"xAI (Grok)",   icon:"ProvXAI",      url:"https://api.x.ai/v1/chat/completions", models:["grok-3","grok-3-mini","grok-2"], default:"grok-3-mini", keyHint:"xai-...", color:"#1da1f2" },
-  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0" },
-  cohere:    { cat:"direct", name:"Cohere",       icon:"ProvCohere",   url:"https://api.cohere.com/v2/chat", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
+  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0", note:"Default URL is for Coding Plan. General plan users: click Edit and remove /coding/ from the URL." },
+  cohere:    { cat:"direct", name:"Cohere",       icon:"ProvCohere",   url:"https://api.cohere.ai/compatibility/v1/chat/completions", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
   ai21:      { cat:"direct", name:"AI21",         icon:"ProvAI21",     url:"https://api.ai21.com/studio/v1/chat/completions", models:["jamba-1.5-large","jamba-1.5-mini"], default:"jamba-1.5-large", keyHint:"...", color:"#6c3ea0" },
 
   // ── Aggregators / Proxies (sorted by popularity) ──
@@ -33,18 +37,17 @@ const PROVIDERS = {
   cerebras:   { cat:"aggregator", name:"Cerebras",     icon:"ProvCerebras",  url:"https://api.cerebras.ai/v1/chat/completions", models:["llama-3.3-70b","llama-3.1-8b"], default:"llama-3.3-70b", keyHint:"csk-...", color:"#ff4500" },
   fireworks:  { cat:"aggregator", name:"Fireworks AI", icon:"ProvFireworks", url:"https://api.fireworks.ai/inference/v1/chat/completions", models:["accounts/fireworks/models/llama-v3p3-70b-instruct","accounts/fireworks/models/deepseek-r1","accounts/fireworks/models/qwen2p5-72b-instruct"], default:"accounts/fireworks/models/llama-v3p3-70b-instruct", keyHint:"fw_...", color:"#ff6b35" },
   sambanova:  { cat:"aggregator", name:"SambaNova",    icon:"ProvSambaNova", url:"https://api.sambanova.ai/v1/chat/completions", models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-R1","Qwen2.5-72B-Instruct"], default:"Meta-Llama-3.3-70B-Instruct", keyHint:"...", color:"#00b4d8" },
-  perplexity: { cat:"aggregator", name:"Perplexity",   icon:"ProvPerplexity",url:"https://api.perplexity.ai/chat/completions", models:["sonar-pro","sonar","sonar-deep-research"], default:"sonar-pro", keyHint:"pplx-...", color:"#20b2aa" },
-  nanogpt:    { cat:"aggregator", name:"NanoGPT",      icon:"ProvNanoGPT",   url:"https://api.nano-gpt.com/v1/chat/completions", models:["chatgpt-4o-latest","claude-sonnet-4","deepseek-chat","llama-3.3-70b"], default:"chatgpt-4o-latest", keyHint:"nano-...", color:"#a855f7" },
+  perplexity: { cat:"aggregator", name:"Perplexity",   icon:"ProvPerplexity",url:"https://api.perplexity.ai/chat/completions", models:["sonar-pro","sonar","sonar-deep-research"], default:"sonar-pro", keyHint:"pplx-...", color:"#20b2aa", note:"Perplexity models do not support tool calling. Enrichment and plan generation require a different provider." },
+  nanogpt:    { cat:"aggregator", name:"NanoGPT",      icon:"ProvNanoGPT",   url:"https://nano-gpt.com/api/v1/chat/completions", models:["chatgpt-4o-latest","claude-sonnet-4","deepseek-chat","llama-3.3-70b"], default:"chatgpt-4o-latest", keyHint:"nano-...", color:"#a855f7" },
   novita:     { cat:"aggregator", name:"Novita AI",    icon:"ProvNovita",    url:"https://api.novita.ai/v3/openai/chat/completions", models:["meta-llama/llama-3.3-70b-instruct","deepseek/deepseek-r1","mistralai/mistral-large-latest"], default:"meta-llama/llama-3.3-70b-instruct", keyHint:"...", color:"#8b5cf6" },
   shuttleai:  { cat:"aggregator", name:"ShuttleAI",    icon:"ProvShuttleAI", url:"https://api.shuttleai.com/v1/chat/completions", models:["shuttle-3","gpt-4o","claude-sonnet-4"], default:"shuttle-3", keyHint:"shuttle-...", color:"#6366f1" },
   hyperbolic: { cat:"aggregator", name:"Hyperbolic",   icon:"ProvHyperbolic",url:"https://api.hyperbolic.xyz/v1/chat/completions", models:["meta-llama/Llama-3.3-70B-Instruct","deepseek-ai/DeepSeek-R1","Qwen/Qwen2.5-72B-Instruct"], default:"meta-llama/Llama-3.3-70B-Instruct", keyHint:"...", color:"#ec4899" },
   chutes:     { cat:"aggregator", name:"Chutes AI",    icon:"ProvChutes",    url:"https://api.chutes.ai/v1/chat/completions", models:["deepseek-ai/DeepSeek-R1","meta-llama/Llama-3.3-70B-Instruct"], default:"deepseek-ai/DeepSeek-R1", keyHint:"cpk-...", color:"#14b8a6" },
-  lepton:     { cat:"aggregator", name:"Lepton AI",    icon:"ProvLepton",    url:"https://llama3-3-70b.lepton.run/api/v1/chat/completions", models:["llama3.3-70b"], default:"llama3.3-70b", keyHint:"...", color:"#f59e0b" },
 
   // ── Local / Self-Hosted (sorted by popularity) ──
-  ollama:    { cat:"local", name:"Ollama",        icon:"ProvOllama",    url:"http://localhost:11434/v1/chat/completions", models:["llama3.3","deepseek-r1","qwen2.5","mistral","codellama","phi4","gemma2"], default:"llama3.3", keyHint:"(none needed)", color:"#ffffff" },
-  lmstudio:  { cat:"local", name:"LM Studio",    icon:"ProvLMStudio",  url:"http://localhost:1234/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#22d3ee" },
-  vllm:      { cat:"local", name:"vLLM",          icon:"ProvVLLM",     url:"http://localhost:8000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#a78bfa" },
+  ollama:    { cat:"local", name:"Ollama",        icon:"ProvOllama",    url:"http://localhost:11434/v1/chat/completions", models:["llama3.3","deepseek-r1","qwen2.5","mistral","codellama","phi4","gemma2"], default:"llama3.3", keyHint:"(none needed)", color:"#ffffff", note:"Tool calling support varies by model. Use Llama 3.1+, Qwen 2.5+, or Mistral for best results." },
+  lmstudio:  { cat:"local", name:"LM Studio",    icon:"ProvLMStudio",  url:"http://localhost:1234/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#22d3ee", note:"Tool calling is in beta. Use Hermes 2 Pro or Llama 3.1+ models for function calling." },
+  vllm:      { cat:"local", name:"vLLM",          icon:"ProvVLLM",     url:"http://localhost:8000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#a78bfa", note:"Requires --enable-auto-tool-choice flag on server. Tool calling quality varies by model." },
   jan:       { cat:"local", name:"Jan",            icon:"ProvJan",      url:"http://localhost:1337/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#fb923c" },
   gpt4all:   { cat:"local", name:"GPT4All",       icon:"ProvGPT4All",  url:"http://localhost:4891/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#60a5fa" },
   localai:   { cat:"local", name:"LocalAI",       icon:"ProvLocalAI",  url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#34d399" },
@@ -239,7 +242,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
 
       {/* Quick nav */}
       <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-        {[{id:"s-ai",l:"AI Profiles",c:T.accent},{id:"s-you",l:"About You",c:T.blue},{id:"s-look",l:"Appearance",c:T.purple},{id:"s-int",l:"Integrations",c:T.cyan},{id:"s-data",l:"Data",c:T.orange},{id:"s-adv",l:"Advanced",c:T.dim}].map(b=>
+        {[{id:"s-ai",l:"AI Profiles",c:T.accent},{id:"s-school",l:"School",c:T.accent},{id:"s-you",l:"About You",c:T.blue},{id:"s-look",l:"Appearance",c:T.purple},{id:"s-int",l:"Integrations",c:T.cyan},{id:"s-data",l:"Data",c:T.orange},{id:"s-adv",l:"Advanced",c:T.dim}].map(b=>
           <button key={b.id} className="sf-chip" onClick={()=>document.getElementById(b.id)?.scrollIntoView({behavior:"smooth"})} style={{padding:"6px 14px",borderRadius:8,fontSize:fs(11),fontWeight:600,border:`1px solid ${b.c}44`,background:`${b.c}11`,color:b.c,cursor:"pointer"}}>{b.l}</button>
         )}
       </div>
@@ -274,6 +277,162 @@ const SettingsPage = ({ data, setData, setPage }) => {
           </div>
         )}
       </div>
+
+      {/* ═══════════════════════════════════════════════ */}
+      {/* SCHOOL PROFILE */}
+      {/* ═══════════════════════════════════════════════ */}
+      {(() => {
+        const up = data.universityProfile || null;
+        const updateUP = (patch) => setData(d => ({
+          ...d,
+          universityProfile: { ...(d.universityProfile || EMPTY_UNIVERSITY_PROFILE), ...patch }
+        }));
+        const selectPreset = (preset) => setData(d => ({
+          ...d,
+          universityProfile: { ...preset }
+        }));
+        const clearUP = () => setData(d => ({ ...d, universityProfile: null }));
+        const activePresetId = up?.presetId || '';
+        const selStyle = {
+          fontSize: fs(12), padding: '8px 12px', borderRadius: 8,
+          border: `1px solid ${T.border}`, background: T.input, color: T.text,
+          width: '100%', cursor: 'pointer'
+        };
+        return (
+          <div id="s-school" className="sf-section" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:22,marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
+                  <span style={{fontSize:fs(16)}}>&#127979;</span>
+                  <h3 style={{fontSize:fs(16),fontWeight:700}}>School Profile</h3>
+                  {up && up.isPreset && up.name && (
+                    <Badge color={T.accent} bg={T.accentD}>Using {up.shortName || up.name}</Badge>
+                  )}
+                </div>
+                <p style={{fontSize:fs(11),color:T.dim}}>Customize AI prompts for your institution</p>
+              </div>
+              {up && (
+                <Btn small v="ghost" onClick={() => { if (confirm('Clear school profile?')) clearUP(); }} style={{color:T.dim,fontSize:fs(10)}}>Clear</Btn>
+              )}
+            </div>
+
+            {!up ? (
+              <div style={{textAlign:'center',padding:'16px 0'}}>
+                <p style={{fontSize:fs(12),color:T.dim,marginBottom:14}}>Set your school for personalized study recommendations</p>
+                <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap'}}>
+                  {UNIVERSITY_PRESETS.map(p => (
+                    <button key={p.presetId} onClick={() => selectPreset(p)} style={{
+                      padding:'6px 14px',borderRadius:20,fontSize:fs(11),fontWeight:600,
+                      border:`1.5px solid ${T.border}`,background:T.input,color:T.text,
+                      cursor:'pointer',transition:'all .15s'
+                    }}>{p.shortName}</button>
+                  ))}
+                  <button onClick={() => selectPreset({...EMPTY_UNIVERSITY_PROFILE})} style={{
+                    padding:'6px 14px',borderRadius:20,fontSize:fs(11),fontWeight:600,
+                    border:`1.5px dashed ${T.dim}`,background:'transparent',color:T.dim,
+                    cursor:'pointer',transition:'all .15s'
+                  }}>Custom</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:14,marginTop:12}}>
+                {/* Preset pills */}
+                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                  {UNIVERSITY_PRESETS.map(p => (
+                    <button key={p.presetId} onClick={() => selectPreset(p)} style={{
+                      padding:'5px 12px',borderRadius:20,fontSize:fs(10),fontWeight:600,
+                      border:`1.5px solid ${activePresetId === p.presetId ? T.accent : T.border}`,
+                      background: activePresetId === p.presetId ? T.accentD : T.input,
+                      color: activePresetId === p.presetId ? T.accent : T.soft,
+                      cursor:'pointer',transition:'all .15s'
+                    }}>{p.shortName}</button>
+                  ))}
+                  <button onClick={() => selectPreset({...EMPTY_UNIVERSITY_PROFILE})} style={{
+                    padding:'5px 12px',borderRadius:20,fontSize:fs(10),fontWeight:600,
+                    border:`1.5px solid ${!activePresetId ? T.accent : T.border}88`,
+                    background: !activePresetId ? T.accentD : 'transparent',
+                    color: !activePresetId ? T.accent : T.dim,
+                    cursor:'pointer',transition:'all .15s'
+                  }}>Custom</button>
+                </div>
+
+                {/* School name */}
+                <div>
+                  <Label>School Name</Label>
+                  <input value={up.name || ''} onChange={e => updateUP({name: e.target.value, isPreset: false, presetId: ''})} placeholder="University name (e.g., MIT, UCLA, Western Governors)" style={{fontSize:fs(12),width:'100%'}}/>
+                </div>
+
+                {/* Education model details */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                  <div>
+                    <Label>Education Model</Label>
+                    <select value={up.educationModel || ''} onChange={e => updateUP({educationModel: e.target.value})} style={selStyle}>
+                      {EDUCATION_MODELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Grading System</Label>
+                    <select value={up.gradingSystem || ''} onChange={e => updateUP({gradingSystem: e.target.value})} style={selStyle}>
+                      {GRADING_SYSTEMS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Assessment Model</Label>
+                    <select value={up.assessmentModel || ''} onChange={e => updateUP({assessmentModel: e.target.value})} style={selStyle}>
+                      {ASSESSMENT_MODELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Additional details */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                  <div>
+                    <Label>Credit Unit</Label>
+                    <select value={up.creditUnit || ''} onChange={e => updateUP({creditUnit: e.target.value})} style={selStyle}>
+                      {CREDIT_UNITS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>LMS Platform</Label>
+                    <select value={up.lms || ''} onChange={e => updateUP({lms: e.target.value})} style={selStyle}>
+                      {LMS_PLATFORMS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Term Structure</Label>
+                    <select value={up.termStructure || ''} onChange={e => updateUP({termStructure: e.target.value})} style={selStyle}>
+                      {TERM_STRUCTURES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Community resources */}
+                <div>
+                  <Label>Community Resources</Label>
+                  <input
+                    value={Array.isArray(up.communityResources) ? up.communityResources.join(', ') : (up.communityResources || '')}
+                    onChange={e => updateUP({communityResources: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
+                    placeholder="r/WGU, Discord, etc."
+                    style={{fontSize:fs(12),width:'100%'}}
+                  />
+                </div>
+
+                {/* Custom context */}
+                <div>
+                  <Label>Custom Context</Label>
+                  <textarea
+                    value={up.customContext || ''}
+                    onChange={e => updateUP({customContext: e.target.value})}
+                    placeholder="Any additional context for the AI about your school..."
+                    rows={2}
+                    style={{fontSize:fs(12),minHeight:'auto'}}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ═══════════════════════════════════════════════ */}
       {/* ABOUT YOU */}
@@ -661,6 +820,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
                     <input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://api.openai.com/v1/chat/completions"/>
                   </div>
                 )}
+                {prov?.note && <div style={{fontSize:fs(9),color:T.orange,marginTop:4,lineHeight:1.4}}>{prov.note}</div>}
               </div>
 
               {/* Test result banner */}

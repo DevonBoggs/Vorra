@@ -100,13 +100,14 @@ export function formatShortcut(shortcutKey) {
 export const SHORTCUTS = {
   // Navigation
   'go-dashboard':     { key: 'Mod+1',       label: 'Go to Dashboard',      category: 'Navigation' },
-  'go-planner':       { key: 'Mod+2',       label: 'Go to Course Planner', category: 'Navigation' },
-  'go-daily':         { key: 'Mod+3',       label: 'Go to Study Schedule', category: 'Navigation' },
-  'go-calendar':      { key: 'Mod+4',       label: 'Go to Calendar',      category: 'Navigation' },
-  'go-chat':          { key: 'Mod+5',       label: 'Go to Study Chat',    category: 'Navigation' },
-  'go-quiz':          { key: 'Mod+6',       label: 'Go to Practice Exam', category: 'Navigation' },
-  'go-report':        { key: 'Mod+7',       label: 'Go to Weekly Report', category: 'Navigation' },
-  'go-ambient':       { key: 'Mod+8',       label: 'Go to Study Radio',   category: 'Navigation' },
+  'go-courses':       { key: 'Mod+2',       label: 'Go to My Courses',     category: 'Navigation' },
+  'go-planner':       { key: 'Mod+3',       label: 'Go to Study Planner',  category: 'Navigation' },
+  'go-daily':         { key: 'Mod+4',       label: 'Go to Study Schedule', category: 'Navigation' },
+  'go-calendar':      { key: 'Mod+5',       label: 'Go to Calendar',      category: 'Navigation' },
+  'go-chat':          { key: 'Mod+6',       label: 'Go to Study Chat',    category: 'Navigation' },
+  'go-quiz':          { key: 'Mod+7',       label: 'Go to Practice Exam', category: 'Navigation' },
+  'go-report':        { key: 'Mod+8',       label: 'Go to Weekly Report', category: 'Navigation' },
+  'go-ambient':       { key: 'Mod+9',       label: 'Go to Study Radio',   category: 'Navigation' },
   'go-settings':      { key: 'Mod+,',       label: 'Settings',            category: 'Navigation' },
 
   // Command Palette

@@ -13,7 +13,7 @@ export const INIT = {
   overrideSafeguards: false,
   exceptionDates: [],
   userContext: "",
-  universityProfile: "", // e.g. "wgu", "snhu", "purdue-global", or custom
+  universityProfile: null, // structured profile object or null
   chatHistories: {},
   theme: "dark",
   fontScale: 100,
@@ -63,3 +63,19 @@ if (!localStorage.getItem('vorra-v1')) {
   }
   if (localStorage.getItem('vorra-v1')) console.log('[Vorra] Legacy data migration complete');
 }
+
+// Migrate universityProfile from string to structured object
+try {
+  const raw = localStorage.getItem('vorra-v1');
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.universityProfile === 'string' && parsed.universityProfile) {
+      const oldVal = parsed.universityProfile.trim();
+      // Check common presets
+      const presetMap = { wgu: 'Western Governors University', snhu: 'Southern New Hampshire University', asu: 'Arizona State University Online' };
+      parsed.universityProfile = { name: presetMap[oldVal.toLowerCase()] || oldVal };
+      localStorage.setItem('vorra-v1', JSON.stringify(parsed));
+      console.log('[Vorra] Migrated universityProfile to structured format');
+    }
+  }
+} catch (e) { /* migration skipped */ }

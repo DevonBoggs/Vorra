@@ -58,7 +58,7 @@ export const CS = {
 
 export const TOOLS = [
   { name:"add_tasks", description:"Add tasks to study schedule.",
-    input_schema:{type:"object",properties:{tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"}},required:["date","time","endTime","title","category","priority"]}}},required:["tasks"]}},
+    input_schema:{type:"object",properties:{tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"},courseId:{type:"string",description:"ID of the associated course"}},required:["date","time","endTime","title","category","priority"]}}},required:["tasks"]}},
   { name:"add_courses", description:"Add courses with DEEP context. Include assessment type, competencies/objectives, topic breakdown with weights, key terms, study resources, tips, difficulty, hours, focus areas, cert alignment, prerequisites.",
     input_schema:{type:"object",properties:{courses:{type:"array",items:{type:"object",properties:CS,required:["name","credits","difficulty","status"]}}},required:["courses"]}},
   { name:"update_courses", description:"Update existing courses by name match. Can update any field.",
@@ -66,7 +66,30 @@ export const TOOLS = [
   { name:"enrich_course_context", description:"Generate/regenerate deep context for courses. Provide the MOST CURRENT assessment intelligence — courses update frequently. Include specific competency/objective codes, exact topic names with weights, concrete study hours per topic, current assessment format, and actionable community tips. When user asks 'what do I need to know to pass', go as deep as possible.",
     input_schema:{type:"object",properties:{enrichments:{type:"array",items:{type:"object",properties:{course_name_match:{type:"string"},...CS},required:["course_name_match"]}}},required:["enrichments"]}},
   { name:"generate_study_plan", description:"Generate multi-day study plan with tasks inserted into calendar. Uses course context and topic weights.",
-    input_schema:{type:"object",properties:{summary:{type:"string"},weekly_schedule:{type:"array",items:{type:"object",properties:{course:{type:"string"},hours_per_week:{type:"number"},weeks_estimate:{type:"number"},order:{type:"number"},focus_areas:{type:"array",items:{type:"string"}}},required:["course","hours_per_week","weeks_estimate","order"]}},daily_tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"}},required:["date","time","endTime","title","category","priority"]}}},required:["summary","weekly_schedule","daily_tasks"]}},
+    input_schema:{type:"object",properties:{summary:{type:"string"},weekly_schedule:{type:"array",items:{type:"object",properties:{course:{type:"string"},hours_per_week:{type:"number"},weeks_estimate:{type:"number"},order:{type:"number"},focus_areas:{type:"array",items:{type:"string"}}},required:["course","hours_per_week","weeks_estimate","order"]}},daily_tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"},courseId:{type:"string",description:"ID of the associated course"}},required:["date","time","endTime","title","category","priority"]}}},required:["summary","weekly_schedule","daily_tasks"]}},
 ];
 
 export const TOOLS_OPENAI = TOOLS.map(t=>({type:"function",function:{name:t.name,description:t.description,parameters:t.input_schema}}));
+
+// Provider-specific quirks that affect API behavior
+export const PROVIDER_QUIRKS = {
+  // Direct providers
+  deepseek:   { maxToolLoops: 3 },
+  gemini:     { singleToolCallPreferred: true },
+  cohere:     { hasToolPlan: true },
+  ai21:       { disableStreamingWithTools: true },
+  zai:        { disableStreamingWithTools: true },
+  perplexity: { noToolSupport: true },
+  // Aggregators
+  groq:       { requireToolChoice: true },
+  sambanova:  { maxToolLoops: 3 },
+  chutes:     { maxToolLoops: 2 },
+  // Local
+  ollama:     { singleToolCallPreferred: true, disableStreamingWithTools: true },
+  lmstudio:   { disableStreamingWithTools: true },
+  vllm:       { disableStreamingWithTools: true },
+};
+
+export function getProviderQuirks(profile) {
+  return PROVIDER_QUIRKS[profile?.provider] || {};
+}

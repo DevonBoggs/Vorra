@@ -78,7 +78,8 @@ function HighlightText({ text, ranges, color }) {
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Degree Dashboard', icon: 'Grad',   color: '#06d6a0', shortcutId: 'go-dashboard' },
-  { id: 'planner',   label: 'Course Planner',   icon: 'Edit',   color: '#a78bfa', shortcutId: 'go-planner' },
+  { id: 'courses',   label: 'My Courses',        icon: 'Edit',   color: '#a78bfa', shortcutId: 'go-courses' },
+  { id: 'planner',   label: 'Study Planner',     icon: 'Cal',    color: '#8b5cf6', shortcutId: 'go-planner' },
   { id: 'daily',     label: 'Study Schedule',    icon: 'List',   color: '#60a5fa', shortcutId: 'go-daily' },
   { id: 'calendar',  label: 'Calendar',          icon: 'Cal',    color: '#f472b6', shortcutId: 'go-calendar' },
   { id: 'chat',      label: 'Study Chat',        icon: 'Chat',   color: '#34d399', shortcutId: 'go-chat' },
@@ -140,7 +141,7 @@ function ShortcutBadge({ shortcutKey, T }) {
 
 // ── Command Palette Component ───────────────────────────────────────
 
-const CommandPalette = ({ open, onClose, onAction, courses = [], recentPages = [] }) => {
+const CommandPalette = ({ open, onClose, onAction, courses = [], recentPages = [], data = {} }) => {
   const T = useTheme();
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -242,13 +243,126 @@ const CommandPalette = ({ open, onClose, onAction, courses = [], recentPages = [
       }
     }
 
+    // Tasks section (only when searching)
+    if (query && data.tasks) {
+      let taskCount = 0;
+      for (const [date, dateTasks] of Object.entries(data.tasks)) {
+        if (taskCount >= 5) break;
+        for (const task of (Array.isArray(dateTasks) ? dateTasks : [])) {
+          if (taskCount >= 5) break;
+          const fm = fuzzyMatch(query, task.title || '');
+          if (fm.match) {
+            result.push({
+              section: 'Tasks',
+              type: 'navigate',
+              target: 'daily',
+              label: task.title,
+              icon: 'List',
+              color: '#60a5fa',
+              shortcutKey: null,
+              score: fm.score,
+              ranges: fm.ranges,
+              meta: date,
+              date,
+            });
+            taskCount++;
+          }
+        }
+      }
+    }
+
+    // Course codes section (only when searching)
+    if (query && courses.length > 0) {
+      for (const course of courses) {
+        const code = course.courseCode || '';
+        if (!code) continue;
+        const fm = fuzzyMatch(query, code);
+        if (fm.match) {
+          // Avoid duplicating courses already matched by name
+          const alreadyMatched = result.some(r => r.section === 'Courses' && r.label === (course.name || course.title || ''));
+          if (!alreadyMatched) {
+            result.push({
+              section: 'Courses',
+              type: 'navigate',
+              target: 'planner',
+              label: course.name || course.title || code,
+              icon: 'Book',
+              color: course.color || T.accent,
+              shortcutKey: null,
+              score: fm.score,
+              ranges: [],
+              meta: code,
+            });
+          }
+        }
+      }
+    }
+
+    // Topics section (only when searching)
+    if (query && courses.length > 0) {
+      let topicCount = 0;
+      for (const course of courses) {
+        if (topicCount >= 5) break;
+        for (const tb of (Array.isArray(course.topicBreakdown) ? course.topicBreakdown : [])) {
+          if (topicCount >= 5) break;
+          const topic = tb.topic || '';
+          if (!topic) continue;
+          const fm = fuzzyMatch(query, topic);
+          if (fm.match) {
+            result.push({
+              section: 'Topics',
+              type: 'navigate',
+              target: 'planner',
+              label: topic,
+              icon: 'Edit',
+              color: '#a78bfa',
+              shortcutKey: null,
+              score: fm.score,
+              ranges: fm.ranges,
+              meta: course.name || '',
+            });
+            topicCount++;
+          }
+        }
+      }
+    }
+
+    // Terms section (only when searching)
+    if (query && courses.length > 0) {
+      let termCount = 0;
+      for (const course of courses) {
+        if (termCount >= 5) break;
+        for (const kt of (Array.isArray(course.keyTermsAndConcepts) ? course.keyTermsAndConcepts : [])) {
+          if (termCount >= 5) break;
+          const term = kt.term || '';
+          if (!term) continue;
+          const fm = fuzzyMatch(query, term);
+          if (fm.match) {
+            result.push({
+              section: 'Terms',
+              type: 'navigate',
+              target: 'planner',
+              label: term,
+              icon: 'Book',
+              color: '#34d399',
+              shortcutKey: null,
+              score: fm.score,
+              ranges: fm.ranges,
+              meta: course.name || '',
+            });
+            termCount++;
+          }
+        }
+      }
+    }
+
     // Sort by score (descending), then alphabetically
     if (query) {
       result.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
     }
 
     return result;
-  }, [query, courses, recentPages, T.accent]);
+  }, [query, courses, recentPages, T.accent, data]);
 
   // Group items by section for rendering
   const groupedItems = useMemo(() => {
@@ -257,7 +371,7 @@ const CommandPalette = ({ open, onClose, onAction, courses = [], recentPages = [
 
     // Determine section order
     const sectionOrder = query
-      ? ['Navigation', 'Actions', 'Courses']
+      ? ['Navigation', 'Actions', 'Courses', 'Tasks', 'Topics', 'Terms']
       : ['Recent', 'Navigation', 'Actions', 'Courses'];
 
     for (const item of items) {
@@ -314,7 +428,9 @@ const CommandPalette = ({ open, onClose, onAction, courses = [], recentPages = [
       e.preventDefault();
       const item = flatItems[activeIdx];
       if (item) {
-        onAction({ type: item.type, target: item.target });
+        const action = { type: item.type, target: item.target };
+        if (item.date) action.date = item.date;
+        onAction(action);
         onClose();
       }
     } else if (e.key === 'Escape') {
@@ -330,7 +446,9 @@ const CommandPalette = ({ open, onClose, onAction, courses = [], recentPages = [
 
   // Handle item click
   const handleItemClick = useCallback((item) => {
-    onAction({ type: item.type, target: item.target });
+    const action = { type: item.type, target: item.target };
+    if (item.date) action.date = item.date;
+    onAction(action);
     onClose();
   }, [onAction, onClose]);
 

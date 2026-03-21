@@ -200,7 +200,7 @@ const WeeklyReportPage = ({ data, Btn }) => {
           {completionRate >= 80 && <div style={{padding:"6px 10px",background:T.accentD,borderRadius:6,borderLeft:`3px solid ${T.accent}`,color:T.accent}}>Excellent week! {completionRate}% task completion rate.</div>}
           {completionRate >= 50 && completionRate < 80 && <div style={{padding:"6px 10px",background:T.orangeD,borderRadius:6,borderLeft:`3px solid ${T.orange}`,color:T.orange}}>Decent week at {completionRate}%. Push for 80%+ next week.</div>}
           {completionRate > 0 && completionRate < 50 && <div style={{padding:"6px 10px",background:T.redD,borderRadius:6,borderLeft:`3px solid ${T.red}`,color:T.red}}>Tough week — only {completionRate}% completed. Consider adjusting your plan.</div>}
-          {totalTasks === 0 && <div style={{padding:"6px 10px",background:T.input,borderRadius:6,color:T.dim}}>No tasks scheduled. Use Course Planner to generate a study plan.</div>}
+          {totalTasks === 0 && <div style={{padding:"6px 10px",background:T.input,borderRadius:6,color:T.dim}}>No tasks scheduled. Use Study Planner to generate a study plan.</div>}
           {weekSessionHrs > 0 && <div style={{color:T.soft}}>You logged {weekSessionHrs}h of focused study across {studyDays} day{studyDays!==1?"s":""}.</div>}
           {avgMinsPerStudyDay > 0 && <div style={{color:T.soft}}>Your all-time average is {Math.round(avgMinsPerStudyDay/6)/10}h per study day ({uniqueDays} days tracked).</div>}
           {sessionDelta > 0 && <div style={{color:T.accent}}>Up {sessionDelta}h from last week — keep it going!</div>}

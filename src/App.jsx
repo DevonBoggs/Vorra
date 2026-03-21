@@ -39,7 +39,8 @@ import { WeeklyReportPage } from "./pages/Report/WeeklyReportPage.jsx";
 import { PracticeExamPage } from "./pages/Quiz/PracticeExamPage.jsx";
 import { DailyPage } from "./pages/Daily/DailyPage.jsx";
 import { DegreeDashboard } from "./pages/Dashboard/DegreeDashboard.jsx";
-import { CoursePlanner } from "./pages/Planner/CoursePlanner.jsx";
+import { MyCoursesPage } from "./pages/Courses/MyCoursesPage.jsx";
+import { StudyPlannerPage } from "./pages/Planner/StudyPlannerPage.jsx";
 import { StudyChatPage } from "./pages/Chat/StudyChatPage.jsx";
 import { SettingsPage } from "./pages/Settings/SettingsPage.jsx";
 import { AmbientPage } from "./pages/Ambient/AmbientPage.jsx";
@@ -179,6 +180,15 @@ function useCssInjection(T) {
 .sf-row:hover{background:${T.input} !important}
 .sf-input:hover{border-color:${T.borderL} !important}
 .sf-input:focus{border-color:${T.accent} !important;box-shadow:0 0 0 3px ${T.accentD} !important}
+.sf-import-btn{transition:transform .2s cubic-bezier(.4,0,.2,1),box-shadow .25s ease,border-color .2s ease,background .2s ease,filter .2s ease}
+.sf-import-btn:hover:not(:disabled){transform:translateY(-3px);filter:brightness(1.1)}
+.sf-import-btn:active:not(:disabled){transform:translateY(0) scale(.98)}
+.sf-import-accent:hover:not(:disabled){border-color:${T.accent}88 !important;background:${T.accent}28 !important;box-shadow:0 0 20px ${T.accentM},0 8px 24px rgba(0,0,0,.3)}
+.sf-import-accent:focus-visible{border-color:${T.accent}88 !important;box-shadow:0 0 20px ${T.accentM},0 0 0 2px ${T.accent} !important}
+.sf-import-blue:hover:not(:disabled){border-color:${T.blue}88 !important;background:${T.blue}28 !important;box-shadow:0 0 20px ${T.blue}33,0 8px 24px rgba(0,0,0,.3)}
+.sf-import-blue:focus-visible{border-color:${T.blue}88 !important;box-shadow:0 0 20px ${T.blue}33,0 0 0 2px ${T.blue} !important}
+.sf-step-head{transition:background .15s ease}
+.sf-step-head:hover{background:${T.input}08 !important}
 `;
   }, [T]);
 }
@@ -311,7 +321,7 @@ export default function App() {
     <ErrorBoundary>
       <div style={{ display: "flex", height: "100vh", background: T.bg, color: T.text, fontFamily: "'Outfit','Inter',sans-serif", zoom: (data.uiZoom || 100) / 100 }}>
         <ToastContainer />
-        <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmdAction} courses={data.courses || []} recentPages={recentPages} />
+        <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmdAction} courses={data.courses || []} recentPages={recentPages} data={data} />
 
         {/* ══ SIDEBAR ══════════════════════════════════════════════ */}
         <aside ref={sideRef} style={{ width: sideCollapsed ? 56 : sideW, minWidth: sideCollapsed ? 56 : 180, maxWidth: 360, height: "100vh", background: `linear-gradient(180deg, ${T.panel}, ${T.bg2})`, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, position: "relative", transition: sideCollapsed ? "none" : "width .2s cubic-bezier(.4,0,.2,1)" }}>
@@ -466,7 +476,8 @@ export default function App() {
           <main style={{ height: "100%", overflow: "auto", padding: sideCollapsed ? bp.padCol : bp.pad, display: page === "ambient" ? "none" : "block" }} key={page + date}>
             <div style={{ maxWidth: bp.maxW, margin: "0 auto" }}>
               {page === "dashboard" && <DegreeDashboard data={data} setData={setData} setPage={setPage} setDate={setDate} Btn={Btn} />}
-              {page === "planner" && <CoursePlanner data={data} setData={setData} profile={profile} setPage={setPage} Btn={Btn} />}
+              {page === "courses" && <MyCoursesPage data={data} setData={setData} profile={profile} setPage={setPage} setDate={setDate} />}
+              {page === "planner" && <StudyPlannerPage data={data} setData={setData} profile={profile} setPage={setPage} />}
               {page === "daily" && <DailyPage date={date} tasks={dayTasks} setTasks={setDayTasks} profile={profile} data={data} setData={setData} setDate={setDate} Btn={Btn} />}
               {page === "calendar" && <CalendarPage date={date} setDate={setDate} tasks={data.tasks || {}} setPage={setPage} Btn={Btn} />}
               {page === "chat" && <StudyChatPage data={data} setData={setData} profile={profile} Btn={Btn} />}

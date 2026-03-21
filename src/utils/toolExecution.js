@@ -42,18 +42,25 @@ export function findCourse(courses, match) {
   return courses.findIndex(c => c.name.toLowerCase().includes(l) || (c.courseCode||'').toLowerCase().includes(l));
 }
 
+const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan'];
+
 export function executeTools(toolCalls, data, setData) {
   dlog('tool','tool',`Executing ${toolCalls.length} tool(s)`);
   const results = [];
   for (const call of toolCalls) {
     const { name, input } = call;
     dlog('tool','tool',`Tool: ${name}`, { id: call.id });
+    if (!VALID_TOOLS.includes(name)) {
+      dlog('warn', 'tool', `Rejected unknown tool: ${name}`);
+      results.push({id: call.id, result: `Unknown tool: ${name}`});
+      continue;
+    }
     try {
       if (name === "add_tasks") {
         const ct = safeArr(input.tasks).length;
         setData(d => {
           const tasks = { ...d.tasks };
-          for (const t of safeArr(input.tasks)) { const dt=t.date||todayStr(); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:t.time,endTime:t.endTime||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false}); }
+          for (const t of safeArr(input.tasks)) { const dt=t.date||todayStr(); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:t.time,endTime:t.endTime||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false,courseId:t.courseId||""}); }
           return { ...d, tasks };
         });
         results.push({id:call.id,result:`Added ${ct} task(s)`});
@@ -119,7 +126,15 @@ export function executeTools(toolCalls, data, setData) {
         const enrichNames = [];
         setData(d => ({...d, courses:d.courses.map(c => {
           const e = safeArr(input.enrichments).find(e => { if(!e?.course_name_match) return false; const l=e.course_name_match.toLowerCase(); return c.name.toLowerCase().includes(l)||(c.courseCode||'').toLowerCase().includes(l); });
-          if (!e) return c; enriched++; enrichNames.push(c.name); return deepMergeCourse(c, e);
+          if (!e) return c;
+          enriched++; enrichNames.push(c.name);
+          const merged = deepMergeCourse(c, e);
+          // Guarantee averageStudyHours is set after enrichment
+          if (!merged.averageStudyHours || merged.averageStudyHours <= 0) {
+            merged.averageStudyHours = [0, 20, 35, 50, 70, 100][merged.difficulty || 3] || 50;
+            dlog('info', 'tool', `Auto-set averageStudyHours=${merged.averageStudyHours} for ${c.name} (from difficulty ${merged.difficulty || 3})`);
+          }
+          return merged;
         })}));
         results.push({id:call.id,result:`Enriched ${enrichNames.length} course(s): ${enrichNames.join(", ")}`});
         if (enrichNames.length > 0) toast(`Enriched: ${enrichNames.join(", ")}`,"success");
@@ -128,13 +143,12 @@ export function executeTools(toolCalls, data, setData) {
         const ct = safeArr(input.daily_tasks).length;
         setData(d => {
           const tasks = { ...d.tasks };
-          for (const t of safeArr(input.daily_tasks)) { const dt=t.date||todayStr(); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:t.time,endTime:t.endTime||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false}); }
+          for (const t of safeArr(input.daily_tasks)) { const dt=t.date||todayStr(); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:t.time,endTime:t.endTime||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false,courseId:t.courseId||""}); }
           return { ...d, tasks };
         });
         results.push({id:call.id,result:`Plan: ${input.summary||'(no summary)'}. ${ct} tasks added.`});
         toast(`Study plan created: ${ct} tasks`,"success");
       }
-      else { results.push({id:call.id,result:`Unknown tool: ${name}`}); }
     } catch(e) {
       dlog('error','tool',`Tool "${name}" error`, e.message);
       results.push({id:call.id,result:`Error: ${e.message}`});

@@ -15,35 +15,43 @@ import { TOOLS } from "../../constants/tools.js";
 import { INIT } from "../../systems/storage.js";
 
 const PROVIDERS = {
-  // ── Direct API ──
-  anthropic: { cat:"direct", name:"Anthropic", url:"https://api.anthropic.com/v1/messages", models:["claude-opus-4-20250514","claude-sonnet-4-20250514","claude-haiku-4-5-20251001"], default:"claude-sonnet-4-20250514", keyHint:"sk-ant-...", color:"#d97706" },
-  openai: { cat:"direct", name:"OpenAI", url:"https://api.openai.com/v1/chat/completions", models:["gpt-4o","gpt-4o-mini","gpt-4.1","gpt-4.1-mini","o3","o4-mini"], default:"gpt-4o", keyHint:"sk-...", color:"#10a37f" },
-  deepseek: { cat:"direct", name:"DeepSeek", url:"https://api.deepseek.com/v1/chat/completions", models:["deepseek-chat","deepseek-reasoner","deepseek-coder"], default:"deepseek-chat", keyHint:"sk-...", color:"#4f6df5" },
-  zai: { cat:"direct", name:"Z.AI", url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0" },
-  mistral: { cat:"direct", name:"Mistral", url:"https://api.mistral.ai/v1/chat/completions", models:["mistral-large-latest","mistral-small-latest","codestral-latest","mistral-medium-latest"], default:"mistral-large-latest", keyHint:"...", color:"#ff7000" },
-  gemini: { cat:"direct", name:"Google Gemini", url:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", models:["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"], default:"gemini-2.5-flash", keyHint:"AIza...", color:"#4285f4" },
-  xai: { cat:"direct", name:"xAI (Grok)", url:"https://api.x.ai/v1/chat/completions", models:["grok-3","grok-3-mini","grok-2"], default:"grok-3-mini", keyHint:"xai-...", color:"#1da1f2" },
-  cohere: { cat:"direct", name:"Cohere", url:"https://api.cohere.com/v2/chat", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
-  ai21: { cat:"direct", name:"AI21", url:"https://api.ai21.com/studio/v1/chat/completions", models:["jamba-1.5-large","jamba-1.5-mini"], default:"jamba-1.5-large", keyHint:"...", color:"#6c3ea0" },
+  // ── Direct API (sorted by popularity) ──
+  openai:    { cat:"direct", name:"OpenAI",       icon:"ProvOpenAI",    url:"https://api.openai.com/v1/chat/completions", models:["gpt-4o","gpt-4o-mini","gpt-4.1","gpt-4.1-mini","o3","o4-mini"], default:"gpt-4o", keyHint:"sk-...", color:"#10a37f" },
+  anthropic: { cat:"direct", name:"Anthropic",    icon:"ProvAnthropic", url:"https://api.anthropic.com/v1/messages", models:["claude-opus-4-20250514","claude-sonnet-4-20250514","claude-haiku-4-5-20251001"], default:"claude-sonnet-4-20250514", keyHint:"sk-ant-...", color:"#d97706" },
+  deepseek:  { cat:"direct", name:"DeepSeek",     icon:"ProvDeepSeek",  url:"https://api.deepseek.com/v1/chat/completions", models:["deepseek-chat","deepseek-reasoner","deepseek-coder"], default:"deepseek-chat", keyHint:"sk-...", color:"#4f6df5" },
+  gemini:    { cat:"direct", name:"Google Gemini", icon:"ProvGemini",   url:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", models:["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"], default:"gemini-2.5-flash", keyHint:"AIza...", color:"#4285f4" },
+  mistral:   { cat:"direct", name:"Mistral",      icon:"ProvMistral",   url:"https://api.mistral.ai/v1/chat/completions", models:["mistral-large-latest","mistral-small-latest","codestral-latest","mistral-medium-latest"], default:"mistral-large-latest", keyHint:"...", color:"#ff7000" },
+  xai:       { cat:"direct", name:"xAI (Grok)",   icon:"ProvXAI",      url:"https://api.x.ai/v1/chat/completions", models:["grok-3","grok-3-mini","grok-2"], default:"grok-3-mini", keyHint:"xai-...", color:"#1da1f2" },
+  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0" },
+  cohere:    { cat:"direct", name:"Cohere",       icon:"ProvCohere",   url:"https://api.cohere.com/v2/chat", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
+  ai21:      { cat:"direct", name:"AI21",         icon:"ProvAI21",     url:"https://api.ai21.com/studio/v1/chat/completions", models:["jamba-1.5-large","jamba-1.5-mini"], default:"jamba-1.5-large", keyHint:"...", color:"#6c3ea0" },
 
-  // ── Aggregators / Proxies ──
-  openrouter: { cat:"aggregator", name:"OpenRouter", url:"https://openrouter.ai/api/v1/chat/completions", models:["anthropic/claude-sonnet-4","openai/gpt-4o","deepseek/deepseek-chat","google/gemini-2.5-pro","meta-llama/llama-3.3-70b-instruct"], default:"anthropic/claude-sonnet-4", keyHint:"sk-or-...", color:"#7c3aed" },
-  groq: { cat:"aggregator", name:"Groq", url:"https://api.groq.com/openai/v1/chat/completions", models:["llama-3.3-70b-versatile","deepseek-r1-distill-llama-70b","mixtral-8x7b-32768","gemma2-9b-it"], default:"llama-3.3-70b-versatile", keyHint:"gsk_...", color:"#f55036" },
-  together: { cat:"aggregator", name:"Together AI", url:"https://api.together.xyz/v1/chat/completions", models:["meta-llama/Llama-3.3-70B-Instruct","deepseek-ai/DeepSeek-R1","Qwen/Qwen2.5-72B-Instruct","mistralai/Mixtral-8x22B-Instruct-v0.1"], default:"meta-llama/Llama-3.3-70B-Instruct", keyHint:"...", color:"#0ea5e9" },
-  fireworks: { cat:"aggregator", name:"Fireworks AI", url:"https://api.fireworks.ai/inference/v1/chat/completions", models:["accounts/fireworks/models/llama-v3p3-70b-instruct","accounts/fireworks/models/deepseek-r1","accounts/fireworks/models/qwen2p5-72b-instruct"], default:"accounts/fireworks/models/llama-v3p3-70b-instruct", keyHint:"fw_...", color:"#ff6b35" },
-  perplexity: { cat:"aggregator", name:"Perplexity", url:"https://api.perplexity.ai/chat/completions", models:["sonar-pro","sonar","sonar-deep-research"], default:"sonar-pro", keyHint:"pplx-...", color:"#20b2aa" },
+  // ── Aggregators / Proxies (sorted by popularity) ──
+  openrouter: { cat:"aggregator", name:"OpenRouter",   icon:"ProvOpenRouter", url:"https://openrouter.ai/api/v1/chat/completions", models:["anthropic/claude-sonnet-4","openai/gpt-4o","deepseek/deepseek-chat","google/gemini-2.5-pro","meta-llama/llama-3.3-70b-instruct"], default:"anthropic/claude-sonnet-4", keyHint:"sk-or-...", color:"#7c3aed" },
+  groq:       { cat:"aggregator", name:"Groq",         icon:"ProvGroq",      url:"https://api.groq.com/openai/v1/chat/completions", models:["llama-3.3-70b-versatile","deepseek-r1-distill-llama-70b","mixtral-8x7b-32768","gemma2-9b-it"], default:"llama-3.3-70b-versatile", keyHint:"gsk_...", color:"#f55036" },
+  together:   { cat:"aggregator", name:"Together AI",  icon:"ProvTogether",  url:"https://api.together.xyz/v1/chat/completions", models:["meta-llama/Llama-3.3-70B-Instruct","deepseek-ai/DeepSeek-R1","Qwen/Qwen2.5-72B-Instruct","mistralai/Mixtral-8x22B-Instruct-v0.1"], default:"meta-llama/Llama-3.3-70B-Instruct", keyHint:"...", color:"#0ea5e9" },
+  cerebras:   { cat:"aggregator", name:"Cerebras",     icon:"ProvCerebras",  url:"https://api.cerebras.ai/v1/chat/completions", models:["llama-3.3-70b","llama-3.1-8b"], default:"llama-3.3-70b", keyHint:"csk-...", color:"#ff4500" },
+  fireworks:  { cat:"aggregator", name:"Fireworks AI", icon:"ProvFireworks", url:"https://api.fireworks.ai/inference/v1/chat/completions", models:["accounts/fireworks/models/llama-v3p3-70b-instruct","accounts/fireworks/models/deepseek-r1","accounts/fireworks/models/qwen2p5-72b-instruct"], default:"accounts/fireworks/models/llama-v3p3-70b-instruct", keyHint:"fw_...", color:"#ff6b35" },
+  sambanova:  { cat:"aggregator", name:"SambaNova",    icon:"ProvSambaNova", url:"https://api.sambanova.ai/v1/chat/completions", models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-R1","Qwen2.5-72B-Instruct"], default:"Meta-Llama-3.3-70B-Instruct", keyHint:"...", color:"#00b4d8" },
+  perplexity: { cat:"aggregator", name:"Perplexity",   icon:"ProvPerplexity",url:"https://api.perplexity.ai/chat/completions", models:["sonar-pro","sonar","sonar-deep-research"], default:"sonar-pro", keyHint:"pplx-...", color:"#20b2aa" },
+  nanogpt:    { cat:"aggregator", name:"NanoGPT",      icon:"ProvNanoGPT",   url:"https://api.nano-gpt.com/v1/chat/completions", models:["chatgpt-4o-latest","claude-sonnet-4","deepseek-chat","llama-3.3-70b"], default:"chatgpt-4o-latest", keyHint:"nano-...", color:"#a855f7" },
+  novita:     { cat:"aggregator", name:"Novita AI",    icon:"ProvNovita",    url:"https://api.novita.ai/v3/openai/chat/completions", models:["meta-llama/llama-3.3-70b-instruct","deepseek/deepseek-r1","mistralai/mistral-large-latest"], default:"meta-llama/llama-3.3-70b-instruct", keyHint:"...", color:"#8b5cf6" },
+  shuttleai:  { cat:"aggregator", name:"ShuttleAI",    icon:"ProvShuttleAI", url:"https://api.shuttleai.com/v1/chat/completions", models:["shuttle-3","gpt-4o","claude-sonnet-4"], default:"shuttle-3", keyHint:"shuttle-...", color:"#6366f1" },
+  hyperbolic: { cat:"aggregator", name:"Hyperbolic",   icon:"ProvHyperbolic",url:"https://api.hyperbolic.xyz/v1/chat/completions", models:["meta-llama/Llama-3.3-70B-Instruct","deepseek-ai/DeepSeek-R1","Qwen/Qwen2.5-72B-Instruct"], default:"meta-llama/Llama-3.3-70B-Instruct", keyHint:"...", color:"#ec4899" },
+  chutes:     { cat:"aggregator", name:"Chutes AI",    icon:"ProvChutes",    url:"https://api.chutes.ai/v1/chat/completions", models:["deepseek-ai/DeepSeek-R1","meta-llama/Llama-3.3-70B-Instruct"], default:"deepseek-ai/DeepSeek-R1", keyHint:"cpk-...", color:"#14b8a6" },
+  lepton:     { cat:"aggregator", name:"Lepton AI",    icon:"ProvLepton",    url:"https://llama3-3-70b.lepton.run/api/v1/chat/completions", models:["llama3.3-70b"], default:"llama3.3-70b", keyHint:"...", color:"#f59e0b" },
 
-  // ── Local / Self-Hosted ──
-  ollama: { cat:"local", name:"Ollama", url:"http://localhost:11434/v1/chat/completions", models:["llama3.3","deepseek-r1","qwen2.5","mistral","codellama","phi4","gemma2"], default:"llama3.3", keyHint:"(none needed)", color:"#ffffff" },
-  lmstudio: { cat:"local", name:"LM Studio", url:"http://localhost:1234/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#22d3ee" },
-  vllm: { cat:"local", name:"vLLM", url:"http://localhost:8000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#a78bfa" },
-  localai: { cat:"local", name:"LocalAI", url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#34d399" },
-  jan: { cat:"local", name:"Jan", url:"http://localhost:1337/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#fb923c" },
-  gpt4all: { cat:"local", name:"GPT4All", url:"http://localhost:4891/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#60a5fa" },
-  llamacpp: { cat:"local", name:"llama.cpp", url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#e2e8f0" },
-  koboldcpp: { cat:"local", name:"Kobold.cpp", url:"http://localhost:5001/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#f472b6" },
-  oobabooga: { cat:"local", name:"text-gen-webui", url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#facc15" },
-  tabbyapi: { cat:"local", name:"TabbyAPI", url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#c084fc" },
+  // ── Local / Self-Hosted (sorted by popularity) ──
+  ollama:    { cat:"local", name:"Ollama",        icon:"ProvOllama",    url:"http://localhost:11434/v1/chat/completions", models:["llama3.3","deepseek-r1","qwen2.5","mistral","codellama","phi4","gemma2"], default:"llama3.3", keyHint:"(none needed)", color:"#ffffff" },
+  lmstudio:  { cat:"local", name:"LM Studio",    icon:"ProvLMStudio",  url:"http://localhost:1234/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#22d3ee" },
+  vllm:      { cat:"local", name:"vLLM",          icon:"ProvVLLM",     url:"http://localhost:8000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#a78bfa" },
+  jan:       { cat:"local", name:"Jan",            icon:"ProvJan",      url:"http://localhost:1337/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#fb923c" },
+  gpt4all:   { cat:"local", name:"GPT4All",       icon:"ProvGPT4All",  url:"http://localhost:4891/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#60a5fa" },
+  localai:   { cat:"local", name:"LocalAI",       icon:"ProvLocalAI",  url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#34d399" },
+  llamacpp:  { cat:"local", name:"llama.cpp",     icon:"ProvLlamaCpp", url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#e2e8f0" },
+  koboldcpp: { cat:"local", name:"Kobold.cpp",    icon:"ProvKoboldCpp",url:"http://localhost:5001/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#f472b6" },
+  oobabooga: { cat:"local", name:"text-gen-webui",icon:"ProvOobabooga",url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#facc15" },
+  tabbyapi:  { cat:"local", name:"TabbyAPI",      icon:"ProvTabbyAPI", url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#c084fc" },
 };
 
 const PROVIDER_CATS = [
@@ -275,7 +283,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
             <div style={{fontSize:fs(12),fontWeight:600,color:T.soft,marginBottom:8}}>Font Size</div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:fs(11),color:T.dim}}>A</span>
-              <input type="range" min="75" max="300" step="5" value={data.fontScale||100} onChange={e=>{const v=Number(e.target.value);_fontScale=v;setData(d=>({...d,fontScale:v}))}} style={{flex:1,accentColor:T.accent}}/>
+              <input type="range" min="75" max="300" step="5" value={data.fontScale||100} onChange={e=>{const v=Number(e.target.value);setFontScale(v);setData(d=>({...d,fontScale:v}))}} style={{flex:1,accentColor:T.accent}}/>
               <span style={{fontSize:fs(16),color:T.dim}}>A</span>
               <span style={{fontSize:fs(12),fontWeight:700,color:T.accent,minWidth:36,textAlign:"center"}}>{data.fontScale||100}%</span>
               {(data.fontScale||100)!==100&&<Btn small v="ghost" onClick={()=>setData(d=>({...d,fontScale:100}))}>Reset</Btn>}
@@ -533,12 +541,15 @@ const SettingsPage = ({ data, setData, setPage }) => {
                 <span style={{fontSize:fs(13),fontWeight:700}}>{PROVIDER_CATS.find(c=>c.key===addCategory)?.label}</span>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
-                {Object.entries(PROVIDERS).filter(([,p]) => p.cat === addCategory).map(([key, p]) => (
-                  <button key={key} className="sf-card" onClick={() => openAdd(key)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${T.border}`,background:T.input,color:T.text,textAlign:"left",transition:"all .15s"}}>
-                    <div style={{width:10,height:10,borderRadius:"50%",background:p.color,flexShrink:0,boxShadow:`0 0 6px ${p.color}66`}}/>
-                    <span style={{fontSize:fs(12),fontWeight:600}}>{p.name}</span>
-                  </button>
-                ))}
+                {Object.entries(PROVIDERS).filter(([,p]) => p.cat === addCategory).map(([key, p]) => {
+                  const ProvIcon = p.icon ? Ic[p.icon] : null;
+                  return (
+                    <button key={key} className="sf-card" onClick={() => openAdd(key)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${T.border}`,background:T.input,color:T.text,textAlign:"left",transition:"all .15s"}}>
+                      {ProvIcon ? <ProvIcon s={20} c={p.color}/> : <div style={{width:12,height:12,borderRadius:"50%",background:p.color,flexShrink:0,boxShadow:`0 0 6px ${p.color}66`}}/>}
+                      <span style={{fontSize:fs(12),fontWeight:600}}>{p.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

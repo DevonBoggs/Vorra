@@ -14,12 +14,43 @@ import { Btn } from "../../components/ui/Btn.jsx";
 import { TOOLS } from "../../constants/tools.js";
 import { INIT } from "../../systems/storage.js";
 
-const PRESETS = {
-  anthropic: { name:"Anthropic", url:"https://api.anthropic.com/v1/messages", model:"claude-sonnet-4-20250514" },
-  openai: { name:"OpenAI", url:"https://api.openai.com/v1/chat/completions", model:"gpt-4o" },
-  zai: { name:"Z.AI", url:"https://api.z.ai/api/coding/paas/v4/chat/completions", model:"glm-5-turbo" },
-  custom: { name:"Custom", url:"", model:"" },
+const PROVIDERS = {
+  // ── Direct API ──
+  anthropic: { cat:"direct", name:"Anthropic", url:"https://api.anthropic.com/v1/messages", models:["claude-opus-4-20250514","claude-sonnet-4-20250514","claude-haiku-4-5-20251001"], default:"claude-sonnet-4-20250514", keyHint:"sk-ant-...", color:"#d97706" },
+  openai: { cat:"direct", name:"OpenAI", url:"https://api.openai.com/v1/chat/completions", models:["gpt-4o","gpt-4o-mini","gpt-4.1","gpt-4.1-mini","o3","o4-mini"], default:"gpt-4o", keyHint:"sk-...", color:"#10a37f" },
+  deepseek: { cat:"direct", name:"DeepSeek", url:"https://api.deepseek.com/v1/chat/completions", models:["deepseek-chat","deepseek-reasoner","deepseek-coder"], default:"deepseek-chat", keyHint:"sk-...", color:"#4f6df5" },
+  zai: { cat:"direct", name:"Z.AI", url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0" },
+  mistral: { cat:"direct", name:"Mistral", url:"https://api.mistral.ai/v1/chat/completions", models:["mistral-large-latest","mistral-small-latest","codestral-latest","mistral-medium-latest"], default:"mistral-large-latest", keyHint:"...", color:"#ff7000" },
+  gemini: { cat:"direct", name:"Google Gemini", url:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", models:["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"], default:"gemini-2.5-flash", keyHint:"AIza...", color:"#4285f4" },
+  xai: { cat:"direct", name:"xAI (Grok)", url:"https://api.x.ai/v1/chat/completions", models:["grok-3","grok-3-mini","grok-2"], default:"grok-3-mini", keyHint:"xai-...", color:"#1da1f2" },
+  cohere: { cat:"direct", name:"Cohere", url:"https://api.cohere.com/v2/chat", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
+  ai21: { cat:"direct", name:"AI21", url:"https://api.ai21.com/studio/v1/chat/completions", models:["jamba-1.5-large","jamba-1.5-mini"], default:"jamba-1.5-large", keyHint:"...", color:"#6c3ea0" },
+
+  // ── Aggregators / Proxies ──
+  openrouter: { cat:"aggregator", name:"OpenRouter", url:"https://openrouter.ai/api/v1/chat/completions", models:["anthropic/claude-sonnet-4","openai/gpt-4o","deepseek/deepseek-chat","google/gemini-2.5-pro","meta-llama/llama-3.3-70b-instruct"], default:"anthropic/claude-sonnet-4", keyHint:"sk-or-...", color:"#7c3aed" },
+  groq: { cat:"aggregator", name:"Groq", url:"https://api.groq.com/openai/v1/chat/completions", models:["llama-3.3-70b-versatile","deepseek-r1-distill-llama-70b","mixtral-8x7b-32768","gemma2-9b-it"], default:"llama-3.3-70b-versatile", keyHint:"gsk_...", color:"#f55036" },
+  together: { cat:"aggregator", name:"Together AI", url:"https://api.together.xyz/v1/chat/completions", models:["meta-llama/Llama-3.3-70B-Instruct","deepseek-ai/DeepSeek-R1","Qwen/Qwen2.5-72B-Instruct","mistralai/Mixtral-8x22B-Instruct-v0.1"], default:"meta-llama/Llama-3.3-70B-Instruct", keyHint:"...", color:"#0ea5e9" },
+  fireworks: { cat:"aggregator", name:"Fireworks AI", url:"https://api.fireworks.ai/inference/v1/chat/completions", models:["accounts/fireworks/models/llama-v3p3-70b-instruct","accounts/fireworks/models/deepseek-r1","accounts/fireworks/models/qwen2p5-72b-instruct"], default:"accounts/fireworks/models/llama-v3p3-70b-instruct", keyHint:"fw_...", color:"#ff6b35" },
+  perplexity: { cat:"aggregator", name:"Perplexity", url:"https://api.perplexity.ai/chat/completions", models:["sonar-pro","sonar","sonar-deep-research"], default:"sonar-pro", keyHint:"pplx-...", color:"#20b2aa" },
+
+  // ── Local / Self-Hosted ──
+  ollama: { cat:"local", name:"Ollama", url:"http://localhost:11434/v1/chat/completions", models:["llama3.3","deepseek-r1","qwen2.5","mistral","codellama","phi4","gemma2"], default:"llama3.3", keyHint:"(none needed)", color:"#ffffff" },
+  lmstudio: { cat:"local", name:"LM Studio", url:"http://localhost:1234/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#22d3ee" },
+  vllm: { cat:"local", name:"vLLM", url:"http://localhost:8000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#a78bfa" },
+  localai: { cat:"local", name:"LocalAI", url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#34d399" },
+  jan: { cat:"local", name:"Jan", url:"http://localhost:1337/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#fb923c" },
+  gpt4all: { cat:"local", name:"GPT4All", url:"http://localhost:4891/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#60a5fa" },
+  llamacpp: { cat:"local", name:"llama.cpp", url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#e2e8f0" },
+  koboldcpp: { cat:"local", name:"Kobold.cpp", url:"http://localhost:5001/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#f472b6" },
+  oobabooga: { cat:"local", name:"text-gen-webui", url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#facc15" },
+  tabbyapi: { cat:"local", name:"TabbyAPI", url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#c084fc" },
 };
+
+const PROVIDER_CATS = [
+  { key:"direct", label:"Direct API", desc:"Connect directly to AI providers", icon:"IcGlobe" },
+  { key:"aggregator", label:"Aggregator / Proxy", desc:"Multi-model access with one API key", icon:"AI" },
+  { key:"local", label:"Local / Self-Hosted", desc:"Run models on your own hardware", icon:"IcChart" },
+];
 function getAuthHeaders(profile) {
   const h = { "Content-Type": "application/json" };
   const url = profile.baseUrl || "";
@@ -47,19 +78,23 @@ const SettingsPage = ({ data, setData, setPage }) => {
   const [testResult, setTestResult] = useState(null);
   const [models, setModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [addCategory, setAddCategory] = useState(null);
   const profiles = data.profiles || [];
 
-  const openAdd = (prov = "anthropic") => {
-    const p = PRESETS[prov];
-    dlog('debug', 'profile', `Opening add: ${prov}`);
-    setForm({ provider:prov, name:p.name, apiKey:"", baseUrl:p.url, model:p.model });
-    setEditId(null); setTestResult(null); setModels([]);
+  const openAdd = (provKey = "anthropic") => {
+    const p = PROVIDERS[provKey];
+    if (!p) return;
+    dlog('debug', 'profile', `Opening add: ${provKey}`);
+    setForm({ provider: provKey, name: p.name, apiKey: "", baseUrl: p.url, model: p.default });
+    setEditId(null); setTestResult(null); setModels(p.models || []);
+    setAddCategory(p.cat);
     setShowAdd(true);
   };
   const openEdit = (prof) => {
     dlog('debug', 'profile', `Editing: ${prof.name}`);
     setForm({ provider:prof.provider||"custom", name:prof.name, apiKey:prof.apiKey, baseUrl:prof.baseUrl, model:prof.model });
-    setEditId(prof.id); setTestResult(null); setModels([]);
+    setEditId(prof.id); setTestResult(null); setModels(PROVIDERS[prof.provider]?.models || []);
+    setAddCategory(null);
     setShowAdd(true);
   };
   const saveProfile = () => {
@@ -174,12 +209,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
             <h3 style={{fontSize:fs(16),fontWeight:700,marginBottom:2}}>AI Connection Profiles</h3>
             <p style={{fontSize:fs(11),color:T.dim}}>Connect to Claude, GPT, or any OpenAI-compatible API</p>
           </div>
-          <div style={{display:"flex",gap:6}}>
-            <Btn small v="ai" onClick={()=>openAdd("anthropic")}>+ Anthropic</Btn>
-            <Btn small v="secondary" onClick={()=>openAdd("openai")}>+ OpenAI</Btn>
-            <Btn small v="secondary" onClick={()=>openAdd("zai")}>+ Z.AI</Btn>
-            <Btn small v="ghost" onClick={()=>openAdd("custom")}>+ Custom</Btn>
-          </div>
+          <Btn small v="ai" onClick={() => { setAddCategory(null); setEditId(null); setTestResult(null); setModels([]); setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setShowAdd(true); }}>+ Add Profile</Btn>
         </div>
         {profiles.length===0?<p style={{fontSize:fs(12),color:T.dim,textAlign:"center",padding:20,background:T.input,borderRadius:10}}>No AI profiles yet — add one to get started</p>:(
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -471,44 +501,109 @@ const SettingsPage = ({ data, setData, setPage }) => {
       {/* Profile Add/Edit Modal */}
       {showAdd && (
         <Modal title={editId ? "Edit Profile" : "Add AI Profile"} onClose={() => setShowAdd(false)} wide>
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {/* Provider presets */}
-            {!editId && (
-              <div style={{display:"flex",gap:6,marginBottom:4}}>
-                {Object.entries(PRESETS).map(([k, p]) => (
-                  <button key={k} className="sf-chip" onClick={() => setForm(f => ({...f, provider:k, name:p.name, baseUrl:p.url, model:p.model}))} style={{flex:1,padding:"8px 0",borderRadius:8,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${form.provider===k?T.accent:T.border}`,background:form.provider===k?T.accentD:T.input,color:form.provider===k?T.accent:T.soft,textAlign:"center"}}>{p.name}</button>
+          {/* ── Step 1: Category Selection ── */}
+          {!editId && addCategory === null && !form.provider && (
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <p style={{fontSize:fs(12),color:T.dim,marginBottom:4}}>Choose a provider type to get started</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+                {PROVIDER_CATS.map(cat => {
+                  const CatIcon = Ic[cat.icon];
+                  return (
+                    <button key={cat.key} className="sf-card" onClick={() => setAddCategory(cat.key)} style={{padding:"20px 16px",borderRadius:12,cursor:"pointer",border:`1.5px solid ${T.border}`,background:T.input,color:T.text,textAlign:"center",transition:"all .2s"}}>
+                      <div style={{marginBottom:8}}>{CatIcon && <CatIcon s={22} c={T.accent}/>}</div>
+                      <div style={{fontSize:fs(13),fontWeight:700,marginBottom:4}}>{cat.label}</div>
+                      <div style={{fontSize:fs(10),color:T.dim}}>{cat.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button className="sf-chip" onClick={() => { setForm({ provider:"custom", name:"Custom", apiKey:"", baseUrl:"", model:"" }); setAddCategory("custom"); }} style={{padding:"10px 16px",borderRadius:8,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.soft,textAlign:"center"}}>
+                + Custom Provider (manual configuration)
+              </button>
+            </div>
+          )}
+
+          {/* ── Step 2: Provider Grid ── */}
+          {!editId && addCategory !== null && addCategory !== "custom" && !form.provider && (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                <button className="sf-chip" onClick={() => setAddCategory(null)} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
+                  Back
+                </button>
+                <span style={{fontSize:fs(13),fontWeight:700}}>{PROVIDER_CATS.find(c=>c.key===addCategory)?.label}</span>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
+                {Object.entries(PROVIDERS).filter(([,p]) => p.cat === addCategory).map(([key, p]) => (
+                  <button key={key} className="sf-card" onClick={() => openAdd(key)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${T.border}`,background:T.input,color:T.text,textAlign:"left",transition:"all .15s"}}>
+                    <div style={{width:10,height:10,borderRadius:"50%",background:p.color,flexShrink:0,boxShadow:`0 0 6px ${p.color}66`}}/>
+                    <span style={{fontSize:fs(12),fontWeight:600}}>{p.name}</span>
+                  </button>
                 ))}
               </div>
-            )}
-            <div><Label>Profile Name</Label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. My Claude API"/></div>
-            <div><Label>API Key</Label><input type="password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={isAnthProvider(form)?"sk-ant-...":"sk-..."}/></div>
-            <div><Label>Base URL</Label><input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://api.anthropic.com/v1/messages"/></div>
-            <div>
-              <Label>Model</Label>
-              {models.length > 0 ? (
-                <select value={form.model} onChange={e=>setForm({...form,model:e.target.value})}>
-                  <option value="">Select a model...</option>
-                  {models.map(m=><option key={m} value={m}>{m}</option>)}
-                </select>
-              ) : (
-                <input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder={isAnthProvider(form)?"claude-sonnet-4-20250514":"gpt-4o"}/>
+            </div>
+          )}
+
+          {/* ── Step 3: Configure Form ── */}
+          {(form.provider || editId) && (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {/* Back button (only when adding, not editing) */}
+              {!editId && form.provider !== "custom" && (
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                  <button className="sf-chip" onClick={() => { setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setModels([]); setTestResult(null); }} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
+                    Back
+                  </button>
+                  {PROVIDERS[form.provider] && (
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:PROVIDERS[form.provider].color}}/>
+                      <span style={{fontSize:fs(13),fontWeight:700}}>{PROVIDERS[form.provider].name}</span>
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
-            {/* Test result */}
-            {testResult && (
-              <div style={{padding:"10px 14px",borderRadius:8,background:testResult.ok?T.accentD:T.redD,border:`1px solid ${testResult.ok?T.accent:T.red}44`,fontSize:fs(12),color:testResult.ok?T.accent:T.red}}>
-                {testResult.ok?"✓ ":"✗ "}{testResult.msg}
+              {!editId && form.provider === "custom" && (
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                  <button className="sf-chip" onClick={() => { setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setAddCategory(null); setModels([]); setTestResult(null); }} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1px solid ${T.border}`,background:T.input,color:T.dim}}>
+                    Back
+                  </button>
+                  <span style={{fontSize:fs(13),fontWeight:700}}>Custom Provider</span>
+                </div>
+              )}
+              <div><Label>Profile Name</Label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. My Claude API"/></div>
+              <div>
+                <Label>API Key {PROVIDERS[form.provider]?.cat === "local" && <span style={{color:T.dim,fontWeight:400}}>(optional)</span>}</Label>
+                <input type="password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={PROVIDERS[form.provider]?.keyHint || (isAnthProvider(form)?"sk-ant-...":"sk-...")}/>
               </div>
-            )}
-            <div style={{display:"flex",gap:8,marginTop:4}}>
-              <Btn v="ghost" onClick={testConnection} disabled={testing || !form.apiKey || !form.baseUrl}>
-                {testing?"Testing...":"Test Connection"}
-              </Btn>
-              <Btn onClick={saveProfile} disabled={!form.name || !form.apiKey || !form.baseUrl}>
-                {editId?"Save Changes":"Add Profile"}
-              </Btn>
+              <div><Label>Base URL</Label><input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://api.openai.com/v1/chat/completions"/></div>
+              <div>
+                <Label>Model</Label>
+                {models.length > 0 ? (
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    <select value={form.model} onChange={e=>setForm({...form,model:e.target.value})}>
+                      <option value="">Select a model...</option>
+                      {models.map(m=><option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder="Or type a custom model name..." style={{fontSize:fs(11)}}/>
+                  </div>
+                ) : (
+                  <input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder={isAnthProvider(form)?"claude-sonnet-4-20250514":"gpt-4o"}/>
+                )}
+              </div>
+              {/* Test result */}
+              {testResult && (
+                <div style={{padding:"10px 14px",borderRadius:8,background:testResult.ok?T.accentD:T.redD,border:`1px solid ${testResult.ok?T.accent:T.red}44`,fontSize:fs(12),color:testResult.ok?T.accent:T.red}}>
+                  {testResult.ok?"✓ ":"✗ "}{testResult.msg}
+                </div>
+              )}
+              <div style={{display:"flex",gap:8,marginTop:4}}>
+                <Btn v="ghost" onClick={testConnection} disabled={testing || !form.apiKey || !form.baseUrl}>
+                  {testing?"Testing...":"Test Connection"}
+                </Btn>
+                <Btn onClick={saveProfile} disabled={!form.name || (!form.apiKey && PROVIDERS[form.provider]?.cat !== "local") || !form.baseUrl}>
+                  {editId?"Save Changes":"Add Profile"}
+                </Btn>
+              </div>
             </div>
-          </div>
+          )}
         </Modal>
       )}
     </div>

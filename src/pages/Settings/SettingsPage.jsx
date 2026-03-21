@@ -11,6 +11,7 @@ import { Modal } from "../../components/ui/Modal.jsx";
 import { Label } from "../../components/ui/Label.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
+import { TOOLS } from "../../constants/tools.js";
 import { INIT } from "../../systems/storage.js";
 
 const PRESETS = {

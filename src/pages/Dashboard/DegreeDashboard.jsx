@@ -156,6 +156,17 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         </div>
       )}
 
+      {/* School profile nudge — when courses exist but no profile is set */}
+      {courses.length > 0 && !data.universityProfile?.name && (
+        <div className="fade" style={{padding:"12px 18px",borderRadius:10,background:`linear-gradient(135deg, ${T.purpleD}, ${T.blueD})`,border:`1px solid ${T.purple}33`,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div>
+            <div style={{fontSize:fs(12),fontWeight:700,color:T.text}}>Set your school profile</div>
+            <div style={{fontSize:fs(10),color:T.soft}}>Get personalized study recommendations tailored to your institution's grading system and assessment model.</div>
+          </div>
+          <Btn small v="ghost" onClick={()=>setPage("settings")} style={{flexShrink:0}}>Set Up {"\u2192"}</Btn>
+        </div>
+      )}
+
       {/* Customizable Widget Grid */}
       <WidgetGrid
         widgets={data.dashboardWidgets}

@@ -26,7 +26,7 @@ const PROVIDERS = {
   gemini:    { cat:"direct", name:"Google Gemini", icon:"ProvGemini",   url:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", models:["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"], default:"gemini-2.5-flash", keyHint:"AIza...", color:"#4285f4" },
   mistral:   { cat:"direct", name:"Mistral",      icon:"ProvMistral",   url:"https://api.mistral.ai/v1/chat/completions", models:["mistral-large-latest","mistral-small-latest","codestral-latest","mistral-medium-latest"], default:"mistral-large-latest", keyHint:"...", color:"#ff7000" },
   xai:       { cat:"direct", name:"xAI (Grok)",   icon:"ProvXAI",      url:"https://api.x.ai/v1/chat/completions", models:["grok-3","grok-3-mini","grok-2"], default:"grok-3-mini", keyHint:"xai-...", color:"#1da1f2" },
-  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0", note:"Default URL is for Coding Plan. General plan users: click Edit and remove /coding/ from the URL." },
+  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0", note:"Default URL is for Coding Plan. General plan users: click Edit and remove /coding/ from the URL. For image parsing (degree plans), select gpt-4o or claude-sonnet-4 \u2014 glm-5-turbo and deepseek-chat do not support vision." },
   cohere:    { cat:"direct", name:"Cohere",       icon:"ProvCohere",   url:"https://api.cohere.ai/compatibility/v1/chat/completions", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
   ai21:      { cat:"direct", name:"AI21",         icon:"ProvAI21",     url:"https://api.ai21.com/studio/v1/chat/completions", models:["jamba-1.5-large","jamba-1.5-mini"], default:"jamba-1.5-large", keyHint:"...", color:"#6c3ea0" },
 
@@ -102,6 +102,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const debugLog = useDebugLog();
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ provider:"anthropic", name:"", apiKey:"", baseUrl:"", model:"" });
   const [showSchema, setShowSchema] = useState(false);
@@ -482,7 +483,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
               <input type="range" min="75" max="300" step="5" value={data.fontScale||100} onChange={e=>{const v=Number(e.target.value);setFontScale(v);setData(d=>({...d,fontScale:v}))}} style={{flex:1,accentColor:T.accent}}/>
               <span style={{fontSize:fs(16),color:T.dim}}>A</span>
               <span style={{fontSize:fs(12),fontWeight:700,color:T.accent,minWidth:36,textAlign:"center"}}>{data.fontScale||100}%</span>
-              {(data.fontScale||100)!==100&&<Btn small v="ghost" onClick={()=>setData(d=>({...d,fontScale:100}))}>Reset</Btn>}
+              {(data.fontScale||100)!==100&&<Btn small v="ghost" onClick={()=>{setFontScale(100);setData(d=>({...d,fontScale:100}))}}>Reset</Btn>}
             </div>
           </div>
           <div>
@@ -572,7 +573,30 @@ const SettingsPage = ({ data, setData, setPage }) => {
               <Btn small v="ghost" onClick={()=>setShowDebug(p=>!p)}>{showDebug?"Hide":"Show"}</Btn>
             </div>
           </div>
-          {showDebug && <DebugPage/>}
+          {showDebug && (() => {
+            const logs = debugLog;
+            return (
+              <div style={{background:T.input,borderRadius:10,padding:14,maxHeight:400,overflowY:"auto",marginTop:10}}>
+                {logs.length===0?<div style={{fontSize:fs(11),color:T.dim,textAlign:"center",padding:20}}>No log entries yet</div>:
+                  <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                    {logs.slice().reverse().map(e=>{
+                      const colors={error:T.red,warn:T.orange,info:T.blue,debug:T.dim,api:T.purple,tool:T.accent};
+                      const c=colors[e.level]||colors[e.cat]||T.soft;
+                      return(
+                        <div key={e.id} style={{fontSize:fs(9),fontFamily:"'JetBrains Mono',monospace",lineHeight:1.5,borderLeft:`2px solid ${c}33`,padding:"2px 8px"}}>
+                          <span style={{color:T.dim}}>{e.ts.split("T")[1]?.slice(0,12)||e.ts}</span>
+                          {" "}<span style={{color:c,fontWeight:600}}>[{e.level.toUpperCase()}]</span>
+                          {" "}<span style={{color:T.dim}}>[{e.cat}]</span>
+                          {" "}<span style={{color:T.soft}}>{e.msg}</span>
+                          {e.detail&&<div style={{color:T.dim,marginLeft:16,whiteSpace:"pre-wrap",maxHeight:60,overflow:"hidden"}}>{e.detail}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                }
+              </div>
+            );
+          })()}
         </div>
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>

@@ -390,6 +390,7 @@ Be concise, encouraging, and actionable.`;
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&sendMessage()} placeholder={`Ask about ${course?course.name:"studying"}...`} style={{flex:1,padding:"12px 16px",fontSize:fs(14)}}/>
         <Btn onClick={()=>sendMessage()} disabled={!loading&&(!input.trim()&&!imgFile)} style={{padding:"12px 20px",background:loading?T.red:undefined}}>{loading?<span style={{fontSize:fs(12),fontWeight:700}}>⬛ Stop</span>:<Ic.Send s={16}/>}</Btn>
       </div>}
+      <div style={{fontSize:fs(9),color:T.faint,textAlign:"center",padding:"4px 0 0",flexShrink:0}}>AI responses are not a substitute for your course materials, syllabus, or instructor.</div>
     </div>
   );
 };

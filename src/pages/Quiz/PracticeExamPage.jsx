@@ -151,6 +151,7 @@ Where correct is the 0-based index of the right answer. No markdown, no backtick
               <div style={{fontSize:fs(36),fontWeight:800,color:score/questions.length>=0.8?T.accent:score/questions.length>=0.6?T.orange:T.red,lineHeight:1}}>{score}/{questions.length}</div>
               <div style={{fontSize:fs(14),color:T.soft,marginTop:6}}>{Math.round(score/questions.length*100)}% in {fmtExamTime(examTime)}</div>
               <div style={{fontSize:fs(12),color:T.dim,marginTop:4}}>{score/questions.length>=0.8?"Excellent work!":score/questions.length>=0.6?"Getting there — review missed questions":score/questions.length>=0.4?"Needs improvement — focus on weak areas":"Keep studying and try again"}</div>
+              <div style={{fontSize:fs(10),color:T.dim,textAlign:"center",marginTop:8,lineHeight:1.4}}>Questions are AI-generated and may not reflect your actual exam format, difficulty, or content. Use alongside official practice materials.</div>
             </div>
           )}
           {questions.map((q, qi) => (

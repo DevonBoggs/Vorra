@@ -74,22 +74,64 @@ export const TOOLS_OPENAI = TOOLS.map(t=>({type:"function",function:{name:t.name
 // Provider-specific quirks that affect API behavior
 export const PROVIDER_QUIRKS = {
   // Direct providers
-  deepseek:   { maxToolLoops: 3 },
+  deepseek:   { maxToolLoops: 3, noVision: true },
   gemini:     { singleToolCallPreferred: true },
-  cohere:     { hasToolPlan: true },
-  ai21:       { disableStreamingWithTools: true },
+  cohere:     { hasToolPlan: true, noVision: true },
+  ai21:       { disableStreamingWithTools: true, noVision: true },
   zai:        { disableStreamingWithTools: true },
-  perplexity: { noToolSupport: true },
+  perplexity: { noToolSupport: true, noVision: true },
   // Aggregators
-  groq:       { requireToolChoice: true },
-  sambanova:  { maxToolLoops: 3 },
-  chutes:     { maxToolLoops: 2 },
+  groq:       { requireToolChoice: true, noVision: true },
+  sambanova:  { maxToolLoops: 3, noVision: true },
+  chutes:     { maxToolLoops: 2, noVision: true },
   // Local
-  ollama:     { singleToolCallPreferred: true, disableStreamingWithTools: true },
-  lmstudio:   { disableStreamingWithTools: true },
-  vllm:       { disableStreamingWithTools: true },
+  ollama:     { singleToolCallPreferred: true, disableStreamingWithTools: true, noVision: true },
+  lmstudio:   { disableStreamingWithTools: true, noVision: true },
+  vllm:       { disableStreamingWithTools: true, noVision: true },
 };
 
 export function getProviderQuirks(profile) {
   return PROVIDER_QUIRKS[profile?.provider] || {};
+}
+
+// Model-level vision capability check — needed because aggregators like Z.AI
+// route to multiple backends, some with vision (gpt-4o) and some without (glm-5-turbo).
+// Provider-level noVision is too coarse for these cases.
+export function isLikelyVisionCapable(profile) {
+  const quirks = getProviderQuirks(profile);
+
+  // Providers that definitely don't support vision regardless of model
+  if (quirks.noVision) return false;
+
+  const model = (profile?.model || '').toLowerCase();
+  if (!model) return true; // no model set yet — assume capable
+
+  // Known vision-capable model patterns
+  const visionModels = [
+    'gpt-4o', 'gpt-4.1', 'gpt-4-turbo', 'gpt-4-vision',
+    'claude-sonnet', 'claude-opus',
+    'gemini-2.5', 'gemini-2.0', 'gemini-pro',
+    'qwen-vl', 'qwen2-vl',
+    'grok-3', 'grok-2',
+    'llava', 'vision',
+  ];
+
+  // Known non-vision model patterns
+  const knownNonVision = [
+    'glm', 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner',
+    'jamba', 'command-r', 'command-a',
+    'llama-3.3', 'llama-3.1', 'llama3.3', 'llama3.1',
+    'mixtral', 'mistral',
+    'phi4', 'gemma', 'codellama', 'codestral',
+    'sonar',
+  ];
+
+  // Check non-vision first (more specific for aggregator models)
+  if (knownNonVision.some(p => model.includes(p))) return false;
+
+  // Check if model matches a known vision pattern
+  if (visionModels.some(p => model.includes(p))) return true;
+
+  // Unknown model — assume capable (API layer will retry without image on 400)
+  return true;
 }

@@ -539,6 +539,9 @@ ${userCtx}`;
             </div>
             {pendingPlan && (
               <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: fs(10), color: T.dim, padding: '6px 12px', background: T.input, borderRadius: 8, marginBottom: 8, lineHeight: 1.4 }}>
+                  Study hours and topic estimates are AI-generated. Adjust based on your actual pace and your instructor's guidance.
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: fs(12), color: T.soft }}>{pendingPlan.summary}</span>
                   <div style={{ display: 'flex', gap: 8 }}>

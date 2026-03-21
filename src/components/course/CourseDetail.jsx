@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { useTheme, fs } from '../../styles/tokens.js';
 import { safeArr } from '../../utils/toolExecution.js';
+import { SECTIONS, getSectionHasData, getSectionCounts } from '../../utils/courseHelpers.js';
 
 const SubSection = ({ T, children, style }) => (
   <div style={{
@@ -45,44 +46,10 @@ const BulletList = ({ T, items }) => (
   </ul>
 );
 
-const allSectionIds = [
-  'assessment', 'strategy', 'competencies', 'topics', 'terms',
-  'officialRes', 'externalRes', 'examTips', 'mistakes', 'focus',
-  'mnemonics', 'milestones', 'instructorTips', 'community', 'meta'
-];
-
-export const CourseDetail = ({ c }) => {
+export const CourseDetail = ({ c, onGenerate }) => {
   const T = useTheme();
-  const [openSections, setOpenSections] = useState({
-    assessment: true,
-    strategy: true,
-    competencies: true,
-    topics: true,
-  });
 
   if (!c) return null;
-
-  const SectionToggle = ({ id, title, icon, children, defaultOpen }) => {
-    const isOpen = openSections[id] !== undefined ? openSections[id] : (defaultOpen || false);
-    return (
-      <div style={{ marginTop: 14 }}>
-        <div
-          onClick={() => setOpenSections(s => ({ ...s, [id]: !isOpen }))}
-          style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            cursor: 'pointer', padding: '4px 0', userSelect: 'none'
-          }}
-        >
-          <div style={{ fontSize: fs(12), fontWeight: 700, color: T.soft, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {icon && <span>{icon}</span>}
-            {title}
-          </div>
-          <span style={{ fontSize: fs(10), color: T.dim, transition: 'transform .2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>{'\u25BC'}</span>
-        </div>
-        {isOpen && <div style={{ marginTop: 6 }}>{children}</div>}
-      </div>
-    );
-  };
 
   const hasOA = c.assessmentType && (c.assessmentType.includes('OA') || c.assessmentType === 'Exam');
   const hasPA = c.assessmentType && (c.assessmentType.includes('PA') || c.assessmentType === 'Project');
@@ -110,26 +77,29 @@ export const CourseDetail = ({ c }) => {
   const prereqs = safeArr(c.prerequisites);
   const related = safeArr(c.relatedCourses);
 
+  // Use shared helper for section data checks
+  const sectionHasData = getSectionHasData(c);
+  const sectionCounts = getSectionCounts(c);
+
+  const populatedSections = SECTIONS.filter(s => sectionHasData[s.id]);
+  const [activeSection, setActiveSection] = useState(() => populatedSections[0]?.id || SECTIONS[0].id);
+
+  // Guard: fall back to first populated section, or first section if none populated
+  const resolvedSection = SECTIONS.find(s => s.id === activeSection)
+    ? activeSection
+    : populatedSections[0]?.id || SECTIONS[0].id;
+
   const lbl = { fontSize: fs(10), color: T.dim, fontWeight: 600 };
   const val = { fontSize: fs(11), color: T.text, marginBottom: 4 };
 
-  return (
-    <div style={{ padding: '8px 0' }}>
-
-      {/* Expand All / Collapse All */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 4 }}>
-        <button onClick={() => setOpenSections(Object.fromEntries(allSectionIds.map(id => [id, true])))} style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(9) }}>Expand All</button>
-        <button onClick={() => setOpenSections({})} style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(9) }}>Collapse All</button>
-      </div>
-
-      {/* Assessment Details */}
-      {(oaHasData || paHasData) && (
-        <SectionToggle id="assessment" title="Assessment Details" icon={'\uD83D\uDCCB'} defaultOpen>
+  // Section content renderer
+  const renderSection = (id) => {
+    switch (id) {
+      case 'assessment':
+        return <>
           {oaHasData && (
             <SubSection T={T}>
-              <div style={{ fontSize: fs(10), fontWeight: 700, color: T.accent, marginBottom: 6 }}>
-                Objective Assessment (OA)
-              </div>
+              <div style={{ fontSize: fs(10), fontWeight: 700, color: T.accent, marginBottom: 6 }}>Objective Assessment (OA)</div>
               {oa.format && <><div style={lbl}>Format</div><div style={val}>{oa.format}</div></>}
               {oa.questionCount > 0 && <><div style={lbl}>Questions</div><div style={val}>{oa.questionCount}</div></>}
               {oa.passingScore && <><div style={lbl}>Passing Score</div><div style={val}>{oa.passingScore}</div></>}
@@ -140,331 +110,174 @@ export const CourseDetail = ({ c }) => {
           )}
           {paHasData && (
             <SubSection T={T}>
-              <div style={{ fontSize: fs(10), fontWeight: 700, color: T.purple, marginBottom: 6 }}>
-                Performance Assessment (PA)
-              </div>
+              <div style={{ fontSize: fs(10), fontWeight: 700, color: T.purple, marginBottom: 6 }}>Performance Assessment (PA)</div>
               {pa.taskDescription && <><div style={lbl}>Task</div><div style={val}>{pa.taskDescription}</div></>}
               {pa.rubricSummary && <><div style={lbl}>Rubric</div><div style={val}>{pa.rubricSummary}</div></>}
               {pa.submissionFormat && <><div style={lbl}>Format</div><div style={val}>{pa.submissionFormat}</div></>}
               {pa.evaluatorNotes && <><div style={lbl}>Notes</div><div style={val}>{pa.evaluatorNotes}</div></>}
             </SubSection>
           )}
-        </SectionToggle>
-      )}
+        </>;
+      case 'strategy':
+        return <>
+          {c.studyStrategy && <SubSection T={T}><div style={{ fontSize: fs(11), color: T.text, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.studyStrategy}</div></SubSection>}
+          {studyOrder.length > 0 && <SubSection T={T}><div style={{ ...lbl, marginBottom: 4 }}>Recommended Study Order</div><ol style={{ margin: 0, paddingLeft: 18 }}>{studyOrder.map((s, i) => <li key={i} style={{ fontSize: fs(11), color: T.text, lineHeight: 1.5, marginBottom: 2 }}>{s}</li>)}</ol></SubSection>}
+          {timeAlloc.length > 0 && <SubSection T={T}><div style={{ ...lbl, marginBottom: 6 }}>Time Allocation</div>{timeAlloc.map((t, i) => <div key={i} style={{ marginBottom: 4 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span style={{ fontSize: fs(10), color: T.text }}>{t.topic}</span><span style={{ fontSize: fs(10), color: T.accent, fontWeight: 600 }}>{t.percentage}%</span></div><div style={{ height: 4, borderRadius: 2, background: T.border, overflow: 'hidden' }}><div style={{ width: `${Math.min(t.percentage, 100)}%`, height: '100%', background: `linear-gradient(90deg, ${T.accent}, ${T.blue})`, borderRadius: 2 }} /></div></div>)}</SubSection>}
+          {quickWins.length > 0 && <SubSection T={T}><div style={{ ...lbl, marginBottom: 4 }}>Quick Wins</div><div>{quickWins.map((q, i) => <Chip key={i} T={T} text={q} color={T.accent} />)}</div></SubSection>}
+          {hardest.length > 0 && <SubSection T={T}><div style={{ ...lbl, marginBottom: 4 }}>Hardest Concepts</div><div>{hardest.map((h, i) => <Chip key={i} T={T} text={h} color={T.red} />)}</div></SubSection>}
+          {c.practiceTestNotes && <SubSection T={T}><div style={{ ...lbl, marginBottom: 4 }}>Practice Test Notes</div><div style={{ fontSize: fs(11), color: T.text, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.practiceTestNotes}</div></SubSection>}
+        </>;
+      case 'competencies':
+        return <SubSection T={T}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{['Code', 'Title', 'Weight'].map(h => <th key={h} style={{ fontSize: fs(9), color: T.dim, fontWeight: 600, textAlign: 'left', padding: '4px 8px', borderBottom: `1px solid ${T.border}` }}>{h}</th>)}</tr></thead>
+            <tbody>{competencies.map((comp, i) => <tr key={i}><td style={{ fontSize: fs(10), color: T.accent, padding: '4px 8px', fontWeight: 600 }}>{comp.code || '-'}</td><td style={{ fontSize: fs(10), color: T.text, padding: '4px 8px' }}>{comp.title || comp.description || '-'}</td><td style={{ fontSize: fs(10), color: T.soft, padding: '4px 8px' }}>{comp.weight || '-'}</td></tr>)}</tbody>
+          </table>
+        </SubSection>;
+      case 'topics':
+        return <>{topics.map((t, i) => <SubSection key={i} T={T}><div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}><span style={{ fontSize: fs(11), fontWeight: 700, color: T.text }}>{t.topic}</span>{t.weight && <WeightBadge T={T} weight={t.weight} />}</div>{t.description && <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.4, marginBottom: 4 }}>{t.description}</div>}{safeArr(t.subtopics).length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>{t.subtopics.map((st, j) => <Chip key={j} T={T} text={st} color={T.blue} />)}</div>}</SubSection>)}</>;
+      case 'terms':
+        return <SubSection T={T}><div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>{keyTerms.map((kt, i) => <Fragment key={i}><div style={{ fontSize: fs(10), color: T.accent, fontWeight: 600 }}>{kt.term}</div><div style={{ fontSize: fs(10), color: T.text }}>{kt.definition}</div></Fragment>)}</div></SubSection>;
+      case 'resources':
+        return <>
+          {officialRes.length > 0 && <><div style={{ fontSize: fs(10), fontWeight: 700, color: T.soft, marginBottom: 6 }}>Official</div>{officialRes.map((r, i) => <SubSection key={'o' + i} T={T}><div style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>{r.title}</div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>{r.type && <span style={{ fontSize: fs(9), color: T.blue }}>{r.type}</span>}{r.provider && <span style={{ fontSize: fs(9), color: T.dim }}>{r.provider}</span>}</div>{r.notes && <div style={{ fontSize: fs(10), color: T.soft, marginTop: 3 }}>{r.notes}</div>}</SubSection>)}</>}
+          {externalRes.length > 0 && <><div style={{ fontSize: fs(10), fontWeight: 700, color: T.soft, marginBottom: 6, marginTop: officialRes.length > 0 ? 8 : 0 }}>Recommended</div>{externalRes.map((r, i) => <SubSection key={'e' + i} T={T}><div style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>{r.url ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: T.blue, textDecoration: 'none' }}>{r.title}</a> : r.title}</div>{r.type && <span style={{ fontSize: fs(9), color: T.purple }}>{r.type}</span>}{r.notes && <div style={{ fontSize: fs(10), color: T.soft, marginTop: 3 }}>{r.notes}</div>}</SubSection>)}</>}
+        </>;
+      case 'examTips':
+        return <SubSection T={T}><BulletList T={T} items={examTips} /></SubSection>;
+      case 'mistakes':
+        return <SubSection T={T}><BulletList T={T} items={commonMistakes} /></SubSection>;
+      case 'focus':
+        return <SubSection T={T}><div>{focusAreas.map((f, i) => <Chip key={i} T={T} text={f} color={T.orange} />)}</div></SubSection>;
+      case 'mnemonics':
+        return <>{mnemonics.map((m, i) => <SubSection key={i} T={T}><div style={{ fontSize: fs(10), color: T.purple, fontWeight: 600 }}>{m.concept}</div><div style={{ fontSize: fs(11), color: T.text, marginTop: 2 }}>{m.mnemonic}</div></SubSection>)}</>;
+      case 'milestones':
+        return <>{milestones.map((m, i) => <SubSection key={i} T={T}><div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}><span style={{ fontSize: fs(10), fontWeight: 700, color: T.accent }}>Week {m.week}</span><span style={{ fontSize: fs(11), color: T.text }}>{m.goals}</span></div></SubSection>)}</>;
+      case 'instructorTips':
+        return <SubSection T={T}><BulletList T={T} items={instructorTips} /></SubSection>;
+      case 'community':
+        return <SubSection T={T}><BulletList T={T} items={communityInsights} /></SubSection>;
+      case 'meta':
+        return <SubSection T={T}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
+            {c.passRate && <><div style={lbl}>Pass Rate</div><div style={val}>{c.passRate}</div></>}
+            {c.averageStudyHours > 0 && <><div style={lbl}>Avg Study Hours</div><div style={val}>{c.averageStudyHours}</div></>}
+            {c.reportedDifficulty > 0 && <><div style={lbl}>Reported Difficulty</div><div style={val}>{c.reportedDifficulty}/5</div></>}
+            {c.certAligned && <><div style={lbl}>Cert Aligned</div><div style={val}>{c.certAligned}</div></>}
+            {prereqs.length > 0 && <><div style={lbl}>Prerequisites</div><div style={val}>{prereqs.join(', ')}</div></>}
+            {related.length > 0 && <><div style={lbl}>Related Courses</div><div style={val}>{related.join(', ')}</div></>}
+            {c.lastUpdated && <><div style={lbl}>Last Updated</div><div style={val}>{c.lastUpdated}</div></>}
+            {c.versionInfo && <><div style={lbl}>Version</div><div style={val}>{c.versionInfo}</div></>}
+          </div>
+        </SubSection>;
+      default:
+        return null;
+    }
+  };
 
-      {/* Study Strategy */}
-      {(c.studyStrategy || studyOrder.length > 0 || timeAlloc.length > 0 || quickWins.length > 0 || hardest.length > 0 || c.practiceTestNotes) && (
-        <SectionToggle id="strategy" title="Study Strategy" icon={'\uD83C\uDFAF'} defaultOpen>
-          {c.studyStrategy && (
-            <SubSection T={T}>
-              <div style={{ fontSize: fs(11), color: T.text, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {c.studyStrategy}
+  return (
+    <div style={{ padding: '8px 0' }}>
+      {/* Section summary */}
+      <div style={{ fontSize: fs(9), color: T.dim, marginBottom: 6 }}>
+        {populatedSections.length}/{SECTIONS.length} sections populated
+      </div>
+
+      {/* Section pill buttons — all 14 shown, empty ones dashed/dim */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingBottom: 14 }}>
+        {SECTIONS.map(s => {
+          const hasData = sectionHasData[s.id];
+          const isActive = resolvedSection === s.id;
+          const count = sectionCounts[s.id];
+          return (
+            <button key={s.id} onClick={() => setActiveSection(s.id)}
+              style={{
+                padding: '6px 14px', borderRadius: 999,
+                border: hasData
+                  ? `1px solid ${isActive ? T.accent + '44' : T.border}`
+                  : `1px dashed ${T.border}`,
+                background: isActive && hasData ? T.accentD : 'transparent',
+                color: isActive && hasData ? T.accent : hasData ? T.soft : T.faint,
+                fontSize: fs(11), fontWeight: isActive && hasData ? 600 : 500,
+                cursor: hasData ? 'pointer' : 'pointer',
+                transition: 'all .15s ease',
+                display: 'flex', alignItems: 'center', gap: 5,
+                lineHeight: 1, whiteSpace: 'nowrap',
+                opacity: hasData ? 1 : 0.55,
+              }}
+              onMouseEnter={e => {
+                if (hasData && !isActive) {
+                  e.currentTarget.style.background = (T.borderL || T.border) + '44';
+                  e.currentTarget.style.color = T.text;
+                  e.currentTarget.style.borderColor = T.borderL || T.border;
+                } else if (!hasData) {
+                  e.currentTarget.style.opacity = '0.8';
+                  e.currentTarget.style.borderColor = T.purple + '66';
+                }
+              }}
+              onMouseLeave={e => {
+                if (hasData && !isActive) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = T.soft;
+                  e.currentTarget.style.borderColor = T.border;
+                } else if (!hasData) {
+                  e.currentTarget.style.opacity = '0.55';
+                  e.currentTarget.style.borderColor = T.border;
+                }
+              }}
+            >
+              <span style={{ fontSize: fs(12) }}>{s.icon}</span>
+              {s.label}
+              {hasData && count > 1 && (
+                <span style={{
+                  fontSize: fs(9), fontWeight: 600,
+                  color: isActive ? T.accent : T.dim,
+                  background: isActive ? T.accent + '18' : T.border + '88',
+                  borderRadius: 999, padding: '1px 6px', marginLeft: 1,
+                  lineHeight: '1.3', minWidth: 16, textAlign: 'center',
+                }}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: 1, background: T.border, marginBottom: 14, opacity: 0.6 }} />
+
+      {/* Active section content */}
+      <div className="fade" key={resolvedSection}>
+        {sectionHasData[resolvedSection]
+          ? <>
+              {renderSection(resolvedSection)}
+              <div style={{ fontSize: fs(10), color: T.dim, fontStyle: 'italic', padding: '8px 0 0', borderTop: `1px solid ${T.border}44`, marginTop: 12 }}>
+                Course data generated by AI {'\u2014'} verify details against your syllabus and student portal.
               </div>
-            </SubSection>
-          )}
-          {studyOrder.length > 0 && (
-            <SubSection T={T}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Recommended Study Order</div>
-              <ol style={{ margin: 0, paddingLeft: 18 }}>
-                {studyOrder.map((s, i) => (
-                  <li key={i} style={{ fontSize: fs(11), color: T.text, lineHeight: 1.5, marginBottom: 2 }}>
-                    {s}
-                  </li>
-                ))}
-              </ol>
-            </SubSection>
-          )}
-          {timeAlloc.length > 0 && (
-            <SubSection T={T}>
-              <div style={{ ...lbl, marginBottom: 6 }}>Time Allocation</div>
-              {timeAlloc.map((t, i) => (
-                <div key={i} style={{ marginBottom: 4 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                    <span style={{ fontSize: fs(10), color: T.text }}>{t.topic}</span>
-                    <span style={{ fontSize: fs(10), color: T.accent, fontWeight: 600 }}>{t.percentage}%</span>
-                  </div>
-                  <div style={{ height: 4, borderRadius: 2, background: T.border, overflow: 'hidden' }}>
-                    <div style={{
-                      width: `${Math.min(t.percentage, 100)}%`, height: '100%',
-                      background: `linear-gradient(90deg, ${T.accent}, ${T.blue})`, borderRadius: 2
-                    }} />
-                  </div>
-                </div>
-              ))}
-            </SubSection>
-          )}
-          {quickWins.length > 0 && (
-            <SubSection T={T}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Quick Wins</div>
-              <div>{quickWins.map((q, i) => <Chip key={i} T={T} text={q} color={T.accent} />)}</div>
-            </SubSection>
-          )}
-          {hardest.length > 0 && (
-            <SubSection T={T}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Hardest Concepts</div>
-              <div>{hardest.map((h, i) => <Chip key={i} T={T} text={h} color={T.red} />)}</div>
-            </SubSection>
-          )}
-          {c.practiceTestNotes && (
-            <SubSection T={T}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Practice Test Notes</div>
-              <div style={{ fontSize: fs(11), color: T.text, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {c.practiceTestNotes}
+            </>
+          : (
+            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: fs(12), color: T.dim, marginBottom: 10 }}>
+                No {SECTIONS.find(s => s.id === resolvedSection)?.label || 'section'} data yet.
               </div>
-            </SubSection>
-          )}
-        </SectionToggle>
-      )}
-
-      {/* Competencies */}
-      {competencies.length > 0 && (
-        <SectionToggle id="competencies" title="Competencies" icon={'\uD83C\uDFC6'} defaultOpen>
-          <SubSection T={T}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Code', 'Title', 'Weight'].map(h => (
-                    <th key={h} style={{
-                      fontSize: fs(9), color: T.dim, fontWeight: 600, textAlign: 'left',
-                      padding: '4px 8px', borderBottom: `1px solid ${T.border}`
-                    }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {competencies.map((comp, i) => (
-                  <tr key={i}>
-                    <td style={{ fontSize: fs(10), color: T.accent, padding: '4px 8px', fontWeight: 600 }}>
-                      {comp.code || '-'}
-                    </td>
-                    <td style={{ fontSize: fs(10), color: T.text, padding: '4px 8px' }}>
-                      {comp.title || comp.description || '-'}
-                    </td>
-                    <td style={{ fontSize: fs(10), color: T.soft, padding: '4px 8px' }}>
-                      {comp.weight || '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Topic Breakdown */}
-      {topics.length > 0 && (
-        <SectionToggle id="topics" title="Topic Breakdown" icon={'\uD83D\uDCDA'} defaultOpen>
-          {topics.map((t, i) => (
-            <SubSection key={i} T={T}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: fs(11), fontWeight: 700, color: T.text }}>{t.topic}</span>
-                {t.weight && <WeightBadge T={T} weight={t.weight} />}
-              </div>
-              {t.description && (
-                <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.4, marginBottom: 4 }}>
-                  {t.description}
-                </div>
-              )}
-              {safeArr(t.subtopics).length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-                  {t.subtopics.map((st, j) => (
-                    <Chip key={j} T={T} text={st} color={T.blue} />
-                  ))}
-                </div>
-              )}
-            </SubSection>
-          ))}
-        </SectionToggle>
-      )}
-
-      {/* Key Terms */}
-      {keyTerms.length > 0 && (
-        <SectionToggle id="terms" title="Key Terms & Concepts" icon={'\uD83D\uDCD6'}>
-          <SubSection T={T}>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px'
-            }}>
-              {keyTerms.map((kt, i) => (
-                <Fragment key={i}>
-                  <div style={{ fontSize: fs(10), color: T.accent, fontWeight: 600 }}>{kt.term}</div>
-                  <div style={{ fontSize: fs(10), color: T.text }}>{kt.definition}</div>
-                </Fragment>
-              ))}
-            </div>
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Official Resources */}
-      {officialRes.length > 0 && (
-        <SectionToggle id="officialRes" title="Official Resources" icon={'\uD83D\uDD17'}>
-          {officialRes.map((r, i) => (
-            <SubSection key={i} T={T}>
-              <div style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>{r.title}</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                {r.type && <span style={{ fontSize: fs(9), color: T.blue }}>{r.type}</span>}
-                {r.provider && <span style={{ fontSize: fs(9), color: T.dim }}>{r.provider}</span>}
-              </div>
-              {r.notes && <div style={{ fontSize: fs(10), color: T.soft, marginTop: 3 }}>{r.notes}</div>}
-            </SubSection>
-          ))}
-        </SectionToggle>
-      )}
-
-      {/* Recommended External */}
-      {externalRes.length > 0 && (
-        <SectionToggle id="externalRes" title="Recommended Resources" icon={'\uD83C\uDF10'}>
-          {externalRes.map((r, i) => (
-            <SubSection key={i} T={T}>
-              <div style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>
-                {r.url ? (
-                  <a href={r.url} target="_blank" rel="noopener noreferrer"
-                    style={{ color: T.blue, textDecoration: 'none' }}
-                    onMouseOver={e => e.target.style.textDecoration = 'underline'}
-                    onMouseOut={e => e.target.style.textDecoration = 'none'}>
-                    {r.title}
-                  </a>
-                ) : r.title}
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                {r.type && <span style={{ fontSize: fs(9), color: T.purple }}>{r.type}</span>}
-              </div>
-              {r.notes && <div style={{ fontSize: fs(10), color: T.soft, marginTop: 3 }}>{r.notes}</div>}
-            </SubSection>
-          ))}
-        </SectionToggle>
-      )}
-
-      {/* Exam Tips */}
-      {examTips.length > 0 && (
-        <SectionToggle id="examTips" title="Exam Tips" icon={'\uD83D\uDCA1'}>
-          <SubSection T={T}>
-            <BulletList T={T} items={examTips} />
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Common Mistakes */}
-      {commonMistakes.length > 0 && (
-        <SectionToggle id="mistakes" title="Common Mistakes" icon={'\u26A0\uFE0F'}>
-          <SubSection T={T}>
-            <BulletList T={T} items={commonMistakes} />
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Known Focus Areas */}
-      {focusAreas.length > 0 && (
-        <SectionToggle id="focus" title="Known Focus Areas" icon={'\uD83C\uDFAF'}>
-          <SubSection T={T}>
-            <div>{focusAreas.map((f, i) => <Chip key={i} T={T} text={f} color={T.orange} />)}</div>
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Mnemonics */}
-      {mnemonics.length > 0 && (
-        <SectionToggle id="mnemonics" title="Mnemonics & Memory Aids" icon={'\uD83E\uDDE0'}>
-          {mnemonics.map((m, i) => (
-            <SubSection key={i} T={T}>
-              <div style={{ fontSize: fs(10), color: T.purple, fontWeight: 600 }}>{m.concept}</div>
-              <div style={{ fontSize: fs(11), color: T.text, marginTop: 2 }}>{m.mnemonic}</div>
-            </SubSection>
-          ))}
-        </SectionToggle>
-      )}
-
-      {/* Weekly Milestones */}
-      {milestones.length > 0 && (
-        <SectionToggle id="milestones" title="Weekly Milestones" icon={'\uD83D\uDCC5'}>
-          {milestones.map((m, i) => (
-            <SubSection key={i} T={T}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                <span style={{ fontSize: fs(10), fontWeight: 700, color: T.accent }}>Week {m.week}</span>
-                <span style={{ fontSize: fs(11), color: T.text }}>{m.goals}</span>
-              </div>
-            </SubSection>
-          ))}
-        </SectionToggle>
-      )}
-
-      {/* Instructor Tips */}
-      {instructorTips.length > 0 && (
-        <SectionToggle id="instructorTips" title="Instructor Tips" icon={'\uD83D\uDC68\u200D\uD83C\uDFEB'}>
-          <SubSection T={T}>
-            <BulletList T={T} items={instructorTips} />
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Community Insights */}
-      {communityInsights.length > 0 && (
-        <SectionToggle id="community" title="Community Insights" icon={'\uD83D\uDCAC'}>
-          <SubSection T={T}>
-            <BulletList T={T} items={communityInsights} />
-          </SubSection>
-        </SectionToggle>
-      )}
-
-      {/* Meta */}
-      {(c.passRate || c.averageStudyHours > 0 || c.reportedDifficulty || c.certAligned || prereqs.length > 0 || related.length > 0 || c.lastUpdated || c.versionInfo) && (
-        <SectionToggle id="meta" title="Course Metadata" icon={'\u2139\uFE0F'}>
-          <SubSection T={T}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
-              {c.passRate && (
-                <>
-                  <div style={lbl}>Pass Rate</div>
-                  <div style={val}>{c.passRate}</div>
-                </>
-              )}
-              {c.averageStudyHours > 0 && (
-                <>
-                  <div style={lbl}>Avg Study Hours</div>
-                  <div style={val}>{c.averageStudyHours}</div>
-                </>
-              )}
-              {c.reportedDifficulty > 0 && (
-                <>
-                  <div style={lbl}>Reported Difficulty</div>
-                  <div style={val}>{c.reportedDifficulty}/5</div>
-                </>
-              )}
-              {c.certAligned && (
-                <>
-                  <div style={lbl}>Cert Aligned</div>
-                  <div style={val}>{c.certAligned}</div>
-                </>
-              )}
-              {prereqs.length > 0 && (
-                <>
-                  <div style={lbl}>Prerequisites</div>
-                  <div style={val}>{prereqs.join(', ')}</div>
-                </>
-              )}
-              {related.length > 0 && (
-                <>
-                  <div style={lbl}>Related Courses</div>
-                  <div style={val}>{related.join(', ')}</div>
-                </>
-              )}
-              {c.lastUpdated && (
-                <>
-                  <div style={lbl}>Last Updated</div>
-                  <div style={val}>{c.lastUpdated}</div>
-                </>
-              )}
-              {c.versionInfo && (
-                <>
-                  <div style={lbl}>Version</div>
-                  <div style={val}>{c.versionInfo}</div>
-                </>
+              {onGenerate && (
+                <button
+                  onClick={() => onGenerate([resolvedSection])}
+                  style={{
+                    padding: '8px 18px', borderRadius: 999,
+                    border: `1px solid ${T.purple}44`,
+                    background: T.purpleD, color: T.purple,
+                    fontSize: fs(11), fontWeight: 600,
+                    cursor: 'pointer', transition: 'all .15s ease',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = T.purple + '28'; e.currentTarget.style.borderColor = T.purple; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = T.purpleD; e.currentTarget.style.borderColor = T.purple + '44'; }}
+                >
+                  Generate {SECTIONS.find(s => s.id === resolvedSection)?.label}
+                </button>
               )}
             </div>
-          </SubSection>
-        </SectionToggle>
-      )}
+          )
+        }
+      </div>
     </div>
   );
 };

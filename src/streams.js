@@ -1,4 +1,4 @@
-// DevonSYNC v4.7.0 — YouTube Stream Database
+// Vorra — YouTube Stream Database
 // 541 streams across 56 subcategories
 // type: "live" = 24/7 live stream, "video" = long video/mix
 

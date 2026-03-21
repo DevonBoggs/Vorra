@@ -202,11 +202,11 @@ const CoursePlanner = ({ data, setData, profile, setPage, Btn, LogLine, CtxBadge
       bgSet({label:`Estimating hours ${completed}/${needsEstimate.length}: ${course.courseCode||course.name}...`, regenId:course.id});
       bgLog({type:"user",content:`⏱ ${completed}/${needsEstimate.length}: ${course.name}`});
 
-      const sys = `You are a WGU course duration researcher. Your job is to estimate realistic study hours for a WGU course.
-Research the course thoroughly. Consider: credit units, assessment type (OA vs PA), typical student reports, course difficulty, and content scope.
+      const sys = `You are a course duration researcher. Your job is to estimate realistic study hours for a course.
+Research the course thoroughly. Consider: credit units, assessment type, typical student reports, course difficulty, and content scope.
 Use the update_courses tool to set the averageStudyHours and difficulty fields.
 Be realistic — base estimates on actual student experiences, not just credit hours.
-Guidelines: 1 CU ≈ 15-25 study hours typically, but varies widely. Easy courses may take 10-20h total. Hard 4-CU courses may take 80-120h.`;
+Guidelines: 1 credit ≈ 15-25 study hours typically, but varies widely. Easy courses may take 10-20h total. Hard 4-credit courses may take 80-120h.`;
 
       const msg = `Estimate the total study hours needed to pass "${course.name}"${course.courseCode?` (${course.courseCode})`:""}.${course.credits?` It is ${course.credits} credit units.`:""} ${course.assessmentType?`Assessment type: ${course.assessmentType}.`:""} Set averageStudyHours and difficulty (1-5) using update_courses.`;
 
@@ -265,7 +265,7 @@ Guidelines: 1 CU ≈ 15-25 study hours typically, but varies widely. Easy course
     const headers = getAuthHeaders(profile);
 
     // Use a MINIMAL focused prompt — only extract name, code, credits. Enrichment handles the rest.
-    const simpleSystem = `You are a WGU degree plan parser. Extract the MINIMUM info for each course visible in the image.
+    const simpleSystem = `You are a degree plan parser. Extract the MINIMUM info for each course visible in the image.
 For each course, ONLY extract:
 - name: The full course name including code (e.g. "Software Defined Networking – D415")
 - courseCode: Just the code (e.g. "D415")
@@ -696,7 +696,7 @@ ${userCtx}`;
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <button onClick={()=>{fileRef.current.accept="image/*";fileRef.current.click()}} disabled={bg.loading} style={{padding:"16px",borderRadius:10,border:`1.5px solid ${T.accent}44`,background:T.accentD,cursor:bg.loading?"wait":"pointer",textAlign:"left"}}>
             <div style={{fontSize:fs(13),fontWeight:700,color:T.accent,marginBottom:3}}>Screenshot / Image</div>
-            <div style={{fontSize:fs(10),color:T.soft,lineHeight:1.4}}>Upload a screenshot of your WGU degree plan page</div>
+            <div style={{fontSize:fs(10),color:T.soft,lineHeight:1.4}}>Upload a screenshot of your degree plan page</div>
           </button>
           <button onClick={()=>{fileRef.current.accept=".pdf,.doc,.docx,.txt,.csv,image/*";fileRef.current.click()}} disabled={bg.loading} style={{padding:"16px",borderRadius:10,border:`1.5px solid ${T.blue}44`,background:T.blueD,cursor:bg.loading?"wait":"pointer",textAlign:"left"}}>
             <div style={{fontSize:fs(13),fontWeight:700,color:T.blue,marginBottom:3}}>Document / PDF</div>
@@ -753,7 +753,7 @@ ${userCtx}`;
                 </div>
                 <div style={{opacity:data.studyStartDate&&data.targetCompletionDate?1:0.4,pointerEvents:data.studyStartDate&&data.targetCompletionDate?"auto":"none"}}>
                   <Label>3. Term End Date</Label>
-                  <BufferedInput type="date" value={data.targetDate||""} onCommit={v=>setData(d=>({...d,targetDate:v}))} title="Official WGU term end (hard deadline)"/>
+                  <BufferedInput type="date" value={data.targetDate||""} onCommit={v=>setData(d=>({...d,targetDate:v}))} title="Official term end date (hard deadline)"/>
                 </div>
                 <div style={{opacity:data.studyStartDate&&(data.targetCompletionDate||data.targetDate)?1:0.4,pointerEvents:data.studyStartDate&&(data.targetCompletionDate||data.targetDate)?"auto":"none"}}>
                   <Label>4. Start Time</Label>
@@ -855,7 +855,7 @@ ${userCtx}`;
               {/* Validation checks */}
               {(() => {
                 const warns = [];
-                if (hrsPerDay < 2 && totalEstHours > 0) warns.push({c:T.orange,m:`⚠️ ${hrsPerDay}h/day is very low. Most WGU students need 3-6h/day.`});
+                if (hrsPerDay < 2 && totalEstHours > 0) warns.push({c:T.orange,m:`⚠️ ${hrsPerDay}h/day is very low. Most students need 3-6h/day.`});
                 if (hrsPerDay > 12 && hrsPerDay <= MAX_STUDY_HRS) warns.push({c:T.orange,m:`⚠️ ${hrsPerDay}h/day is extremely high. Risk of burnout.`});
                 if (data.targetCompletionDate && data.targetDate && data.targetCompletionDate > data.targetDate) warns.push({c:T.red,m:"🚨 Target completion is AFTER term end."});
                 if (data.studyStartDate && data.targetCompletionDate && data.studyStartDate >= data.targetCompletionDate) warns.push({c:T.red,m:"🚨 Start date on or after completion — no study days."});
@@ -1073,7 +1073,7 @@ ${userCtx}`;
             <div><Label>Code</Label><input value={form.courseCode} onChange={e=>setForm({...form,courseCode:e.target.value})} placeholder="C779"/></div>
             <div><Label>Credits</Label><input type="number" min="1" max="12" value={form.credits} onChange={e=>setForm({...form,credits:e.target.value})}/></div>
             <div><Label>Difficulty</Label><input type="number" min="1" max="5" value={form.difficulty} onChange={e=>setForm({...form,difficulty:e.target.value})}/></div>
-            <div><Label>Assessment</Label><select value={form.assessmentType} onChange={e=>setForm({...form,assessmentType:e.target.value})}><option value="">—</option><option value="OA">OA</option><option value="PA">PA</option><option value="OA+PA">OA+PA</option></select></div>
+            <div><Label>Assessment</Label><select value={form.assessmentType} onChange={e=>setForm({...form,assessmentType:e.target.value})}><option value="">—</option><option value="OA">OA (Objective)</option><option value="PA">PA (Performance)</option><option value="OA+PA">OA+PA</option><option value="Exam">Exam</option><option value="Project">Project</option><option value="Essay">Essay</option><option value="Lab">Lab</option><option value="Presentation">Presentation</option><option value="Mixed">Mixed</option></select></div>
           </div>
           <div><Label>Status</Label><div style={{display:"flex",gap:4}}>{["not_started","in_progress","completed"].map(s=><button key={s} onClick={()=>setForm({...form,status:s})} style={{flex:1,padding:"8px 0",borderRadius:8,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${form.status===s?(STATUS_C[s]||T.dim):T.border}`,background:form.status===s?(STATUS_C[s]||T.dim)+"22":T.input,color:form.status===s?(STATUS_C[s]||T.dim):T.dim}}>{STATUS_L[s]}</button>)}</div></div>
           <div><Label>Topics</Label><input value={form.topics||""} onChange={e=>setForm({...form,topics:e.target.value})} placeholder="HTML, CSS..."/></div>

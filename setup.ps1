@@ -1,4 +1,4 @@
-﻿$Host.UI.RawUI.WindowTitle = 'DevonSYNC Setup'
+﻿$Host.UI.RawUI.WindowTitle = 'Vorra Setup'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $log = Join-Path $root 'setup-log.txt'
 $CHK=[char]10004; $CROSS=[char]10008; $ARR=[char]9656; $BF=[char]9608; $BL2=[char]9617
@@ -57,24 +57,24 @@ function RunLive($label, $cmd) {
 }
 
 $t0 = Get-Date
-"DevonSYNC Setup Log | $($t0.ToString('yyyy-MM-dd HH:mm:ss')) | PS $($PSVersionTable.PSVersion) | $root" | Out-File $log -Encoding UTF8
+"Vorra Setup Log | $($t0.ToString('yyyy-MM-dd HH:mm:ss')) | PS $($PSVersionTable.PSVersion) | $root" | Out-File $log -Encoding UTF8
 
 try { mode con: cols=110 lines=45 } catch {}
 Clear-Host; Write-Host ""
 
 $art = @(
-" ██████████                                             █████████  █████ █████ ██████   █████   █████████ "
-"░░███░░░░███                                           ███░░░░░███░░███ ░░███ ░░██████ ░░███   ███░░░░░███"
-" ░███   ░░███  ██████  █████ █████  ██████  ████████  ░███    ░░░  ░░███ ███   ░███░███ ░███  ███     ░░░ "
-" ░███    ░███ ███░░███░░███ ░░███  ███░░███░░███░░███ ░░█████████   ░░█████    ░███░░███░███ ░███         "
-" ░███    ░███░███████  ░███  ░███ ░███ ░███ ░███ ░███  ░░░░░░░░███   ░░███     ░███ ░░██████ ░███         "
-" ░███    ███ ░███░░░   ░░███ ███  ░███ ░███ ░███ ░███  ███    ░███    ░███     ░███  ░░█████ ░░███     ███"
-" ██████████  ░░██████   ░░█████   ░░██████  ████ █████░░█████████     █████    █████  ░░█████ ░░█████████ "
-"░░░░░░░░░░    ░░░░░░     ░░░░░     ░░░░░░  ░░░░ ░░░░░  ░░░░░░░░░     ░░░░░    ░░░░░    ░░░░░   ░░░░░░░░░"
+" █████   █████                                      "
+"░░███   ░░███                                       "
+" ░███    ░███   ██████  ████████  ████████   ██████  "
+" ░███    ░███  ███░░███░░███░░███░░███░░███ ░░░░░███ "
+" ░░███   ███  ░███ ░███ ░███ ░░░  ░███ ░░░   ███████ "
+"  ░░░█████░   ░███ ░███ ░███      ░███      ███░░███ "
+"    ░░███     ░░██████  █████     █████    ░░████████"
+"     ░░░       ░░░░░░  ░░░░░     ░░░░░      ░░░░░░░░"
 )
 foreach ($a in $art) { Write-Host $a -Fore Green }
 Write-Host ""
-Write-Host "   WGU AI Study Planner                                            v7.3.0" -Fore DarkGray
+Write-Host "   AI-Powered Study & Life Planner                                 v7.3.0" -Fore DarkGray
 Write-Host "   ========================================================================" -Fore DarkGray
 Write-Host ""
 $script:stepStart = Get-Date
@@ -94,8 +94,8 @@ StepTime "Step 1"
 Step "2/6" "Preparing environment"
 Log "Step 2"
 $nmDir = Join-Path $root "node_modules"
-$oldExe = Join-Path $root "DevonSYNC.exe"
-if (Test-Path $oldExe) { Remove-Item $oldExe -Force -ErrorAction SilentlyContinue; Info "Removed old DevonSYNC.exe" }
+$oldExe = Join-Path $root "Vorra.exe"
+if (Test-Path $oldExe) { Remove-Item $oldExe -Force -ErrorAction SilentlyContinue; Info "Removed old Vorra.exe" }
 if (Test-Path (Join-Path $root "dist")) { Remove-Item -Recurse -Force (Join-Path $root "dist") -ErrorAction SilentlyContinue; Info "Cleaned old dist/" }
 foreach ($tf in @("_launcher.cs","_wv_check.js")) { $p2=Join-Path $root $tf; if(Test-Path $p2){Remove-Item $p2 -Force -ErrorAction SilentlyContinue} }
 if (Test-Path $nmDir) { Info "node_modules exists"; Pass "Environment ready" }
@@ -142,9 +142,9 @@ Pass "Build complete"
 StepTime "Step 5"
 
 # ── STEP 6 ──
-Step "6/6" "Creating DevonSYNC.exe"
+Step "6/6" "Creating Vorra.exe"
 Log "Step 6"
-$exePath = Join-Path $root "DevonSYNC.exe"
+$exePath = Join-Path $root "Vorra.exe"
 $csc = $null
 foreach ($p3 in @("$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe","$env:windir\Microsoft.NET\Framework\v4.0.30319\csc.exe")) {
     if ((Test-Path $p3) -and (-not $csc)) { $csc = $p3 }
@@ -154,7 +154,7 @@ if ($csc) {
     $q = [char]34
     $nl = [Environment]::NewLine
     $src = "using System;using System.Diagnostics;using System.IO;using System.Reflection;" + $nl
-    $src += "class DevonSYNC{static void Main(){" + $nl
+    $src += "class Vorra{static void Main(){" + $nl
     $src += "string dir=Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);" + $nl
     $src += "string e=Path.Combine(dir,${q}node_modules${q},${q}electron${q},${q}dist${q},${q}electron.exe${q});" + $nl
     $src += "if(!File.Exists(e)){Console.WriteLine(${q}Run setup.bat first.${q});Console.ReadKey();return;}" + $nl
@@ -174,7 +174,7 @@ if ($csc) {
     $cp = [System.Diagnostics.Process]::Start($pi)
     $co = $cp.StandardOutput.ReadToEnd(); $ce = $cp.StandardError.ReadToEnd(); $cp.WaitForExit()
     if ($co) { Log $co }; if ($ce) { Log $ce }
-    if (Test-Path $exePath) { Remove-Item $cs -Force -ErrorAction SilentlyContinue; Pass "DevonSYNC.exe created" }
+    if (Test-Path $exePath) { Remove-Item $cs -Force -ErrorAction SilentlyContinue; Pass "Vorra.exe created" }
     else { Write-Host "   $ARR  Exe failed (use start.bat)" -Fore Yellow }
 } else { Write-Host "   $ARR  .NET compiler not found (use start.bat)" -Fore Yellow }
 
@@ -191,7 +191,7 @@ Write-Host "   =================================================================
 Write-Host "    $CHK  SETUP COMPLETE  --  All 6 steps passed" -Fore Green
 Write-Host ""
 $hasExe = Test-Path $exePath
-if ($hasExe) { Write-Host "    Launch: " -Fore DarkGray -NoNewline; Write-Host "DevonSYNC.exe" -Fore Green -NoNewline; Write-Host " or " -Fore DarkGray -NoNewline; Write-Host "start.bat" -Fore Cyan }
+if ($hasExe) { Write-Host "    Launch: " -Fore DarkGray -NoNewline; Write-Host "Vorra.exe" -Fore Green -NoNewline; Write-Host " or " -Fore DarkGray -NoNewline; Write-Host "start.bat" -Fore Cyan }
 else { Write-Host "    Launch: " -Fore DarkGray -NoNewline; Write-Host "start.bat" -Fore Cyan }
 Write-Host "   ========================================================================" -Fore Green
 Write-Host ""

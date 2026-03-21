@@ -11,7 +11,7 @@ export function getCAT(T) {
     review:{bg:"#1e1b4b",fg:"#a78bfa",l:"Review"},
     "exam-prep":{bg:T.orangeD,fg:T.orange,l:"Exam Prep"},
     "exam-day":{bg:"#7f1d1d",fg:"#f87171",l:"Exam Day"},
-    project:{bg:"#164e63",fg:"#22d3ee",l:"Project/PA"},
+    project:{bg:"#164e63",fg:"#22d3ee",l:"Project"},
     class:{bg:T.blueD,fg:T.blue,l:"Class"},
     break:{bg:T.yellowD,fg:T.yellow,l:"Break"},
     health:{bg:T.accentD,fg:T.accent,l:"Health"},

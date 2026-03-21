@@ -1,5 +1,5 @@
 @echo off
-title DevonSYNC Setup
+title Vorra Setup
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
 if errorlevel 1 (
     echo.

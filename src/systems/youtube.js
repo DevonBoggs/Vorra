@@ -268,12 +268,12 @@ export function timeAgo(date) {
 
 // ── Favorites ───────────────────────────────────────────────────────
 // Favorites system — stored in localStorage
-const FAV_KEY = 'ds-favs';
+const FAV_KEY = 'vorra-favs';
 let _favs = { yt: [], soma: [] };
 try { const raw = localStorage.getItem(FAV_KEY); if (raw) _favs = JSON.parse(raw); } catch(_e) {}
 
 // [STATE] Custom user-added streams — persisted in localStorage
-const CUSTOM_KEY = 'ds-custom-streams';
+const CUSTOM_KEY = 'vorra-custom-streams';
 let _customStreams = [];
 try { const raw = localStorage.getItem(CUSTOM_KEY); if (raw) _customStreams = JSON.parse(raw); } catch(_e) {}
 let _customSubs = [];
@@ -359,7 +359,7 @@ export async function checkYtStreamHealth() {
 
   // Use YouTube Data API for fast batch verification (50 per call)
   let apiKey;
-  try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('ds-v1') || '{}')); } catch(_) { apiKey = ""; }
+  try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('vorra-v1') || '{}')); } catch(_) { apiKey = ""; }
   if (!apiKey) { _ytCheckProgress = { active: false, phase: 'No API key — add one in Settings', done: 0, total: 0 }; ytCheckNotify(); return; }
 
   const allVids = YT_STREAMS.map(s => s.vid);
@@ -466,14 +466,14 @@ setInterval(checkYtStreamHealth, 10 * 60 * 1000); // every 10 min
 // Fetch YouTube stats on startup (5s delay) and every 10 min
 setTimeout(() => {
   try {
-    const d = JSON.parse(localStorage.getItem('ds-v1') || '{}');
+    const d = JSON.parse(localStorage.getItem('vorra-v1') || '{}');
     const k = getYtApiKey(d);
     if (k) fetchYtStats(k);
   } catch(_e) { /* no key */ }
 }, 5000);
 setInterval(() => {
   try {
-    const d = JSON.parse(localStorage.getItem('ds-v1') || '{}');
+    const d = JSON.parse(localStorage.getItem('vorra-v1') || '{}');
     const k = getYtApiKey(d);
     if (k) fetchYtStats(k);
   } catch(_e) { /* no key */ }

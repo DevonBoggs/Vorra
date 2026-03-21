@@ -177,7 +177,7 @@ Be concise, encouraging, and actionable.`;
     const header = `# Study Chat — ${course?course.name:"General"}\nExported: ${new Date().toLocaleString()}\nMessages: ${messages.length}\n\n---\n\n`;
     const blob = new Blob([header+md], {type:"text/markdown"});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href=url; a.download=`devonsync-chat-${chatKey}-${todayStr()}.md`; a.click();
+    const a = document.createElement("a"); a.href=url; a.download=`vorra-chat-${chatKey}-${todayStr()}.md`; a.click();
     URL.revokeObjectURL(url);
     toast("Chat exported as markdown","success");
   };
@@ -214,7 +214,7 @@ Be concise, encouraging, and actionable.`;
     {label:"Explain like a story",prompt:`Explain the core framework/model in ${course.name} as a narrative story — with characters, conflict, and resolution.`,cat:"learn"},
     // Practice
     {label:"Quiz me (5 Q)",prompt:`Give me 5 practice questions for ${course.name}. After each question, wait for my answer before revealing the correct one.`,cat:"practice"},
-    {label:"Scenario question",prompt:`Give me a real-world scenario question for ${course.name} — the kind that appears on WGU OAs. Make it application-level, not just recall.`,cat:"practice"},
+    {label:"Scenario question",prompt:`Give me a real-world scenario question for ${course.name} — application-level, not just recall. Match the style of this course's assessment format.`,cat:"practice"},
     {label:"Fill in the blank",prompt:`Create 8 fill-in-the-blank questions covering key vocabulary and definitions from ${course.name}.`,cat:"practice"},
     {label:"True or false",prompt:`Give me 10 true/false statements about ${course.name}. Include common misconceptions as false statements. Wait for my answers.`,cat:"practice"},
     {label:"Match the terms",prompt:`Create a matching exercise: 10 terms on the left, 10 definitions on the right, shuffled. I'll match them.`,cat:"practice"},
@@ -251,8 +251,8 @@ Be concise, encouraging, and actionable.`;
     {label:"Priority order",prompt:"Based on my courses, difficulty, and deadlines — what order should I study them in and why?",cat:"plan"},
     {label:"Course overview",prompt:"Give me a one-paragraph summary of each of my remaining courses — what they cover and what to expect.",cat:"learn"},
     {label:"Easiest wins",prompt:"Which of my remaining courses are the quickest to pass? Help me plan to knock out easy wins first for momentum.",cat:"plan"},
-    {label:"Study techniques",prompt:"What are the most effective study techniques for WGU online courses? Be specific to OA vs PA.",cat:"learn"},
-    {label:"Burnout recovery",prompt:"I'm feeling burned out. Give me specific, actionable strategies to recover and get back on track with my WGU courses.",cat:"wellness"},
+    {label:"Study techniques",prompt:"What are the most effective study techniques for my courses? Be specific to different assessment types (exams vs projects).",cat:"learn"},
+    {label:"Burnout recovery",prompt:"I'm feeling burned out. Give me specific, actionable strategies to recover and get back on track with my courses.",cat:"wellness"},
     {label:"Accountability check",prompt:"Be my accountability partner. Look at my progress data and give me honest, direct feedback on how I'm doing.",cat:"wellness"},
     {label:"Weekend plan",prompt:"Plan a productive but balanced weekend study schedule. Include study blocks, breaks, and personal time.",cat:"plan"},
   ];

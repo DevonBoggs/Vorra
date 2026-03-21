@@ -60,7 +60,7 @@ const AmbientPage = () => {
     setCommentsLoading(true);
     try {
       let apiKey;
-      try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('ds-v1') || '{}')); } catch(_) { apiKey = ""; }
+      try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('vorra-v1') || '{}')); } catch(_) { apiKey = ""; }
       if (!apiKey) { setCommentsLoading(false); return; }
       const params = new URLSearchParams({
         part: 'snippet', videoId: vid, maxResults: '20', order: 'relevance', key: apiKey,
@@ -110,7 +110,7 @@ const AmbientPage = () => {
     if (!pageToken) { setDiscResults([]); setDiscSearched(true); setDiscLastQ(query); }
     try {
       let apiKey;
-      try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('ds-v1') || '{}')); } catch(_) { apiKey = ""; }
+      try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('vorra-v1') || '{}')); } catch(_) { apiKey = ""; }
       if (!apiKey) { setDiscLoading(false); return; }
       const params = new URLSearchParams({
         part: 'snippet', q: query + ' music', type: 'video',

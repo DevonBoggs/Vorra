@@ -235,7 +235,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
   return (
     <div className="fade">
       <h1 style={{fontSize:fs(24),fontWeight:800,marginBottom:4}}>Settings</h1>
-      <p style={{color:T.dim,fontSize:fs(13),marginBottom:20}}>Configure your DevonSYNC experience · <span style={{color:T.soft}}>v{APP_VERSION}</span></p>
+      <p style={{color:T.dim,fontSize:fs(13),marginBottom:20}}>Configure your Vorra experience · <span style={{color:T.soft}}>v{APP_VERSION}</span></p>
 
       {/* Quick nav */}
       <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
@@ -374,9 +374,9 @@ const SettingsPage = ({ data, setData, setPage }) => {
         <p style={{fontSize:fs(11),color:T.dim,marginBottom:14}}>Export/import full backups or settings-only snapshots.</p>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           <Btn v="secondary" onClick={() => {
-            const fullBackup = { ...data, _meta: { version: APP_VERSION, exportDate: new Date().toISOString(), type: "devonsync-backup" }, _favorites: JSON.parse(localStorage.getItem('ds-favs') || '{"soma":[],"yt":[]}'), _customStreams: JSON.parse(localStorage.getItem('ds-custom-streams') || '[]') };
+            const fullBackup = { ...data, _meta: { version: APP_VERSION, exportDate: new Date().toISOString(), type: "vorra-backup" }, _favorites: JSON.parse(localStorage.getItem('vorra-favs') || '{"soma":[],"yt":[]}'), _customStreams: JSON.parse(localStorage.getItem('vorra-custom-streams') || '[]') };
             const blob = new Blob([JSON.stringify(fullBackup, null, 2)], {type:"application/json"});
-            const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `devonsync-backup-${todayStr()}.json`; a.click(); URL.revokeObjectURL(url);
+            const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `vorra-backup-${todayStr()}.json`; a.click(); URL.revokeObjectURL(url);
             toast("Backup exported", "success");
           }}><Ic.Download s={14}/> Export Backup</Btn>
           <Btn v="secondary" onClick={() => {
@@ -387,8 +387,8 @@ const SettingsPage = ({ data, setData, setPage }) => {
               reader.onload = (e) => {
                 try {
                   const imported = JSON.parse(e.target.result);
-                  if (imported._favorites) { localStorage.setItem('ds-favs', JSON.stringify(imported._favorites)); delete imported._favorites; }
-                  if (imported._customStreams) { localStorage.setItem('ds-custom-streams', JSON.stringify(imported._customStreams)); delete imported._customStreams; }
+                  if (imported._favorites) { localStorage.setItem('vorra-favs', JSON.stringify(imported._favorites)); delete imported._favorites; }
+                  if (imported._customStreams) { localStorage.setItem('vorra-custom-streams', JSON.stringify(imported._customStreams)); delete imported._customStreams; }
                   delete imported._meta;
                   setData(d => ({...d, ...imported}));
                   if (imported.theme) { setThemeGlobal(imported.theme); }
@@ -536,7 +536,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
           <Btn small v="danger" onClick={() => {
             if (!confirm("WARNING: This will permanently delete ALL data.\n\nAre you absolutely sure?")) return;
             if (!confirm("Last chance. Click OK to confirm full reset.")) return;
-            localStorage.removeItem('ds-v1'); localStorage.removeItem('ds-favs'); localStorage.removeItem('ds-custom-streams');
+            localStorage.removeItem('vorra-v1'); localStorage.removeItem('vorra-favs'); localStorage.removeItem('vorra-custom-streams');
             setData({...INIT});
             toast("All data erased", "warn");
             dlog('warn','settings',"Full data reset");

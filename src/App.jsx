@@ -1,4 +1,4 @@
-// DevonSYNC v7.3.0 — WGU Study Planner
+// Vorra v7.3.0 — AI-powered study & life planner
 // Restructured App Shell — imports from extracted modules
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -41,7 +41,7 @@ import { AmbientPage } from "./pages/Ambient/AmbientPage.jsx";
 import { todayStr } from "./utils/helpers.js";
 
 // ── Init logging ───────────────────────────────────────────────────
-dlog('info', 'init', `DevonSYNC v${APP_VERSION} started`);
+dlog('info', 'init', `Vorra v${APP_VERSION} started`);
 dlog('info', 'init', `UA: ${navigator.userAgent}`);
 dlog('info', 'init', `Window: ${window.innerWidth}x${window.innerHeight}, Date: ${new Date().toISOString()}`);
 
@@ -222,7 +222,7 @@ export default function App() {
     dlog('info', 'init', 'App mounting, loading data...');
     (async () => {
       try {
-        const d = await load("ds-v1", INIT);
+        const d = await load("vorra-v1", INIT);
         dlog('info', 'init', `Loaded: ${d.profiles?.length || 0} profiles, ${d.courses?.length || 0} courses, ${Object.keys(d.tasks || {}).length} days`);
         setDataRaw(d);
       } catch (e) {
@@ -236,7 +236,7 @@ export default function App() {
 
   const setData = useCallback(fn => {
     setDataRaw(prev => {
-      try { const next = typeof fn === "function" ? fn(prev) : fn; save("ds-v1", next); return next; }
+      try { const next = typeof fn === "function" ? fn(prev) : fn; save("vorra-v1", next); return next; }
       catch (e) { dlog('error', 'state', 'setData error', e.message); return prev; }
     });
   }, []);
@@ -276,8 +276,8 @@ export default function App() {
                   <Ic.Grad s={20} c={T.accent} />
                 </div>
                 <div>
-                  <span style={{ fontSize: fs(19), fontWeight: 800, background: `linear-gradient(135deg,${T.accent},${T.blue})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.5px", display: "block", lineHeight: 1.1 }}>DevonSYNC</span>
-                  <div style={{ fontSize: fs(9), color: T.dim, marginTop: 1, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 500 }}>WGU Study Planner</div>
+                  <span style={{ fontSize: fs(19), fontWeight: 800, background: `linear-gradient(135deg,${T.accent},${T.blue})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.5px", display: "block", lineHeight: 1.1 }}>Vorra</span>
+                  <div style={{ fontSize: fs(9), color: T.dim, marginTop: 1, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 500 }}>Study & Life Planner</div>
                 </div>
               </>}
               {sideCollapsed && <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${T.accent}15, ${T.blue}15)`, display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.Grad s={18} c={T.accent} /></div>}

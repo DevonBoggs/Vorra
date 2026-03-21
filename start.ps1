@@ -1,4 +1,4 @@
-﻿$Host.UI.RawUI.WindowTitle = 'DevonSYNC'
+﻿$Host.UI.RawUI.WindowTitle = 'Vorra'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $log = Join-Path $root 'start-log.txt'
 $CHK=[char]10004; $CROSS=[char]10008; $BF=[char]9608; $BL2=[char]9617
@@ -14,18 +14,18 @@ try { mode con: cols=115 lines=30 } catch {}
 Clear-Host; Write-Host ""
 
 $artLines = @(
-" ██████████                                             █████████  █████ █████ ██████   █████   █████████ ",
-"░░███░░░░███                                           ███░░░░░███░░███ ░░███ ░░██████ ░░███   ███░░░░░███",
-" ░███   ░░███  ██████  █████ █████  ██████  ████████  ░███    ░░░  ░░███ ███   ░███░███ ░███  ███     ░░░ ",
-" ░███    ░███ ███░░███░░███ ░░███  ███░░███░░███░░███ ░░█████████   ░░█████    ░███░░███░███ ░███         ",
-" ░███    ░███░███████  ░███  ░███ ░███ ░███ ░███ ░███  ░░░░░░░░███   ░░███     ░███ ░░██████ ░███         ",
-" ░███    ███ ░███░░░   ░░███ ███  ░███ ░███ ░███ ░███  ███    ░███    ░███     ░███  ░░█████ ░░███     ███",
-" ██████████  ░░██████   ░░█████   ░░██████  ████ █████░░█████████     █████    █████  ░░█████ ░░█████████ ",
-"░░░░░░░░░░    ░░░░░░     ░░░░░     ░░░░░░  ░░░░ ░░░░░  ░░░░░░░░░     ░░░░░    ░░░░░    ░░░░░   ░░░░░░░░░"
+" █████   █████                                      ",
+"░░███   ░░███                                       ",
+" ░███    ░███   ██████  ████████  ████████   ██████  ",
+" ░███    ░███  ███░░███░░███░░███░░███░░███ ░░░░░███ ",
+" ░░███   ███  ░███ ░███ ░███ ░░░  ░███ ░░░   ███████ ",
+"  ░░░█████░   ░███ ░███ ░███      ░███      ███░░███ ",
+"    ░░███     ░░██████  █████     █████    ░░████████",
+"     ░░░       ░░░░░░  ░░░░░     ░░░░░      ░░░░░░░░"
 )
 foreach ($line in $artLines) { WriteGradient $line }
 Write-Host ""
-Write-Host "   WGU AI Study Planner                                            v7.3.0" -Fore DarkGray
+Write-Host "   AI-Powered Study & Life Planner                                 v7.3.0" -Fore DarkGray
 Write-Host "   ========================================================================" -Fore DarkGray
 Write-Host ""
 
@@ -55,7 +55,7 @@ if ($rebuild) {
 Write-Host ""
 $sp = @([char]10251,[char]10265,[char]10297,[char]10296,[char]10300,[char]10292,[char]10278,[char]10279,[char]10247,[char]10255)
 for ($r=0;$r -lt 2;$r++) { foreach ($f in $sp) {
-    Write-Host "`r   $f  Starting DevonSYNC..." -Fore Magenta -NoNewline; Start-Sleep -Milliseconds 50
+    Write-Host "`r   $f  Starting Vorra..." -Fore Magenta -NoNewline; Start-Sleep -Milliseconds 50
 }}
 Write-Host "`r   $CHK  Launching!              " -Fore Green
 Write-Host ""

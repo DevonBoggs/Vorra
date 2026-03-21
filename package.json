@@ -1,14 +1,14 @@
 {
-  "name": "DevonSYNC",
+  "name": "vorra",
   "version": "7.3.0",
-  "description": "WGU Study Planner - AI-powered desktop app for managing courses, study plans, practice exams, and focus sessions",
+  "description": "AI-powered study & life planner for managing courses, goals, habits, and focus sessions",
   "author": "Devon Boggs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DevonBoggs/devonsync-app"
+    "url": "https://github.com/DevonBoggs/Vorra"
   },
-  "homepage": "https://github.com/DevonBoggs/devonsync-app#readme",
+  "homepage": "https://github.com/DevonBoggs/Vorra#readme",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -18,8 +18,8 @@
     "start": "electron ."
   },
   "build": {
-    "appId": "com.devonsync.app",
-    "productName": "DevonSYNC",
+    "appId": "com.vorra.app",
+    "productName": "Vorra",
     "directories": {
       "output": "release"
     },

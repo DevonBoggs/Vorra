@@ -13,6 +13,7 @@ export const INIT = {
   overrideSafeguards: false,
   exceptionDates: [],
   userContext: "",
+  universityProfile: "", // e.g. "wgu", "snhu", "purdue-global", or custom
   chatHistories: {},
   theme: "dark",
   fontScale: 100,
@@ -40,10 +41,25 @@ export const save = async (k, v) => {
   }
 };
 
-// Migrate old XenoSYNC localStorage keys to DevonSYNC on first load
-if (!localStorage.getItem('ds-v1') && localStorage.getItem('xs-v1')) {
-  localStorage.setItem('ds-v1', localStorage.getItem('xs-v1'));
-  if (localStorage.getItem('xs-favs')) localStorage.setItem('ds-favs', localStorage.getItem('xs-favs'));
-  if (localStorage.getItem('xs-custom-streams')) localStorage.setItem('ds-custom-streams', localStorage.getItem('xs-custom-streams'));
-  console.log('[DevonSYNC] Migrated data from XenoSYNC');
+// Migrate legacy localStorage keys to Vorra
+// XenoSYNC (xs-*) → DevonSYNC (ds-*) → Vorra (vorra-*)
+const MIGRATIONS = [
+  ['xs-v1', 'vorra-v1'], ['xs-favs', 'vorra-favs'], ['xs-custom-streams', 'vorra-custom-streams'],
+  ['ds-v1', 'vorra-v1'], ['ds-favs', 'vorra-favs'], ['ds-custom-streams', 'vorra-custom-streams'],
+];
+if (!localStorage.getItem('vorra-v1')) {
+  for (const [oldKey, newKey] of MIGRATIONS) {
+    const val = localStorage.getItem(oldKey);
+    if (val && !localStorage.getItem(newKey)) {
+      localStorage.setItem(newKey, val);
+      console.log(`[Vorra] Migrated ${oldKey} → ${newKey}`);
+    }
+  }
+  // Clean up legacy keys
+  for (const prefix of ['xs-', 'ds-']) {
+    for (const suffix of ['v1', 'favs', 'custom-streams']) {
+      localStorage.removeItem(`${prefix}${suffix}`);
+    }
+  }
+  if (localStorage.getItem('vorra-v1')) console.log('[Vorra] Legacy data migration complete');
 }

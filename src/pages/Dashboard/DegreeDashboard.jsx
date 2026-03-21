@@ -145,7 +145,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   return (
     <div className="fade">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
-        <div><h1 style={{fontSize:fs(24),fontWeight:800,marginBottom:2}}>Degree Dashboard</h1><p style={{color:T.dim,fontSize:fs(13)}}>Your WGU progress at a glance</p></div>
+        <div><h1 style={{fontSize:fs(24),fontWeight:800,marginBottom:2}}>Degree Dashboard</h1><p style={{color:T.dim,fontSize:fs(13)}}>Your degree progress at a glance</p></div>
         <Btn v="ai" onClick={()=>setPage("planner")}><Ic.Edit s={14}/> Course Planner</Btn>
       </div>
 

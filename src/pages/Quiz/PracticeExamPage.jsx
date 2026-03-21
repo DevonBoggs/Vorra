@@ -45,12 +45,12 @@ const PracticeExamPage = ({ data, setData, profile, Btn, Label }) => {
     toast("Generating practice exam...", "info");
     const diffPrompt = difficulty === "easy" ? "Make questions introductory-level." : difficulty === "hard" ? "Make questions challenging — focus on edge cases, exceptions, and deep understanding." : "Mix easy, medium, and hard questions.";
     const topicFocus = safeArr(course.topicBreakdown).length > 0 ? `Focus on topics (weighted by importance): ${safeArr(course.topicBreakdown).map(t=>`${t.topic} (${t.weight||"?"})`).join(", ")}` : "";
-    const sys = `You are a WGU practice exam generator. Create exactly ${count} multiple-choice questions for: ${course.name}.
+    const sys = `You are a practice exam generator. Create exactly ${count} multiple-choice questions for: ${course.name}.
 ${topicFocus}
-${safeArr(course.competencies).length > 0 ? `Competencies to cover: ${safeArr(course.competencies).slice(0,10).map(c=>`${c.code||""} ${c.title}`).join("; ")}` : ""}
+${safeArr(course.competencies).length > 0 ? `Competencies/objectives to cover: ${safeArr(course.competencies).slice(0,10).map(c=>`${c.code||""} ${c.title}`).join("; ")}` : ""}
 ${safeArr(course.knownFocusAreas).length > 0 ? `Known high-weight areas: ${safeArr(course.knownFocusAreas).join(", ")}` : ""}
 ${safeArr(course.commonMistakes).length > 0 ? `Common student mistakes: ${safeArr(course.commonMistakes).slice(0,5).join("; ")}` : ""}
-${course.assessmentType === "OA" || course.assessmentType === "OA+PA" ? "Model questions after WGU OA format — scenario-based, application-level, not just recall." : ""}
+${["OA","OA+PA","Exam","Mixed"].includes(course.assessmentType) ? "Model questions after the course's exam format — scenario-based, application-level, not just recall." : ""}
 ${diffPrompt}
 
 Each question must have exactly 4 answer choices. Weight questions by topic importance.

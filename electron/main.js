@@ -63,13 +63,13 @@ function killStaleProcess(port) {
         if (pid && pid !== '0' && pid !== String(process.pid)) pids.add(pid);
       }
       if (pids.size === 0) { resolve(false); return; }
-      console.log(`[DevonSYNC] Killing stale process(es) on port ${port}: PIDs ${[...pids].join(', ')}`);
+      console.log(`[Vorra] Killing stale process(es) on port ${port}: PIDs ${[...pids].join(', ')}`);
       let killed = 0;
       for (const pid of pids) {
         exec(`taskkill /PID ${pid} /F`, (e) => {
           killed++;
-          if (e) console.log(`[DevonSYNC] Could not kill PID ${pid}: ${e.message}`);
-          else console.log(`[DevonSYNC] Killed stale PID ${pid}`);
+          if (e) console.log(`[Vorra] Could not kill PID ${pid}: ${e.message}`);
+          else console.log(`[Vorra] Killed stale PID ${pid}`);
           if (killed >= pids.size) resolve(true);
         });
       }
@@ -139,31 +139,31 @@ window.addEventListener('message',e=>{
     // Handle EADDRINUSE: kill stale process and retry once
     localServer.on('error', async (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.log(`[DevonSYNC] Port ${PORT} in use — attempting to kill stale process...`);
+        console.log(`[Vorra] Port ${PORT} in use — attempting to kill stale process...`);
         const killed = await killStaleProcess(PORT);
         if (killed) {
           // Wait a moment for the port to free up, then retry
           setTimeout(() => {
             localServer.listen(PORT, '127.0.0.1', () => {
-              console.log(`[DevonSYNC] Server started on port ${PORT} (after clearing stale process)`);
+              console.log(`[Vorra] Server started on port ${PORT} (after clearing stale process)`);
               resolve();
             });
           }, 500);
         } else {
-          const msg = `Port ${PORT} is already in use and could not be freed.\n\nAnother instance of DevonSYNC may be running.\nClose it and try again, or restart your computer.`;
-          console.error(`[DevonSYNC] ${msg}`);
+          const msg = `Port ${PORT} is already in use and could not be freed.\n\nAnother instance of Vorra may be running.\nClose it and try again, or restart your computer.`;
+          console.error(`[Vorra] ${msg}`);
           const { dialog } = require('electron');
-          dialog.showErrorBox('DevonSYNC — Port Conflict', msg);
+          dialog.showErrorBox('Vorra — Port Conflict', msg);
           app.quit();
         }
       } else {
-        console.error(`[DevonSYNC] Server error: ${err.message}`);
+        console.error(`[Vorra] Server error: ${err.message}`);
         reject(err);
       }
     });
 
     localServer.listen(PORT, '127.0.0.1', () => {
-      console.log(`[DevonSYNC] Server started on port ${PORT}`);
+      console.log(`[Vorra] Server started on port ${PORT}`);
       resolve();
     });
   });
@@ -177,7 +177,7 @@ function createWindow() {
   
   mainWindow = new BrowserWindow({
     width: ww, height: wh, minWidth: 1000, minHeight: 700,
-    title: `DevonSYNC v${require('../package.json').version || '7.3.0'}`,
+    title: `Vorra v${require('../package.json').version || '7.3.0'}`,
     backgroundColor: '#060a11',
     webPreferences: {
       nodeIntegration: false,

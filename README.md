@@ -1,6 +1,6 @@
-# DevonSYNC
+# Vorra
 
-**AI-powered WGU Study Planner** — A desktop app for managing courses, study plans, practice exams, and focus sessions.
+**AI-powered study & life planner** — A desktop app for managing courses, goals, habits, and focus sessions.
 
 Built with React, Electron, and Vite. Runs entirely offline with localStorage — no backend required.
 
@@ -52,8 +52,8 @@ Built with React, Electron, and Vite. Runs entirely offline with localStorage �
 ### Install
 
 ```bash
-git clone https://github.com/DevonBoggs/devonsync-app.git
-cd devonsync-app
+git clone https://github.com/DevonBoggs/Vorra.git
+cd Vorra
 npm install
 ```
 

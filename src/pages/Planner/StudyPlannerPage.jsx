@@ -157,10 +157,21 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
       sub: bufferDays != null && bufferDays > 0 ? `${bufferDays}d spare \u00B7 ${bufferHours}h free` : 'time fully allocated' };
   })();
 
-  const feasibilityLevel = !feasible ? 'red'
-    : (minHrsPerDay != null && minHrsPerDay > 8) || (utilizationPct != null && utilizationPct > 95) || (finishDelta != null && finishDelta < 0) ? 'red'
-    : (minHrsPerDay != null && minHrsPerDay > 5) || (utilizationPct != null && utilizationPct > 90) || (finishDelta != null && finishDelta < 3) ? 'yellow'
-    : 'green';
+  // Feasibility level — guard against transient stale values during re-renders
+  const feasibilityLevel = (() => {
+    if (!feasible) return 'red';
+    // Only show red if the numbers genuinely don't work
+    const isRed = (minHrsPerDay != null && minHrsPerDay > 10) ||
+                  (utilizationPct != null && utilizationPct > 100) ||
+                  (finishDelta != null && finishDelta < -7);
+    if (isRed) return 'red';
+    // Yellow for tight but doable schedules
+    const isYellow = (minHrsPerDay != null && minHrsPerDay > 6) ||
+                     (utilizationPct != null && utilizationPct > 90) ||
+                     (finishDelta != null && finishDelta >= -7 && finishDelta < 3);
+    if (isYellow) return 'yellow';
+    return 'green';
+  })();
   const feasibilityColor = { green: T.accent, yellow: T.orange, red: T.red }[feasibilityLevel];
 
   // Feasibility check for exception dates — use availability-aware calc when plannerConfig exists

@@ -1094,28 +1094,31 @@ ${fsrsReviewPrompt}${userCtx}`;
                 {/* Contextual notices */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 22 }}>
                   {feasibilityLevel === 'green' && finishDelta != null && finishDelta > 14 && (
-                    <div style={{ fontSize: fs(10), color: T.accent }}>{'\u2713'} Plenty of buffer time ({finishDelta} days) for sick days, breaks, or getting ahead.</div>
+                    <div style={{ fontSize: fs(10), color: T.accent }}>{'\u2713'} You have {finishDelta} days of buffer before your deadline {'\u2014'} room for sick days, breaks, or getting ahead.</div>
                   )}
                   {feasibilityLevel === 'green' && finishDelta != null && finishDelta > 0 && finishDelta <= 14 && (
-                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2713'} On track, but not much buffer. Try to stay consistent with your schedule.</div>
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2713'} On track with {finishDelta} day{finishDelta !== 1 ? 's' : ''} of buffer. Try to stay consistent to keep this margin.</div>
                   )}
-                  {hrsPerDay > 3 && hrsPerDay <= 5 && (
-                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is a moderate pace. Most working students can sustain this.</div>
+                  {hrsPerDay >= 2 && hrsPerDay <= 4 && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is a light pace {'\u2014'} sustainable for most schedules.</div>
                   )}
-                  {hrsPerDay > 5 && hrsPerDay <= 8 && (
-                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is intensive. Make sure to schedule breaks and rest days.</div>
+                  {hrsPerDay > 4 && hrsPerDay <= 6 && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is a solid pace. Most working students can maintain this.</div>
                   )}
-                  {hrsPerDay > 8 && (
-                    <div style={{ fontSize: fs(10), color: T.red }}>{'\u274C'} ~{Math.round(hrsPerDay * 10) / 10}h/day risks burnout. Consider extending your deadline or reducing courses.</div>
+                  {hrsPerDay > 6 && hrsPerDay <= 10 && (
+                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is a heavy load. Build in breaks and at least one rest day per week.</div>
+                  )}
+                  {hrsPerDay > 10 && (
+                    <div style={{ fontSize: fs(10), color: T.red }}>{'\u274C'} ~{Math.round(hrsPerDay * 10) / 10}h/day is not sustainable long-term. Extend your deadline or reduce your course load.</div>
                   )}
                   {weeklyHours > 0 && weeklyHours < 10 && totalEstHours > 50 && (
-                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} Less than 10h/week of study time. At this pace, {totalEstHours}h of coursework will take a while. Add more study windows if you can.</div>
+                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} {Math.round(weeklyHours)}h/week is light for {totalEstHours}h of coursework. Add more study windows to finish sooner.</div>
                   )}
-                  {studyDaysPerWeek <= 3 && totalEstHours > 50 && (
-                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} Only {studyDaysPerWeek} study days per week. Your sessions will need to be longer. Consider enabling more days.</div>
+                  {studyDaysPerWeek <= 3 && studyDaysPerWeek > 0 && totalEstHours > 50 && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} Studying {studyDaysPerWeek} day{studyDaysPerWeek !== 1 ? 's' : ''} per week means longer sessions on those days. Consider spreading across more days.</div>
                   )}
-                  {utilizationPct != null && utilizationPct > 90 && feasibilityLevel !== 'red' && (
-                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} Using {utilizationPct}% of your available time. Little room for missed sessions. Add buffer by extending your deadline.</div>
+                  {utilizationPct != null && utilizationPct > 90 && (
+                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} Your coursework needs {utilizationPct}% of your scheduled study time. If you miss a session, it{'\u2019'}ll be hard to catch up. Extend your deadline or add more study windows for breathing room.</div>
                   )}
                   {feasibilityLevel === 'red' && (
                     <div style={{ fontSize: fs(10), color: T.red }}>Fix by: (1) moving your finish date later, (2) adding more study windows above, or (3) reducing courses this term.</div>

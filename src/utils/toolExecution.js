@@ -7,15 +7,13 @@ import { uid, todayStr } from "../utils/helpers.js";
 
 export function safeArr(v) { return Array.isArray(v) ? v : []; }
 
-export function deepMergeCourse(existing, updates) {
+export function deepMergeCourse(existing, updates, opts = {}) {
   const m = { ...existing };
   for (const [k, v] of Object.entries(updates)) {
     if (k === 'course_name_match' || k === 'id' || v === undefined || v === null) continue;
-    // Type-check against EMPTY_DEEP defaults to prevent render crashes
     const expected = EMPTY_DEEP[k];
     if (expected !== undefined) {
       if (Array.isArray(expected) && !Array.isArray(v)) {
-        // Expected array, got something else — wrap string in array or skip
         if (typeof v === 'string' && v) m[k] = [v];
         else { dlog('warn','tool',`Skipping ${k}: expected array, got ${typeof v}`); continue; }
       } else if (typeof expected === 'object' && expected !== null && !Array.isArray(expected) && typeof v !== 'object') {
@@ -25,12 +23,25 @@ export function deepMergeCourse(existing, updates) {
         if (!isNaN(num)) m[k] = num;
         else continue;
       }
-      else if (Array.isArray(v) && v.length > 0) m[k] = v;
+      // Arrays: never overwrite populated data with empty arrays
+      else if (Array.isArray(v) && v.length > 0) {
+        // In append mode (selective regen), merge arrays instead of replacing
+        if (opts.appendArrays && Array.isArray(m[k]) && m[k].length > 0) {
+          const existingKeys = new Set(m[k].map(item => JSON.stringify(item)));
+          const newItems = v.filter(item => !existingKeys.has(JSON.stringify(item)));
+          m[k] = [...m[k], ...newItems];
+        } else {
+          m[k] = v;
+        }
+      }
+      else if (Array.isArray(v) && v.length === 0) continue; // Skip empty arrays — don't erase existing data
       else if (typeof v === 'object' && !Array.isArray(v)) m[k] = { ...(existing[k]||{}), ...v };
-      else if (v !== '' && v !== 0) m[k] = v;
+      else if (typeof v === 'string' && v !== '') m[k] = v;
+      else if (typeof v === 'boolean') m[k] = v;
+      // Skip empty strings, zero, and other falsy values to avoid overwriting
     } else {
-      // Field not in EMPTY_DEEP — just set it
-      m[k] = v;
+      // Unknown field — only set if non-empty (don't pollute with AI-invented empty fields)
+      if (v !== '' && v !== 0 && !(Array.isArray(v) && v.length === 0)) m[k] = v;
     }
   }
   m.lastUpdated = new Date().toISOString();
@@ -39,8 +50,20 @@ export function deepMergeCourse(existing, updates) {
 
 export function findCourse(courses, match) {
   if (!match || !courses?.length) return -1;
-  const l = match.toLowerCase();
-  return courses.findIndex(c => c?.name?.toLowerCase()?.includes(l) || (c?.courseCode || '').toLowerCase().includes(l));
+  const l = match.toLowerCase().trim();
+  // Prefer exact matches first (name or courseCode)
+  const exact = courses.findIndex(c =>
+    c?.name?.toLowerCase() === l ||
+    (c?.courseCode || '').toLowerCase() === l
+  );
+  if (exact >= 0) return exact;
+  // Then try courseCode substring (short codes like "D415" are safe)
+  const codeMatch = courses.findIndex(c =>
+    (c?.courseCode || '').toLowerCase() && l.includes((c?.courseCode || '').toLowerCase())
+  );
+  if (codeMatch >= 0) return codeMatch;
+  // Finally fall back to name contains (for AI that sends partial names)
+  return courses.findIndex(c => c?.name?.toLowerCase()?.includes(l) || l.includes(c?.name?.toLowerCase() || ''));
 }
 
 const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan'];
@@ -126,7 +149,18 @@ export function executeTools(toolCalls, data, setData) {
         let enriched = 0;
         const enrichNames = [];
         setData(d => ({...d, courses:d.courses.map(c => {
-          const e = safeArr(input.enrichments).find(e => { if(!e?.course_name_match) return false; const l=e.course_name_match.toLowerCase(); return c.name.toLowerCase().includes(l)||(c.courseCode||'').toLowerCase().includes(l); });
+          // Tighter matching: prefer exact name/code, then courseCode in match string
+          const e = safeArr(input.enrichments).find(e => {
+            if (!e?.course_name_match) return false;
+            const l = e.course_name_match.toLowerCase().trim();
+            // Exact match on name or code
+            if (c.name.toLowerCase() === l || (c.courseCode || '').toLowerCase() === l) return true;
+            // Course code appears in the match string (e.g., "D415 - Software Defined Networking")
+            if (c.courseCode && l.includes(c.courseCode.toLowerCase())) return true;
+            // Match string appears as substantial portion of course name (>60% length to avoid "Data" matching everything)
+            if (l.length >= 4 && c.name.toLowerCase().includes(l) && l.length > c.name.length * 0.4) return true;
+            return false;
+          });
           if (!e) return c;
           enriched++; enrichNames.push(c.name);
           const merged = deepMergeCourse(c, e);
@@ -135,6 +169,12 @@ export function executeTools(toolCalls, data, setData) {
             merged.averageStudyHours = [0, 20, 35, 50, 70, 100][merged.difficulty || 3] || 50;
             dlog('info', 'tool', `Auto-set averageStudyHours=${merged.averageStudyHours} for ${c.name} (from difficulty ${merged.difficulty || 3})`);
           }
+          // Post-merge validation: warn if key fields are still empty
+          const warnings = [];
+          if (!safeArr(merged.topicBreakdown).length) warnings.push('topics');
+          if (!safeArr(merged.competencies).length) warnings.push('competencies');
+          if (!safeArr(merged.examTips).length) warnings.push('exam tips');
+          if (warnings.length > 0) dlog('warn', 'tool', `Enrichment for ${c.name} missing: ${warnings.join(', ')}`);
           return merged;
         })}));
         results.push({id:call.id,result:`Enriched ${enrichNames.length} course(s): ${enrichNames.join(", ")}`});

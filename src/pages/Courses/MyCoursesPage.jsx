@@ -44,9 +44,8 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   const batchTimerRef = useRef(null);
   const prevRegenIdRef = useRef(null);
 
-  // Import zone + post-import prompt
-  const [importOpen, setImportOpen] = useState(() => (data.courses || []).length === 0);
-  const [showEnrichPrompt, setShowEnrichPrompt] = useState(false);
+  // Import zone — only used as a secondary "Import More" collapsible after first import
+  const [importMoreOpen, setImportMoreOpen] = useState(false);
 
   // "Complete" done state — 5-second green checkmark after enrichment finishes
   const [enrichDoneAt, setEnrichDoneAt] = useState(null);
@@ -146,11 +145,17 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   }, [bg.loading, bg.regenId]);
 
   // Fix 3: Detect enrichment completion → show "Complete" state for 5 seconds
+  // Only show "Complete" if enrichment actually succeeded (no errors as last log, and courses were enriched)
   useEffect(() => {
     if (prevLoadingRef.current && !bg.loading && bg.logs.length > 0) {
-      setEnrichDoneAt(Date.now());
-      const timeout = setTimeout(() => setEnrichDoneAt(null), 5000);
-      return () => clearTimeout(timeout);
+      const lastLog = bg.logs[bg.logs.length - 1];
+      const wasAborted = lastLog?.type === 'error' && (lastLog?.content || '').toLowerCase().includes('stop');
+      const anyEnriched = activeCourses.some(c => hasCtx(c));
+      if (!wasAborted && anyEnriched) {
+        setEnrichDoneAt(Date.now());
+        const timeout = setTimeout(() => setEnrichDoneAt(null), 5000);
+        return () => clearTimeout(timeout);
+      }
     }
     prevLoadingRef.current = bg.loading;
   }, [bg.loading]);
@@ -267,8 +272,6 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
       const results = executeTools(toolCalls, data, setData);
       for (const r of results) bgLog({ type: 'tool_result', content: `Done: ${r.result}` });
       if (totalCourses > 0) {
-        setImportOpen(false);
-        setShowEnrichPrompt(true);
         toast(`${totalCourses} courses imported!`, 'success');
       } else {
         toast(`Model responded but found 0 courses. Try a clearer image or a vision model (Claude Sonnet, GPT-4o).`, 'warn');
@@ -316,19 +319,25 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     if (!profile) return;
     const active = courses.filter(c => c.status !== 'completed');
     if (!active.length) return;
+    bgNewAbort();
     bgSet({ loading: true, logs: [{ type: 'user', content: `\uD83D\uDD04 Regenerating ${active.length} courses individually` }], label: `Regenerating 1/${active.length}...` });
     dlog('info', 'api', `Regen all (sequential): ${active.length} courses`);
     let completed = 0;
+    let wasCancelled = false;
     for (const course of active) {
-      if (getBgState().abortCtrl?.signal?.aborted) { bgLog({ type: 'error', content: `Stopped after ${completed}/${active.length}` }); break; }
+      if (getBgState().abortCtrl?.signal?.aborted) { bgLog({ type: 'error', content: `Stopped after ${completed}/${active.length}` }); wasCancelled = true; break; }
       completed++;
       bgSet({ label: `Regenerating ${completed}/${active.length}: ${course.name}...`, regenId: course.id });
       bgLog({ type: 'user', content: `\uD83D\uDD04 ${completed}/${active.length}: ${course.name}` });
-      const sys = buildSystemPrompt(data, `Regenerate deep context for "${course.name}" using enrich_course_context. Include ALL fields.`);
-      const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context \u2014 competencies, topics with weights, exam tips, key terms, focus areas, resources, common mistakes.` }], data, setData, executeTools);
-      for (const l of cLogs) bgLog(l);
+      try {
+        const sys = buildSystemPrompt(data, `Regenerate deep context for "${course.name}" using enrich_course_context. Include ALL fields.`);
+        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context \u2014 competencies, topics with weights, exam tips, key terms, focus areas, resources, common mistakes.` }], data, setData, executeTools);
+        for (const l of cLogs) bgLog(l);
+      } catch (e) {
+        bgLog({ type: 'error', content: `Failed: ${course.name} \u2014 ${e.message}` });
+      }
     }
-    toast(`Regeneration complete: ${completed}/${active.length}`, 'success');
+    toast(wasCancelled ? `Regeneration stopped: ${completed - 1}/${active.length}` : `Regeneration complete: ${completed}/${active.length}`, wasCancelled ? 'warn' : 'success');
     bgSet({ loading: false, regenId: null, label: '' });
   };
 
@@ -337,28 +346,56 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     const toEnrich = courses.filter(c => c.status !== 'completed' && !hasCtx(c));
     if (!toEnrich.length) { toast('All courses already enriched!', 'info'); return; }
 
-    setShowEnrichPrompt(false);
+    // Reset abort controller so a previous cancellation doesn't block this run
+    bgNewAbort();
     bgSet({ loading: true, regenId: null, logs: [{ type: 'user', content: `\u2728 Enriching ${toEnrich.length} course${toEnrich.length > 1 ? 's' : ''} individually` }], label: `Enriching 1/${toEnrich.length}...` });
     dlog('info', 'api', `Enrich new (sequential): ${toEnrich.length} courses`);
 
     let completed = 0;
-    for (const course of toEnrich) {
+    let wasCancelled = false;
+    for (let i = 0; i < toEnrich.length; i++) {
       if (getBgState().abortCtrl?.signal?.aborted) {
         bgLog({ type: 'error', content: `Stopped after ${completed}/${toEnrich.length} courses` });
+        wasCancelled = true;
         break;
       }
-      completed++;
-      bgSet({ label: `Enriching ${completed}/${toEnrich.length}: ${course.name}...`, regenId: course.id });
-      bgLog({ type: 'user', content: `\uD83D\uDD04 ${completed}/${toEnrich.length}: ${course.name}` });
+      const course = toEnrich[i];
+      bgSet({ label: `Enriching ${i + 1}/${toEnrich.length}: ${course.name}...`, regenId: course.id });
+      bgLog({ type: 'user', content: `\uD83D\uDD04 ${i + 1}/${toEnrich.length}: ${course.name}` });
 
-      const sys = buildSystemPrompt(data, `Generate deep context for "${course.name}" (${course.courseCode || 'no code'}) using enrich_course_context. Include ALL fields: competencies with codes, topicBreakdown with percentage weights, examTips, keyTerms, focusAreas, resources, commonMistakes, assessmentType details, averageStudyHours (realistic total hours to pass), and difficulty (1-5). Be thorough \u2014 this is the ONLY call for this course.`);
-      const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours).` }], data, setData, executeTools);
-
-      for (const l of cLogs) bgLog(l);
-      dlog('info', 'api', `Enriched ${completed}/${toEnrich.length}: ${course.name}`);
+      try {
+        // Only allow enrich_course_context tool — reject others to prevent accidental data changes
+        const enrichOnly = (calls, d, sd) => {
+          const filtered = calls.filter(c => c.name === 'enrich_course_context');
+          if (filtered.length < calls.length) {
+            const rejected = calls.filter(c => c.name !== 'enrich_course_context').map(c => c.name);
+            dlog('warn', 'tool', `Rejected non-enrichment tools during enrichment: ${rejected.join(', ')}`);
+          }
+          return filtered.length > 0 ? executeTools(filtered, d, sd) : [{ id: 'skip', result: 'No enrichment tool called' }];
+        };
+        const sys = buildSystemPrompt(data, `Generate deep context for ONLY "${course.name}" (${course.courseCode || 'no code'}) using enrich_course_context. Use the EXACT course name "${course.name}" as the course_name_match value. Include ALL fields. Do NOT enrich other courses.`);
+        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours). Use course_name_match: "${course.name}"` }], data, setData, enrichOnly);
+        for (const l of cLogs) bgLog(l);
+        // Verify enrichment actually happened by checking if course now has context
+        const updatedCourse = (data.courses || []).find(c => c.id === course.id);
+        if (updatedCourse && hasCtx(updatedCourse)) {
+          completed++;
+          dlog('info', 'api', `Enriched ${completed}/${toEnrich.length}: ${course.name}`);
+        } else {
+          bgLog({ type: 'warn', content: `${course.name}: AI responded but enrichment data may be incomplete` });
+          dlog('warn', 'api', `Enrichment may have failed for ${course.name} — hasCtx check failed`);
+        }
+      } catch (e) {
+        bgLog({ type: 'error', content: `Failed: ${course.name} \u2014 ${e.message}` });
+        dlog('error', 'api', `Enrich failed: ${course.name}`, e.message);
+      }
     }
 
-    toast(`Enrichment complete: ${completed}/${toEnrich.length} courses processed`, 'success');
+    if (wasCancelled) {
+      toast(`Enrichment stopped: ${completed}/${toEnrich.length} courses completed`, 'warn');
+    } else {
+      toast(`Enrichment complete: ${completed}/${toEnrich.length} courses processed`, 'success');
+    }
     bgSet({ loading: false, regenId: null, label: '' });
   };
 
@@ -411,62 +448,27 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
           <button className="sf-nav" onClick={() => setPage('dashboard')} style={{ background: T.input, border: `1px solid ${T.border}`, borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: T.soft, fontSize: fs(12), fontWeight: 600 }}>{'\u2190'} Dashboard</button>
           <div><h1 style={{ fontSize: fs(24), fontWeight: 800, marginBottom: 2 }}>My Courses</h1><p style={{ color: T.dim, fontSize: fs(13) }}>{courses.length} courses {'\u00B7'} {doneCU}/{totalCU} CU</p></div>
         </div>
-        <Btn v="secondary" onClick={openAdd}><Ic.Plus s={12} /> Add Course</Btn>
       </div>
 
-      {/* ─── IMPORT ZONE (collapsible) ─── */}
-      <div style={{ marginBottom: 16 }}>
-        <button onClick={() => setImportOpen(!importOpen)}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 14px', borderRadius: importOpen ? '10px 10px 0 0' : 10,
-            border: `1px solid ${T.border}`, background: T.panel,
-            cursor: 'pointer', color: T.text, fontSize: fs(13), fontWeight: 600,
-            transition: 'border-radius .15s ease',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: fs(14) }}>{'\uD83D\uDCC2'}</span>
-            <span>Import Courses</span>
-            {step1Done && <Badge color={T.accent} bg={T.accentD}>{'\u2713'} {courses.length} imported</Badge>}
-          </div>
-          <span style={{ fontSize: fs(11), color: T.dim, transition: 'transform .2s', transform: importOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>{'\u25BC'}</span>
-        </button>
-        {importOpen && (
-          <div style={{ padding: '14px 16px', border: `1px solid ${T.border}`, borderTop: 'none', borderRadius: '0 0 10px 10px', background: T.panel }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button className="sf-import-btn sf-import-accent" onClick={() => { fileRef.current.accept = 'image/*'; fileRef.current.click(); }} disabled={bg.loading} style={{ padding: '16px', borderRadius: 10, border: `1.5px solid ${T.accent}44`, background: T.accentD, cursor: bg.loading ? 'wait' : 'pointer', textAlign: 'left' }}>
-                <div style={{ fontSize: fs(13), fontWeight: 700, color: T.accent, marginBottom: 3 }}>Screenshot / Image</div>
-                <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.4 }}>Upload a screenshot of your degree plan page</div>
-              </button>
-              <button className="sf-import-btn sf-import-blue" onClick={() => { fileRef.current.accept = '.pdf,.doc,.docx,.txt,.csv,image/*'; fileRef.current.click(); }} disabled={bg.loading} style={{ padding: '16px', borderRadius: 10, border: `1.5px solid ${T.blue}44`, background: T.blueD, cursor: bg.loading ? 'wait' : 'pointer', textAlign: 'left' }}>
-                <div style={{ fontSize: fs(13), fontWeight: 700, color: T.blue, marginBottom: 3 }}>Document / PDF</div>
-                <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.4 }}>Upload PDF, DOCX, or text file of your degree plan</div>
-              </button>
+      {/* Hidden file input — used by import buttons */}
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImg} />
+
+      {/* Image preview — shown when a file is selected, regardless of which section triggered it */}
+      {imgPreview && (
+        <div style={{ marginBottom: 16, padding: 12, background: T.bg2, borderRadius: 10, border: `1px solid ${T.border}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: fs(12), fontWeight: 700 }}>Degree Plan Image</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn small v="ghost" onClick={() => { setImgFile(null); setImgPreview(null); }}>Remove</Btn>
+              <Btn small v="ai" onClick={parseImage} disabled={bg.loading || !profile}>
+                {bg.loading ? <><Ic.Spin s={14} /> Parsing...</> : <><Ic.AI s={14} /> Extract Courses</>}
+              </Btn>
             </div>
-            {!profile && <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: T.orangeD, border: `1px solid ${T.orange}33`, fontSize: fs(11), color: T.orange }}>Connect an AI profile in Settings first {'\u2014'} parsing requires a vision-capable model.</div>}
-            {profile && !isLikelyVisionCapable(profile) && (
-              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: T.orangeD, border: `1px solid ${T.orange}33`, fontSize: fs(11), color: T.orange }}>
-                {profile.name}{profile.model ? ` (${profile.model})` : ''} may not support image parsing. For best results, switch to a vision-capable model such as Claude Sonnet/Opus, GPT-4o, or Gemini Pro.
-              </div>
-            )}
-            <div style={{ marginTop: 10, fontSize: fs(10), color: T.dim, lineHeight: 1.5 }}>Image and document parsing requires a vision-capable AI model such as Claude Sonnet/Opus, GPT-4o, or Gemini Pro.</div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImg} />
-            {imgPreview && <div style={{ marginTop: 12, padding: 12, background: T.bg2, borderRadius: 10, border: `1px solid ${T.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: fs(12), fontWeight: 700 }}>Degree Plan Image</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Btn small v="ghost" onClick={() => { setImgFile(null); setImgPreview(null); }}>Remove</Btn>
-                  <Btn small v="ai" onClick={parseImage} disabled={bg.loading}>
-                    {bg.loading ? <><Ic.Spin s={14} /> Parsing...</> : <><Ic.AI s={14} /> Extract Courses</>}
-                  </Btn>
-                </div>
-              </div>
-              <img src={imgPreview} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 10, border: `1px solid ${T.border}` }} alt="plan" />
-            </div>}
           </div>
-        )}
-      </div>
+          <img src={imgPreview} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 10, border: `1px solid ${T.border}` }} alt="Uploaded degree plan" />
+          {!profile && <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, background: T.orangeD, border: `1px solid ${T.orange}33`, fontSize: fs(10), color: T.orange }}>Connect an AI provider in Settings to extract courses.</div>}
+        </div>
+      )}
 
       {/* ─── AI ACTIVITY BAR ─── */}
       {(bg.loading || bg.logs.length > 0) && (
@@ -547,62 +549,171 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
         </div>
       )}
 
-      {/* ─── SCHOOL PROFILE NUDGE ─── */}
-      {!data.universityProfile?.name && unenriched.length > 0 && !enrichDone && step1Done && (
-        <div style={{ padding: '12px 16px', borderRadius: 10, background: `linear-gradient(135deg, ${T.purpleD}, ${T.blueD})`, border: `1px solid ${T.purple}33`, marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: fs(12), fontWeight: 700, color: T.text, marginBottom: 4 }}>Set your school for better enrichment</div>
-              <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.5 }}>Enrichment uses your school's grading system, assessment model, and community resources to generate more accurate study context.</div>
-            </div>
-            <Btn small v="ghost" onClick={() => setPage('settings')} style={{ flexShrink: 0 }}>Full Setup {'\u2192'}</Btn>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-            {UNIVERSITY_PRESETS.filter(p => p.presetId !== 'self-study').map(p => (
-              <button key={p.presetId} onClick={() => { setData(d => ({ ...d, universityProfile: { ...p } })); toast(`School set: ${p.shortName}`, 'success'); }}
-                style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${T.accent}44`, background: T.accentD, cursor: 'pointer', fontSize: fs(10), fontWeight: 600, color: T.accent, transition: 'all .15s' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.background = T.accent + '28'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = T.accent + '44'; e.currentTarget.style.background = T.accentD; }}
-              >{p.shortName}</button>
-            ))}
-            <button onClick={() => setPage('settings')}
-              style={{ padding: '6px 14px', borderRadius: 8, border: `1px dashed ${T.border}`, background: 'transparent', cursor: 'pointer', fontSize: fs(10), fontWeight: 600, color: T.dim }}
-            >Other School...</button>
-          </div>
-        </div>
-      )}
+      {/* ═══ UNIFIED SETUP GUIDE — single adaptive card ═══ */}
+      {(() => {
+        const hasSchool = !!data.universityProfile?.name;
+        const schoolName = data.universityProfile?.shortName || data.universityProfile?.name || '';
+        const hasImport = courses.length > 0;
+        const hasEnrich = activeCourses.length > 0 && activeCourses.every(c => hasCtx(c));
+        const hasPlan = (data.planHistory || []).length > 0;
+        const hasProfile = !!profile;
+        const allDone = hasImport && hasSchool && hasEnrich && hasPlan;
+        const hasEnrichErrors = bg.logs.some(l => l.type === 'error');
+        const enrichPartial = enrichedCount > 0 && unenriched.length > 0;
 
-      {/* ─── POST-IMPORT ENRICHMENT PROMPT ─── */}
-      {showEnrichPrompt && unenriched.length > 0 && !bg.loading && (
-        <div style={{
-          padding: '12px 16px', borderRadius: 10, marginBottom: 16,
-          background: `linear-gradient(135deg, ${T.purpleD}, ${T.accentD})`,
-          border: `1px solid ${T.purple}44`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: fs(16) }}>{'\u2728'}</span>
-            <span style={{ fontSize: fs(12), color: T.text, fontWeight: 600 }}>{unenriched.length} course{unenriched.length > 1 ? 's' : ''} need AI enrichment for study context</span>
+        // Steps in logical order: school first (often done in onboarding), then import, enrich, plan
+        const steps = [
+          { key: 'school', label: 'School', done: hasSchool },
+          { key: 'import', label: 'Import', done: hasImport },
+          { key: 'enrich', label: 'Study Prep', done: hasEnrich },
+          { key: 'plan', label: 'Plan', done: hasPlan },
+        ];
+        const doneCount = steps.filter(s => s.done).length;
+        const activeStep = steps.find(s => !s.done) || null;
+
+        if (allDone) return null;
+
+        return (
+          <div style={{ display: 'flex', borderRadius: 12, overflow: 'hidden', marginBottom: 16, border: `1px solid ${T.accent}44`, background: T.card, boxShadow: `0 0 20px ${T.accent}11` }}>
+            <div style={{ width: 5, flexShrink: 0, background: `linear-gradient(180deg, ${T.accent}, ${T.purple})` }} />
+            <div style={{ flex: 1, padding: '16px 20px' }}>
+              {/* Step checklist — horizontal dots */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
+                {steps.map((s, i) => (
+                  <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {i > 0 && <div style={{ width: 20, height: 1, background: s.done ? T.accent : T.border }} />}
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(11), fontWeight: 700, background: activeStep === s ? T.accent : s.done ? T.accent + '33' : T.input, color: activeStep === s ? T.bg : s.done ? T.accent : T.dim, border: activeStep === s ? 'none' : `1px solid ${s.done ? T.accent + '55' : T.border}`, transition: 'all .2s' }}
+                      role="listitem" aria-label={`${s.label}: ${s.done ? 'Complete' : activeStep === s ? 'Current step' : 'Pending'}`}>
+                      {s.done ? '\u2713' : doneCount + 1 === i + 1 ? i + 1 : '\u00B7'}
+                    </div>
+                    <span style={{ fontSize: fs(10), fontWeight: activeStep === s ? 700 : 500, color: activeStep === s ? T.accent : s.done ? T.soft : T.dim }}>{s.label}</span>
+                  </div>
+                ))}
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: fs(9), color: T.dim }}>{doneCount}/4</span>
+              </div>
+
+              {/* ── SCHOOL step ── */}
+              {activeStep?.key === 'school' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: fs(14), fontWeight: 700, color: T.text, marginBottom: 3 }}>{'\uD83C\uDF93'} What school are you attending?</div>
+                      <div style={{ fontSize: fs(11), color: T.soft, lineHeight: 1.5 }}>This helps AI generate study content tailored to your school{'\u2019'}s exams, grading, and term structure.</div>
+                    </div>
+                    <Btn small v="ghost" onClick={() => setPage('settings')} style={{ flexShrink: 0 }}>Full Setup {'\u2192'}</Btn>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {UNIVERSITY_PRESETS.filter(p => p.presetId !== 'self-study').map(p => (
+                      <button key={p.presetId} onClick={() => { setData(d => ({ ...d, universityProfile: { ...p } })); toast(`School set: ${p.shortName}`, 'success'); }}
+                        style={{ padding: '8px 18px', borderRadius: 10, border: `2px solid ${T.accent}44`, background: T.accentD, cursor: 'pointer', fontSize: fs(11), fontWeight: 700, color: T.accent, transition: 'all .15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.background = T.accent + '28'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = T.accent + '44'; e.currentTarget.style.background = T.accentD; e.currentTarget.style.transform = 'none'; }}
+                      >{p.shortName}</button>
+                    ))}
+                    <button onClick={() => setPage('settings')}
+                      style={{ padding: '8px 18px', borderRadius: 10, border: `2px dashed ${T.border}`, background: 'transparent', cursor: 'pointer', fontSize: fs(11), fontWeight: 600, color: T.dim }}
+                    >Other School...</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── IMPORT step — full import interface inline ── */}
+              {activeStep?.key === 'import' && (
+                <div>
+                  <div style={{ fontSize: fs(14), fontWeight: 700, color: T.text, marginBottom: 3 }}>
+                    {hasSchool ? `${'\uD83D\uDCDA'} Welcome, ${schoolName} student! Import your courses.` : `${'\uD83D\uDCDA'} Import your courses to get started`}
+                  </div>
+                  <div style={{ fontSize: fs(11), color: T.soft, marginBottom: 12, lineHeight: 1.5 }}>Upload your degree plan, or add courses manually. You can always add more later.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                    {[
+                      { key: 'screenshot', label: 'Screenshot / Image', desc: 'Upload a photo of your degree plan', icon: '\uD83D\uDCF7', color: T.accent, colorD: T.accentD, needsAI: true, onClick: () => { if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return; } fileRef.current.accept = 'image/*'; fileRef.current.click(); } },
+                      { key: 'document', label: 'Document / PDF', desc: 'Upload PDF, DOCX, or text file', icon: '\uD83D\uDCC4', color: T.blue, colorD: T.blueD, needsAI: true, onClick: () => { if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return; } fileRef.current.accept = '.pdf,.doc,.docx,.txt,.csv'; fileRef.current.click(); } },
+                      { key: 'manual', label: 'Add Manually', desc: 'Type course details one at a time', icon: '\u270F\uFE0F', color: T.text, colorD: T.input, needsAI: false, onClick: () => setShowAdd(true) },
+                    ].map(opt => {
+                      const disabled = bg.loading || (opt.needsAI && !profile);
+                      return (
+                        <button key={opt.key} onClick={opt.onClick} disabled={bg.loading}
+                          className="sf-import-btn"
+                          style={{ padding: '16px', borderRadius: 12, border: `1.5px solid ${disabled ? T.border : opt.color + '44'}`, background: disabled ? T.input : opt.colorD, cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: disabled ? 0.5 : 1, transition: 'all .2s ease', transform: 'translateY(0)' }}
+                          onMouseEnter={e => { if (disabled) return; e.currentTarget.style.borderColor = opt.color; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 20px ${opt.color}22`; }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = opt.color + '44'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
+                          <div style={{ fontSize: fs(18), marginBottom: 6 }}>{opt.icon}</div>
+                          <div style={{ fontSize: fs(12), fontWeight: 700, color: disabled ? T.dim : opt.color, marginBottom: 3 }}>{opt.label}</div>
+                          <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.4 }}>{opt.desc}</div>
+                          {opt.needsAI && !profile && <div style={{ fontSize: fs(9), color: T.orange, marginTop: 6 }}>Requires AI connection</div>}
+                          {!opt.needsAI && <div style={{ fontSize: fs(9), color: T.accent, marginTop: 6 }}>No AI needed</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!profile && (
+                    <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: T.orangeD, border: `1px solid ${T.orange}33`, fontSize: fs(11), color: T.orange, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Screenshot and document import require an AI provider.</span>
+                      <Btn small v="ghost" onClick={() => setPage('settings')} style={{ color: T.orange, borderColor: T.orange + '55', flexShrink: 0 }}>Connect AI {'\u2192'}</Btn>
+                    </div>
+                  )}
+                  {profile && !isLikelyVisionCapable(profile) && (
+                    <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: T.orangeD, border: `1px solid ${T.orange}33`, fontSize: fs(11), color: T.orange }}>
+                      Your current model may not support image parsing. For best results, use Claude Sonnet/Opus, GPT-4o, or Gemini Pro.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── ENRICH step ── */}
+              {activeStep?.key === 'enrich' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: fs(14), fontWeight: 700, color: T.text, marginBottom: 3 }}>
+                        {'\u2728'} {bg.loading ? 'Building study context...' : hasEnrichErrors && !bg.loading ? 'Some courses had issues' : enrichPartial ? `${enrichedCount}/${courses.length} courses prepared` : `Prepare ${unenriched.length} course${unenriched.length > 1 ? 's' : ''} for studying`}
+                      </div>
+                      <div style={{ fontSize: fs(11), color: T.soft, lineHeight: 1.5 }}>
+                        {!hasProfile
+                          ? 'Connect an AI provider in Settings to enable this step.'
+                          : hasEnrichErrors && !bg.loading
+                          ? 'The AI connection was interrupted or timed out. You can retry the failed courses.'
+                          : enrichPartial
+                          ? `${unenriched.length} course${unenriched.length > 1 ? 's' : ''} remaining. You can continue or retry.`
+                          : 'AI will analyze each course and generate topics, exam tips, difficulty ratings, and study hour estimates.'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      {!hasProfile ? (
+                        <Btn small v="secondary" onClick={() => setPage('settings')}>Connect AI {'\u2192'}</Btn>
+                      ) : bg.loading ? (
+                        <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, regenId: null, label: '' }); toast('Stopped', 'info'); }}>Stop</Btn>
+                      ) : (
+                        <Btn small v="ai" onClick={enrichNew} disabled={bg.loading}>{hasEnrichErrors || enrichPartial ? 'Retry / Continue' : 'Prepare All'}</Btn>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── PLAN step ── */}
+              {activeStep?.key === 'plan' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: fs(14), fontWeight: 700, color: T.text, marginBottom: 3 }}>{'\uD83D\uDCC5'} Your courses are ready! Build your study plan.</div>
+                    <div style={{ fontSize: fs(11), color: T.soft }}>Head to the Study Planner to generate a personalized schedule based on your availability.</div>
+                  </div>
+                  <Btn small v="ai" onClick={() => setPage('planner')}>Open Planner {'\u2192'}</Btn>
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn small v="ghost" onClick={() => setShowEnrichPrompt(false)}>Later</Btn>
-            <Btn small v="ai" onClick={enrichNew} disabled={!profile}>Enrich All Now</Btn>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ─── COURSE LIST ─── */}
       {step1Done && (
         <div>
-          {/* Row 1: Title + primary enrichment action */}
+          {/* Row 1: Title + Add/Import actions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <h3 style={{ fontSize: fs(14), fontWeight: 700, margin: 0 }}>Courses ({courses.length})</h3>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {unenriched.length > 0 && !bg.loading && (
-                <Btn small v="ai" onClick={enrichNew} disabled={bg.loading || !profile}>
-                  Enrich All New ({unenriched.length})
-                </Btn>
-              )}
               {coursesWithGaps.length > 0 && unenriched.length === 0 && !bg.loading && (
                 <Btn small v="ai" onClick={fillAllGaps} disabled={bg.loading || !profile}>
                   Fill All Gaps ({coursesWithGaps.length})
@@ -611,6 +722,34 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
               {enrichDone && !bg.loading && (
                 <Badge color={T.accent} bg={T.accentD}>{'\u2713'} All Enriched</Badge>
               )}
+              <div style={{ position: 'relative' }}>
+                {importMoreOpen && <div onClick={() => setImportMoreOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />}
+                <Btn v="secondary" onClick={() => setImportMoreOpen(!importMoreOpen)}>{'\uD83D\uDCC2'} Import More {importMoreOpen ? '\u25B4' : '\u25BE'}</Btn>
+                {importMoreOpen && (
+                  <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 20, padding: '10px', border: `1px solid ${T.border}`, borderRadius: 10, background: T.card, boxShadow: `0 8px 24px rgba(0,0,0,.3)`, minWidth: 240 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <button onClick={() => { if (!profile) { toast('Connect an AI provider first', 'warn'); return; } fileRef.current.accept = 'image/*'; fileRef.current.click(); setImportMoreOpen(false); }} disabled={bg.loading || !profile}
+                        className="sf-import-btn" style={{ padding: '10px 14px', borderRadius: 8, border: `1px solid ${T.accent}44`, background: T.accentD, cursor: !profile || bg.loading ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: profile ? 1 : 0.5, transition: 'all .15s' }}
+                        onMouseEnter={e => { if (profile) e.currentTarget.style.borderColor = T.accent; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = T.accent + '44'; }}>
+                        <div style={{ fontSize: fs(11), fontWeight: 700, color: T.accent }}>Screenshot / Image</div>
+                      </button>
+                      <button onClick={() => { if (!profile) { toast('Connect an AI provider first', 'warn'); return; } fileRef.current.accept = '.pdf,.doc,.docx,.txt,.csv'; fileRef.current.click(); setImportMoreOpen(false); }} disabled={bg.loading || !profile}
+                        className="sf-import-btn" style={{ padding: '10px 14px', borderRadius: 8, border: `1px solid ${T.blue}44`, background: T.blueD, cursor: !profile || bg.loading ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: profile ? 1 : 0.5, transition: 'all .15s' }}
+                        onMouseEnter={e => { if (profile) e.currentTarget.style.borderColor = T.blue; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = T.blue + '44'; }}>
+                        <div style={{ fontSize: fs(11), fontWeight: 700, color: T.blue }}>Document / PDF</div>
+                      </button>
+                      <button onClick={() => { setShowAdd(true); setImportMoreOpen(false); }}
+                        className="sf-import-btn" style={{ padding: '10px 14px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.input, cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = T.soft; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; }}>
+                        <div style={{ fontSize: fs(11), fontWeight: 700, color: T.text }}>Add Manually</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           {/* Row 2: Secondary controls + regen hint */}
@@ -752,12 +891,13 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
         </div>
       )}
 
-      {/* Empty state */}
-      {!step1Done && !importOpen && (
+      {/* Import More — dropdown inline, rendered inside course list header below */}
+
+      {/* Empty state — only shows if setup guide is somehow not visible */}
+      {!step1Done && !courses.length && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: T.dim }}>
           <div style={{ fontSize: fs(15), marginBottom: 8 }}>No courses yet</div>
-          <div style={{ fontSize: fs(12), marginBottom: 16 }}>Import a degree plan or add courses manually to get started.</div>
-          <Btn v="secondary" onClick={() => setImportOpen(true)}>Open Import</Btn>
+          <div style={{ fontSize: fs(12), marginBottom: 16 }}>Use the setup guide above to import courses.</div>
         </div>
       )}
 

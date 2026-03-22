@@ -163,53 +163,61 @@ export function executeTools(toolCalls, data, setData) {
         results.push({id:call.id,result:`Updated courses`});
       }
       else if (name === "enrich_course_context") {
-        let enriched = 0;
-        const enrichNames = [];
-        setData(d => ({...d, courses:d.courses.map(c => {
-          const e = safeArr(input.enrichments).find(e => {
-            if (!e?.course_name_match && !e?.courseCode && !e?.name) return false;
-            // Strategy: try multiple matching approaches, most specific first
+        // Pre-compute matches BEFORE setData so counters are reliable
+        // (setData updater may be deferred in async contexts)
+        const enrichments = safeArr(input.enrichments);
+        const matchResults = [];
+
+        // Find which enrichment matches which course using current data
+        const currentCourses = data?.courses || [];
+        for (const e of enrichments) {
+          if (!e?.course_name_match && !e?.courseCode && !e?.name) continue;
+          const storedIdx = currentCourses.findIndex(c => {
             const storedCode = (c.courseCode || '').toUpperCase().trim();
             const storedName = normMatch(c.name);
-
-            // 1. CourseCode match (most reliable) — from enrichment's courseCode field
             if (e.courseCode && storedCode && e.courseCode.toUpperCase().trim() === storedCode) return true;
-
-            // 2. CourseCode extracted from course_name_match or name
             const matchCode = extractCode(e.course_name_match || e.name || '');
             if (matchCode && storedCode && matchCode === storedCode) return true;
-
-            // 3. CourseCode from enrichment data found in stored course name
             if (matchCode && normMatch(c.name).includes(matchCode.toLowerCase())) return true;
             if (e.courseCode && normMatch(c.name).includes(e.courseCode.toLowerCase())) return true;
-
-            // 4. Normalized name matching
             const matchName = normMatch(e.course_name_match || e.name || '');
             if (storedName && matchName && storedName === matchName) return true;
             if (storedName.length >= 8 && matchName.includes(storedName)) return true;
             if (matchName.length >= 8 && storedName.includes(matchName)) return true;
-
-            dlog('debug', 'tool', `No match: stored="${c.name}" code="${storedCode}" vs match="${e.course_name_match}" eCode="${e.courseCode}" | norm: "${storedName}" vs "${matchName}" | codes: "${storedCode}" vs "${matchCode}"`);
             return false;
           });
-          if (!e) return c;
-          enriched++; enrichNames.push(c.name);
-          const merged = deepMergeCourse(c, e);
-          // Guarantee averageStudyHours is set after enrichment
-          if (!merged.averageStudyHours || merged.averageStudyHours <= 0) {
-            merged.averageStudyHours = [0, 20, 35, 50, 70, 100][merged.difficulty || 3] || 50;
-            dlog('info', 'tool', `Auto-set averageStudyHours=${merged.averageStudyHours} for ${c.name} (from difficulty ${merged.difficulty || 3})`);
+          if (storedIdx >= 0) {
+            matchResults.push({ courseIdx: storedIdx, courseName: currentCourses[storedIdx].name, enrichment: e });
+          } else {
+            // Log all failed matches for debugging
+            for (const c of currentCourses) {
+              dlog('debug', 'tool', `No match: stored="${c.name}" code="${c.courseCode || ''}" vs match="${e.course_name_match}" eCode="${e.courseCode || ''}" | codes: "${(c.courseCode || '').toUpperCase()}" vs "${extractCode(e.course_name_match || e.name || '')}"`);
+            }
           }
-          // Post-merge validation: warn if key fields are still empty
-          const warnings = [];
-          if (!safeArr(merged.topicBreakdown).length) warnings.push('topics');
-          if (!safeArr(merged.competencies).length) warnings.push('competencies');
-          if (!safeArr(merged.examTips).length) warnings.push('exam tips');
-          if (warnings.length > 0) dlog('warn', 'tool', `Enrichment for ${c.name} missing: ${warnings.join(', ')}`);
-          return merged;
-        })}));
+        }
+
+        if (matchResults.length > 0) {
+          setData(d => ({...d, courses: d.courses.map((c, idx) => {
+            const match = matchResults.find(m => m.courseIdx === idx);
+            if (!match) return c;
+            const merged = deepMergeCourse(c, match.enrichment);
+            if (!merged.averageStudyHours || merged.averageStudyHours <= 0) {
+              merged.averageStudyHours = [0, 20, 35, 50, 70, 100][merged.difficulty || 3] || 50;
+              dlog('info', 'tool', `Auto-set averageStudyHours=${merged.averageStudyHours} for ${c.name} (from difficulty ${merged.difficulty || 3})`);
+            }
+            const warnings = [];
+            if (!safeArr(merged.topicBreakdown).length) warnings.push('topics');
+            if (!safeArr(merged.competencies).length) warnings.push('competencies');
+            if (!safeArr(merged.examTips).length) warnings.push('exam tips');
+            if (warnings.length > 0) dlog('warn', 'tool', `Enrichment for ${c.name} missing: ${warnings.join(', ')}`);
+            return merged;
+          })}));
+        }
+
+        const enrichNames = matchResults.map(m => m.courseName);
         results.push({id:call.id,result:`Enriched ${enrichNames.length} course(s): ${enrichNames.join(", ")}`});
         if (enrichNames.length > 0) toast(`Enriched: ${enrichNames.join(", ")}`,"success");
+        else dlog('warn', 'tool', `enrich_course_context called but no courses matched. Enrichments: ${enrichments.map(e => e.course_name_match || e.courseCode || '?').join(', ')}`);
       }
       else if (name === "generate_study_plan") {
         const ct = safeArr(input.daily_tasks).length;

@@ -679,6 +679,8 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
       }
       const results = executeTools(resp.toolCalls, data, setData);
       for (const r of results) logs.push({type:"tool_result",content:`✅ ${r.result}`});
+      // Skip continuation if this was the last allowed loop — don't waste time waiting for a response we won't use
+      if (loops <= 0) { dlog('info', 'api', 'Max tool loops reached — skipping continuation'); break; }
       try { resp = await continueAfterTools(profile, sys, msgs, resp.toolCalls, results); }
       catch (e) {
         if (e.message === 'Cancelled') { logs.push({type:"error",content:"⛔ Cancelled"}); break; }

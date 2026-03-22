@@ -641,7 +641,7 @@ ${ctx ? `\nCONTEXT:\n${ctx}` : ""}`;
 // ----------------------------------------------------------------------
 // AI LOOP HELPER
 // ----------------------------------------------------------------------
-export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true) {
+export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true, maxLoops = 0) {
   if (typeof executeTools !== 'function') {
     dlog('error','api','runAILoop called without executeTools function — tool calls will not be processed');
   }
@@ -661,7 +661,7 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
     return {logs:[{type:"error",content:e.message}],finalText:""};
   }
   const quirks = getProviderQuirks(profile);
-  let loops = quirks.maxToolLoops || 5, finalText = "";
+  let loops = maxLoops > 0 ? maxLoops : (quirks.maxToolLoops || 5), finalText = "";
   while (loops-- > 0) {
     if (getBgState().abortCtrl?.signal?.aborted) { logs.push({type:"error",content:"⛔ Cancelled"}); break; }
     if (resp.text) { logs.push({type:"text",content:resp.text}); finalText += (finalText?" ":"") + resp.text; bgStream(""); }

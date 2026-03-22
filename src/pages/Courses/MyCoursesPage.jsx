@@ -311,7 +311,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     bgSet({ loading: true, regenId: course.id, logs: [{ type: 'user', content: `\uD83D\uDD04 Enriching: ${course.name}` }], label: `Enriching ${course.name}...` });
     dlog('info', 'api', `Regen: ${course.name}`);
     const sys = buildSystemPrompt(dataRef.current, `Regenerate deep context for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}". Include ALL fields.`);
-    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context.` }], dataRef.current, setData, enrichOnlyTools);
+    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context.` }], dataRef.current, setData, enrichOnlyTools, null, true, 1);
     for (const l of logs) bgLog(l);
     bgSet({ loading: false, regenId: null, label: '' });
   };
@@ -330,7 +330,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     if (course.assessmentType) existingContext.push(`Assessment: ${course.assessmentType}`);
 
     const sys = buildSystemPrompt(dataRef.current, `Generate ONLY the following sections for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}": ${sectionLabels.join(', ')}.\n\nDo NOT include other fields \u2014 they already exist.\n${existingContext.length > 0 ? `\nExisting context: ${existingContext.join('; ')}` : ''}`);
-    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate the following missing data for ${course.name}: ${sectionLabels.join(', ')}. Only fill in these specific fields: ${fieldsList.join(', ')}.` }], dataRef.current, setData, enrichOnlyTools);
+    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate the following missing data for ${course.name}: ${sectionLabels.join(', ')}. Only fill in these specific fields: ${fieldsList.join(', ')}.` }], dataRef.current, setData, enrichOnlyTools, null, true, 1);
     for (const l of logs) bgLog(l);
     bgSet({ loading: false, regenId: null, label: '' });
   };
@@ -350,7 +350,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
       bgLog({ type: 'user', content: `\uD83D\uDD04 ${completed + 1}/${active.length}: ${course.name}` });
       try {
         const sys = buildSystemPrompt(dataRef.current, `Regenerate deep context for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}". Include ALL fields.`);
-        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context \u2014 competencies, topics with weights, exam tips, key terms, focus areas, resources, common mistakes.` }], dataRef.current, setData, enrichOnlyTools);
+        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context \u2014 competencies, topics with weights, exam tips, key terms, focus areas, resources, common mistakes.` }], dataRef.current, setData, enrichOnlyTools, null, true, 1);
         for (const l of cLogs) bgLog(l);
         completed++;
       } catch (e) {
@@ -384,7 +384,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
 
       try {
         const sys = buildSystemPrompt(dataRef.current, `Generate deep context for ONLY "${course.name}" (${course.courseCode || 'no code'}) using enrich_course_context. Use the EXACT course name "${course.name}" as the course_name_match value. Include ALL fields. Do NOT enrich other courses.`);
-        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours). Use course_name_match: "${course.name}"` }], dataRef.current, setData, enrichOnlyTools);
+        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours). Use course_name_match: "${course.name}"` }], dataRef.current, setData, enrichOnlyTools, null, true, 1);
         for (const l of cLogs) bgLog(l);
         // Verify enrichment using fresh data ref (not stale closure)
         const freshCourse = (dataRef.current.courses || []).find(c => c.id === course.id);
@@ -434,8 +434,8 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
       if (safeArr(course.examTips).length > 0) existingContext.push(`${safeArr(course.examTips).length} exam tips`);
       if (course.assessmentType) existingContext.push(`Assessment: ${course.assessmentType}`);
 
-      const sys = buildSystemPrompt(data, `Generate ONLY the following sections for "${course.name}" using enrich_course_context: ${sectionLabels.join(', ')}.\n\nDo NOT include other fields — they already exist.\n${existingContext.length > 0 ? `\nExisting context: ${existingContext.join('; ')}` : ''}`);
-      const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate the following missing data for ${course.name}: ${sectionLabels.join(', ')}. Only fill in these specific fields: ${fieldsList.join(', ')}.` }], data, setData, executeTools);
+      const sys = buildSystemPrompt(dataRef.current, `Generate ONLY the following sections for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}": ${sectionLabels.join(', ')}.\n\nDo NOT include other fields \u2014 they already exist.\n${existingContext.length > 0 ? `\nExisting context: ${existingContext.join('; ')}` : ''}`);
+      const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate the following missing data for ${course.name}: ${sectionLabels.join(', ')}. Only fill in these specific fields: ${fieldsList.join(', ')}.` }], dataRef.current, setData, enrichOnlyTools, null, true, 1);
       for (const l of cLogs) bgLog(l);
     }
 

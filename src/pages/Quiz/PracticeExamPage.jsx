@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTheme, fs } from "../../styles/tokens.js";
 import Ic from "../../components/icons/index.jsx";
-import { todayStr } from "../../utils/helpers.js";
+import { todayStr, uid } from "../../utils/helpers.js";
 import { useBreakpoint } from "../../systems/breakpoint.js";
 import { dlog } from "../../systems/debug.js";
 import { toast } from "../../systems/toast.js";
@@ -88,6 +88,22 @@ Where correct is the 0-based index of the right answer. No markdown, no backtick
   const submitExam = () => {
     setSubmitted(true);
     setTimerActive(false);
+    const correctCount = questions.reduce((s, q, i) => s + (answers[i] === q.correct ? 1 : 0), 0);
+    setData(d => ({
+      ...d,
+      examHistory: [...(d.examHistory || []), {
+        id: uid(),
+        courseId: selCourse,
+        courseName: course?.name || 'Unknown',
+        date: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString(),
+        score: correctCount / questions.length,
+        correctCount,
+        totalQuestions: questions.length,
+        difficulty: difficulty || 'mixed',
+        timeSeconds: examTime,
+      }],
+    }));
   };
 
   const score = submitted ? questions.reduce((s,q,i) => s + (answers[i] === q.correct ? 1 : 0), 0) : 0;
@@ -124,6 +140,37 @@ Where correct is the 0-based index of the right answer. No markdown, no backtick
           {safeArr(course.topicBreakdown).length > 8 && <span style={{fontSize:fs(9),color:T.dim}}>+{safeArr(course.topicBreakdown).length-8} more</span>}
         </div>
       )}
+
+      {/* Score History */}
+      {selCourse && (() => {
+        const history = (data.examHistory || []).filter(h => h.courseId === selCourse).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        if (history.length === 0) return null;
+        const trend = history.length >= 2 ? (history[0].score > history[1].score ? 'improving' : history[0].score < history[1].score ? 'declining' : 'stable') : null;
+        return (
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+              <div style={{fontSize:fs(13),fontWeight:700,color:T.text}}>Score History</div>
+              {trend && (
+                <Badge color={trend==='improving'?T.accent:trend==='declining'?T.red:T.dim} bg={trend==='improving'?T.accentD:trend==='declining'?T.redD:T.input}>
+                  {trend==='improving'?'Improving':trend==='declining'?'Declining':'Stable'}
+                </Badge>
+              )}
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              {history.slice(0, 8).map(h => (
+                <div key={h.id} style={{display:'flex',alignItems:'center',gap:12,padding:'6px 10px',borderRadius:8,background:T.input,fontSize:fs(11)}}>
+                  <span style={{color:T.dim,minWidth:72}}>{h.date}</span>
+                  <span style={{fontWeight:700,color:h.score>=0.8?T.accent:h.score>=0.6?T.orange:T.red,minWidth:44}}>{Math.round(h.score*100)}%</span>
+                  <span style={{color:T.dim,fontSize:fs(10)}}>{h.correctCount}/{h.totalQuestions}</span>
+                  <span style={{padding:'1px 6px',borderRadius:4,fontSize:fs(9),fontWeight:600,background:h.difficulty==='hard'?T.redD:h.difficulty==='easy'?T.accentD:T.orangeD,color:h.difficulty==='hard'?T.red:h.difficulty==='easy'?T.accent:T.orange}}>{h.difficulty}</span>
+                  <span style={{color:T.dim,fontSize:fs(10),marginLeft:'auto'}}>{Math.floor(h.timeSeconds/60)}:{String(h.timeSeconds%60).padStart(2,'0')}</span>
+                </div>
+              ))}
+            </div>
+            {history.length > 8 && <div style={{fontSize:fs(10),color:T.dim,marginTop:6,textAlign:'center'}}>+{history.length - 8} older results</div>}
+          </div>
+        );
+      })()}
 
       {questions.length > 0 && (
         <div style={{display:"flex",flexDirection:"column",gap:14}}>

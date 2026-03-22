@@ -5,7 +5,7 @@ import { useBreakpoint } from "../../systems/breakpoint.js";
 import { dlog } from "../../systems/debug.js";
 import { toast } from "../../systems/toast.js";
 import { STATIONS, STATION_CATS, useStationHealth, audioPlay, audioStop, audioToggle, audioPauseToggle, audioSetVolume, useAudio } from "../../systems/audio.js";
-import { ytAddStream, ytRemoveStream, ytClearAll, ytPauseToggle, ytPauseAll, ytSetVolume, useYtStreams, useYtHealth, useYtCheckProgress, useYtStats, useFavs, toggleFav, useCustomStreams, addCustomStream, removeCustomStream, fmtNum, timeAgo, getYtApiKey, DEFAULT_YT_API_KEY } from "../../systems/youtube.js";
+import { ytAddStream, ytRemoveStream, ytClearAll, ytPauseToggle, ytPauseAll, ytSetVolume, useYtStreams, useYtHealth, useYtCheckProgress, useYtStats, useFavs, toggleFav, useCustomStreams, addCustomStream, removeCustomStream, fmtNum, getYtApiKey, DEFAULT_YT_API_KEY } from "../../systems/youtube.js";
 import { YT_STREAMS, YT_CATS, YT_PARENT_CATS } from "../../streams.js";
 import { VolumeBar } from "../../components/ui/VolumeBar.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
@@ -46,62 +46,16 @@ const AmbientPage = () => {
   const [discNextPage, setDiscNextPage] = useState("");
   const [discType, setDiscType] = useState("video");
 
-  // Chat / Comments panel state
-  const [chatTab, setChatTab] = useState("comments");
+  // Chat panel state (live chat only, comments removed)
   const [chatPanel, setChatPanel] = useState(true);
   const [chatAvail, setChatAvail] = useState(true);
-  const [comments, setComments] = useState([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentsNextPage, setCommentsNextPage] = useState("");
-  const [commentsFetchedVid, setCommentsFetchedVid] = useState("");
 
-  const fetchComments = async (vid, pageToken) => {
-    if (!vid) return;
-    setCommentsLoading(true);
-    try {
-      let apiKey;
-      try { apiKey = getYtApiKey(JSON.parse(localStorage.getItem('vorra-v1') || '{}')); } catch(_) { apiKey = ""; }
-      if (!apiKey) { setCommentsLoading(false); return; }
-      const params = new URLSearchParams({
-        part: 'snippet', videoId: vid, maxResults: '20', order: 'relevance', key: apiKey,
-        textFormat: 'plainText', ...(pageToken ? { pageToken } : {}),
-      });
-      const r = await fetch(`https://www.googleapis.com/youtube/v3/commentThreads?${params}`, { signal: AbortSignal.timeout(10000) });
-      if (!r.ok) { setCommentsLoading(false); return; }
-      const data = await r.json();
-      const items = (data.items || []).map(it => {
-        const s = it.snippet?.topLevelComment?.snippet;
-        if (!s) return null;
-        const ago = s.publishedAt ? timeAgo(new Date(s.publishedAt)) : '';
-        return {
-          author: s.authorDisplayName || 'Anonymous',
-          avatar: s.authorProfileImageUrl || '',
-          text: s.textDisplay || '',
-          likes: s.likeCount || 0,
-          time: ago,
-          pinned: it.snippet?.isPublic,
-        };
-      }).filter(Boolean);
-      setComments(prev => pageToken ? [...prev, ...items] : items);
-      setCommentsNextPage(data.nextPageToken || '');
-      setCommentsFetchedVid(vid);
-    } catch(e) {
-      dlog('warn','comments','Failed to fetch comments: ' + e.message);
-    }
-    setCommentsLoading(false);
-  };
-
-  // Auto-fetch comments when active stream changes
+  // Update chat availability when active stream changes
   useEffect(() => {
     const activeVid = ytStreams[0]?.vid;
-    if (!activeVid || activeVid === commentsFetchedVid) return;
-    setComments([]);
-    setCommentsNextPage("");
+    if (!activeVid) return;
     const isLive = ytStats[activeVid]?.live || ytStreams[0]?.type === "live";
     setChatAvail(isLive);
-    setChatTab(isLive ? "chat" : "comments");
-    // Fetch comments for the new video
-    fetchComments(activeVid);
   }, [ytStreams[0]?.vid]);
 
   const discoverSearch = async (query, pageToken) => {
@@ -282,7 +236,7 @@ const AmbientPage = () => {
               <span style={{fontSize:fs(13),fontWeight:700,color:T.accent}}>▶ {ytStreams.length} stream{ytStreams.length>1?"s":""} playing {ytStreams.length<4&&<span style={{fontSize:fs(10),color:T.dim,fontWeight:400}}>· click more to stack (max 4)</span>}</span>
               <Btn small v="danger" onClick={ytClearAll}>✕ Close All</Btn>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:ytStreams.length===1?(chatPanel?"1fr 320px":"1fr"):ytStreams.length===2?"1fr 1fr":"repeat(2,1fr)",gap:8,transition:"all .3s ease",position:"relative"}}>
+            <div style={{display:"grid",gridTemplateColumns:ytStreams.length===1?(chatPanel&&chatAvail?"1fr 320px":"1fr"):ytStreams.length===2?"1fr 1fr":"repeat(2,1fr)",gap:8,transition:"all .3s ease",position:"relative"}}>
               {ytStreams.map((s,i) => {
                 const st = ytStats[s.vid];
                 const detType = st?.detectedType || s.type || 'unknown';
@@ -309,53 +263,22 @@ const AmbientPage = () => {
                 </div>
                 );
               })}
-              {/* Chat / Comments Panel — inline for single stream */}
-              {ytStreams.length === 1 && chatPanel && (
+              {/* Live Chat Panel — inline for single live stream */}
+              {ytStreams.length === 1 && chatPanel && chatAvail && (
                 <div style={{background:T.card,borderRadius:10,border:`1px solid ${T.border}`,overflow:"hidden",display:"flex",flexDirection:"column",height:440}}>
-                  {/* Panel header with tabs */}
                   <div style={{display:"flex",alignItems:"center",padding:"6px 8px",borderBottom:`1px solid ${T.border}`,flexShrink:0,gap:4,background:T.bg2}}>
-                    {chatAvail && (
-                      <button onClick={()=>setChatTab("chat")} style={{padding:"3px 10px",borderRadius:5,border:"none",cursor:"pointer",fontSize:fs(10),fontWeight:chatTab==="chat"?700:500,background:chatTab==="chat"?T.accentD:"transparent",color:chatTab==="chat"?T.accent:T.dim}}>Live Chat</button>
-                    )}
-                    <button onClick={()=>setChatTab("comments")} style={{padding:"3px 10px",borderRadius:5,border:"none",cursor:"pointer",fontSize:fs(10),fontWeight:chatTab==="comments"?700:500,background:chatTab==="comments"?T.purpleD:"transparent",color:chatTab==="comments"?T.purple:T.dim}}>Comments{comments.length>0?` (${comments.length})`:""}</button>
+                    <span style={{padding:"3px 10px",fontSize:fs(10),fontWeight:700,color:T.accent}}>Live Chat</span>
                     <div style={{flex:1}}/>
                     <button onClick={()=>setChatPanel(false)} style={{background:"none",border:"none",cursor:"pointer",padding:2,color:T.dim}} title="Collapse"><Ic.IcX s={12}/></button>
                   </div>
-                  <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-                    {chatTab === "chat" && chatAvail && (
-                      <iframe src={`http://127.0.0.1:19532/yt-chat?v=${ytStreams[0].vid}`} style={{flex:1,border:"none",background:T.bg2}}/>
-                    )}
-                    {chatTab === "comments" && (
-                      <div style={{flex:1,overflow:"auto",padding:8}}>
-                        {commentsLoading && comments.length===0 && <div style={{textAlign:"center",padding:20,color:T.dim}}><Ic.Spin s={16}/><div style={{marginTop:6,fontSize:fs(10)}}>Loading comments...</div></div>}
-                        {!commentsLoading && comments.length === 0 && <div style={{textAlign:"center",padding:20,color:T.dim,fontSize:fs(11)}}>No comments available</div>}
-                        {comments.map((c,i) => (
-                          <div key={i} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.border}22`}}>
-                            <img src={c.avatar} style={{width:24,height:24,borderRadius:"50%",flexShrink:0,marginTop:2,background:T.bg2}} alt="" onError={e=>{e.target.style.display='none'}}/>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                                <span style={{fontSize:fs(10),fontWeight:600,color:T.soft,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.author}</span>
-                                <span style={{fontSize:fs(9),color:T.dim,flexShrink:0}}>{c.time}</span>
-                              </div>
-                              <div style={{fontSize:fs(11),color:T.text,lineHeight:1.4,wordBreak:"break-word"}}>{c.text}</div>
-                              {c.likes > 0 && <div style={{fontSize:fs(9),color:T.dim,marginTop:2}}>&#9650; {fmtNum(c.likes)}</div>}
-                            </div>
-                          </div>
-                        ))}
-                        {commentsNextPage && !commentsLoading && (
-                          <button onClick={()=>fetchComments(ytStreams[0]?.vid,commentsNextPage)} style={{width:"100%",padding:"6px",borderRadius:6,border:`1px solid ${T.border}`,background:T.input,cursor:"pointer",fontSize:fs(10),color:T.purple,fontWeight:600,marginTop:6}}>Load More Comments</button>
-                        )}
-                        {commentsLoading && comments.length > 0 && <div style={{textAlign:"center",padding:8}}><Ic.Spin s={12}/></div>}
-                      </div>
-                    )}
-                  </div>
+                  <iframe src={`http://127.0.0.1:19532/yt-chat?v=${ytStreams[0].vid}`} style={{flex:1,border:"none",background:T.bg2}}/>
                 </div>
               )}
               {/* Collapsed panel toggle */}
-              {ytStreams.length >= 1 && !chatPanel && (
+              {ytStreams.length >= 1 && !chatPanel && chatAvail && (
                 <div style={{position:"absolute",top:8,right:8,zIndex:5}}>
-                  <button onClick={()=>setChatPanel(true)} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:fs(10),fontWeight:600,color:T.purple,boxShadow:"0 2px 8px rgba(0,0,0,.3)"}}>
-                    <Ic.Chat s={12} c={T.purple}/> {chatAvail?"Chat":"Comments"}
+                  <button onClick={()=>setChatPanel(true)} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:fs(10),fontWeight:600,color:T.accent,boxShadow:"0 2px 8px rgba(0,0,0,.3)"}}>
+                    <Ic.Chat s={12} c={T.accent}/> Chat
                   </button>
                 </div>
               )}

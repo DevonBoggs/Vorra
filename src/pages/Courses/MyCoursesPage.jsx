@@ -20,6 +20,7 @@ import { CtxBadge } from '../../components/ui/CtxBadge.jsx';
 import CourseDetail from '../../components/course/CourseDetail.jsx';
 import { hasCtx, isFullyEnriched, courseCompleteness, enrichmentAge, enrichmentAgeLabel, dataHealth, missingSections, SECTIONS, SECTION_FIELDS } from '../../utils/courseHelpers.js';
 import { UNIVERSITY_PRESETS } from '../../constants/universityProfiles.js';
+import { CelebrationModal } from '../../components/ui/CelebrationModal.jsx';
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -65,6 +66,9 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
 
   // Fix 3: robust isEnriching check — no string matching
   const isEnriching = bg.loading && bg.regenId !== null;
+
+  // Celebration modal state
+  const [celebration, setCelebration] = useState(null);
 
   // Drag-drop + priority reordering
   const [dragIdx, setDragIdx] = useState(null);
@@ -157,7 +161,51 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   const saveCourse = () => {
     if (!form.name.trim()) return;
     if (editId) {
-      setData(d => ({ ...d, courses: d.courses.map(c => c.id === editId ? { ...c, ...form, credits: Number(form.credits), difficulty: Number(form.difficulty), lastUpdated: new Date().toISOString() } : c) }));
+      const oldCourse = (data.courses || []).find(c => c.id === editId);
+      const wasCompleted = oldCourse?.status === 'completed';
+      const nowCompleted = form.status === 'completed';
+
+      setData(d => {
+        const updated = { ...d, courses: d.courses.map(c => c.id === editId ? { ...c, ...form, credits: Number(form.credits), difficulty: Number(form.difficulty), lastUpdated: new Date().toISOString() } : c) };
+
+        // Auto-cleanup: remove future plan tasks for the completed course
+        if (!wasCompleted && nowCompleted && oldCourse) {
+          const todayDate = todayStr();
+          const courseName = oldCourse.name.toLowerCase().split(' \u2013 ')[0].split(' - ')[0];
+          const courseCode = (oldCourse.courseCode || '').toLowerCase();
+          const newTasks = { ...updated.tasks };
+          for (const [dt, dayTasks] of Object.entries(newTasks)) {
+            if (dt > todayDate) {
+              const filtered = dayTasks.filter(t => {
+                const titleLower = (t.title || '').toLowerCase();
+                const matchesName = courseName && titleLower.includes(courseName);
+                const matchesCode = courseCode && titleLower.includes(courseCode);
+                return !(t.planId && (matchesName || matchesCode));
+              });
+              if (filtered.length !== dayTasks.length) {
+                newTasks[dt] = filtered;
+              }
+            }
+          }
+          updated.tasks = newTasks;
+        }
+
+        return updated;
+      });
+
+      // Trigger celebration if newly completed
+      if (!wasCompleted && nowCompleted && oldCourse) {
+        const sessions = data.studySessions || [];
+        const courseName = oldCourse.name.toLowerCase().split(' \u2013 ')[0].split(' - ')[0];
+        const courseCode = (oldCourse.courseCode || '').toLowerCase();
+        const totalMins = sessions.filter(s => {
+          const sName = (s.course || '').toLowerCase();
+          return (courseName && sName.includes(courseName)) || (courseCode && sName.includes(courseCode));
+        }).reduce((sum, s) => sum + (s.mins || 0), 0);
+        const totalStudyHoursForCourse = Math.round(totalMins / 6) / 10;
+        setCelebration({ courseName: oldCourse.name, credits: oldCourse.credits || 0, studyHours: totalStudyHoursForCourse });
+      }
+
       toast('Course updated', 'success');
     } else {
       setData(d => ({ ...d, courses: [...d.courses, { ...EMPTY_DEEP, ...form, id: uid(), credits: Number(form.credits), difficulty: Number(form.difficulty), lastUpdated: new Date().toISOString() }] }));
@@ -729,6 +777,9 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}><Btn v="secondary" onClick={() => setShowAdd(false)}>Cancel</Btn><Btn onClick={saveCourse} disabled={!form.name.trim()}>{editId ? 'Update' : 'Add'}</Btn></div>
         </div>
       </Modal>}
+
+      {/* Course Completion Celebration */}
+      <CelebrationModal show={!!celebration} onClose={() => setCelebration(null)} {...(celebration || {})} />
     </div>
   );
 };

@@ -24,7 +24,7 @@ class ErrorBoundary extends Component {
           <div style={{display:"flex",gap:12}}>
             <button onClick={()=>this.setState({error:null,info:null})} style={{background:"#22d3a0",color:"#060a11",border:"none",borderRadius:9,padding:"10px 20px",fontSize:fs(14),fontWeight:600,cursor:"pointer"}}>Try Again</button>
             <button onClick={()=>{navigator.clipboard.writeText(getLogText());}} style={{background:"#162035",color:"#8b9dc3",border:"1px solid #1c2d4a",borderRadius:9,padding:"10px 20px",fontSize:fs(14),cursor:"pointer"}}>Copy Debug Log</button>
-            <button onClick={()=>{localStorage.removeItem("vorra-v1");localStorage.removeItem("vorra-favs");localStorage.removeItem("vorra-custom-streams");location.reload()}} style={{background:"#ef444433",color:"#ef4444",border:"none",borderRadius:9,padding:"10px 20px",fontSize:fs(14),cursor:"pointer"}}>Reset All Data</button>
+            <button onClick={()=>{if(confirm('This will permanently delete ALL your Vorra data including courses, study plans, and settings. This cannot be undone.\n\nAre you sure?')){localStorage.removeItem("vorra-v1");localStorage.removeItem("vorra-v1-prev");localStorage.removeItem("vorra-favs");localStorage.removeItem("vorra-custom-streams");location.reload()}}} style={{background:"#ef444433",color:"#ef4444",border:"none",borderRadius:9,padding:"10px 20px",fontSize:fs(14),cursor:"pointer"}}>Reset All Data</button>
           </div>
         </div>
       );

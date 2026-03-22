@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTheme, fs } from '../../styles/tokens.js';
 import Ic from '../../components/icons/index.jsx';
 import { todayStr, diffDays, parseTime, uid } from '../../utils/helpers.js';
+import { downloadICS } from '../../utils/icsExport.js';
 import { DEFAULT_W, DEFAULT_REQUEST_RETENTION } from '../../systems/spaced-repetition.js';
 import { getSTATUS_C } from '../../constants/categories.js';
 import { useBreakpoint } from '../../systems/breakpoint.js';
@@ -734,6 +735,31 @@ ${fsrsReviewPrompt}${userCtx}`;
     toast(`Shifted ${moved} future tasks forward by ${shiftDays} day${shiftDays > 1 ? 's' : ''}`, 'success');
   };
 
+  const replanFromToday = () => {
+    const today = todayStr();
+    // Clear future plan tasks, keep completed and non-plan tasks
+    setData(d => {
+      const tasks = {};
+      for (const [dt, dayTasks] of Object.entries(d.tasks || {})) {
+        if (dt < today) { tasks[dt] = dayTasks; continue; }
+        const kept = safeArr(dayTasks).filter(t => !t.planId || t.done);
+        if (kept.length > 0) tasks[dt] = kept;
+      }
+      return { ...d, tasks, studyStartDate: today };
+    });
+    toast('Cleared future plan tasks. Generating new plan from today...', 'info');
+    requestAnimationFrame(() => requestAnimationFrame(() => genPlan()));
+  };
+
+  const exportToCalendar = () => {
+    downloadICS(data.tasks, `vorra-study-plan-${todayStr()}.ics`, {
+      calName: 'Vorra Study Plan',
+      dateRange: { start: todayStr(), end: goalDate || '' },
+      excludeCategories: ['break'],
+    });
+    toast('Calendar file exported! Import it into Google Calendar, Outlook, or Apple Calendar.', 'success');
+  };
+
   return (
     <div className="fade">
       {/* ─── HEADER ─── */}
@@ -863,6 +889,8 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </select>
               </div>
               <Btn small v="secondary" onClick={() => setShowSettings(true)}>{'\u2699'} Adjust Schedule</Btn>
+              <Btn small v="secondary" onClick={replanFromToday}>{'\u21BB'} Replan from today</Btn>
+              <Btn small v="secondary" onClick={exportToCalendar}>{'\uD83D\uDCC5'} Export to Calendar</Btn>
               <Btn small v="ghost" onClick={() => { setShowSettings(true); requestAnimationFrame(() => requestAnimationFrame(() => genPlan())); }}>Regenerate Plan</Btn>
             </div>
 

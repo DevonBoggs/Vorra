@@ -6,7 +6,7 @@ import { getCAT, AI_CATS, STUDY_CATS, getPRIO, getSTATUS_C, STATUS_L } from "../
 import { useBreakpoint } from "../../systems/breakpoint.js";
 import { dlog } from "../../systems/debug.js";
 import { toast } from "../../systems/toast.js";
-import { timerStart, timerStop, useTimer } from "../../systems/timer.js";
+import { timerStart, timerStop, timerPause, useTimer, fmtElapsed } from "../../systems/timer.js";
 import { focusStart, focusStop, useFocus } from "../../systems/focus.js";
 import { buildSystemPrompt, runAILoop, APP_VERSION, callAIWithTools, continueAfterTools } from "../../systems/api.js";
 import { useBgTask, bgSet, bgClear, bgAbort } from "../../systems/background.js";
@@ -19,7 +19,7 @@ import { Btn } from "../../components/ui/Btn.jsx";
 import { Label } from "../../components/ui/Label.jsx";
 import { SortableList, SortableItem } from "../../components/ui/SortableList.jsx";
 
-const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
+const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
   const T = useTheme();
   const CAT = getCAT(T);
   const PRIO = getPRIO(T);
@@ -38,13 +38,9 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
   const[now,setNow]=useState(nowMins());
   const[view,setView]=useState("day"); // "day" or "week"
   const[catFilter,setCatFilter]=useState("all");
-  const[pomActive,setPomActive]=useState(false);
-  const[pomTime,setPomTime]=useState(25*60);
-  const[pomBreak,setPomBreak]=useState(false);
   const[showTemplates,setShowTemplates]=useState(false);
   const[manualOrder,setManualOrder]=useState(null); // array of task ids when user has manually reordered
   const[expandedWeekDays,setExpandedWeekDays]=useState({});
-  const pomRef=useRef(null);
   const isToday=date===todayStr();
   useEffect(()=>{const iv=setInterval(()=>setNow(nowMins()),30000);return()=>clearInterval(iv)},[]);
   // Reset manual order when date changes
@@ -85,27 +81,28 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
     return c;
   }, [sorted]);
 
-  // Pomodoro timer
-  useEffect(() => {
-    if(pomActive) {
-      pomRef.current = setInterval(() => {
-        setPomTime(t => {
-          if(t <= 1) {
-            clearInterval(pomRef.current);
-            setPomActive(false);
-            if(pomBreak) { toast("Break over! Back to work.","info"); setPomBreak(false); setPomTime(25*60); }
-            else { toast("Pomodoro done! Take a 5-min break.","success"); setPomBreak(true); setPomTime(5*60); }
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
-      return () => clearInterval(pomRef.current);
-    }
-  }, [pomActive, pomBreak]);
+  // Pomodoro via global timer (survives navigation)
+  const pomActive = _timerState.running && (_timerState.taskTitle === 'Pomodoro Focus' || _timerState.taskTitle === 'Break');
+  const pomBreak = _timerState.running && _timerState.taskTitle === 'Break';
+  const pomTimeSec = pomActive ? Math.ceil(_timerState.remaining / 1000) : 25 * 60;
 
-  const pomToggle = () => { if(pomActive) { clearInterval(pomRef.current); setPomActive(false); } else setPomActive(true); };
-  const pomReset = () => { clearInterval(pomRef.current); setPomActive(false); setPomBreak(false); setPomTime(25*60); };
+  // Auto-start break when Pomodoro focus finishes, notify when break finishes
+  const prevFinishedTitle = useRef(null);
+  useEffect(() => {
+    if (_timerState.finished && _timerState.taskTitle !== prevFinishedTitle.current) {
+      prevFinishedTitle.current = _timerState.taskTitle;
+      if (_timerState.taskTitle === 'Pomodoro Focus') {
+        // Small delay to let timerStop() complete before starting new timer
+        setTimeout(() => timerStart('Break', '', 5), 100);
+      } else if (_timerState.taskTitle === 'Break') {
+        toast("Break over! Back to work.", "info");
+      }
+    }
+    if (!_timerState.finished) prevFinishedTitle.current = null;
+  }, [_timerState.finished, _timerState.taskTitle]);
+
+  const pomToggle = () => { if(pomActive) { timerStop(); } else timerStart('Pomodoro Focus', '', 25); };
+  const pomReset = () => { if(pomActive) timerStop(); };
 
   // Task templates
   const TEMPLATES = [
@@ -135,7 +132,7 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
     if(!isToday) return [];
     // Expanded: all categories (not just study), look back up to 3 days
     const lookback = [];
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 7; i++) {
       const d = new Date(); d.setDate(d.getDate() - i);
       const ds = d.toISOString().split('T')[0];
       const incomplete = safeArr(data.tasks?.[ds]).filter(t => !t.done && t.category !== 'break');
@@ -389,6 +386,8 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
       <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 10px"}}>
         {!t.done && isToday && <button className="sf-icon-btn" onClick={()=>completeEarly(t)} title="Complete early" style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:5,fontSize:fs(10),fontWeight:600}}>Done \u2713</button>}
         {!t.done && <button className="sf-icon-btn" onClick={()=>{const match=(data.courses||[]).find(c=>t.title.toLowerCase().includes(c.name.toLowerCase().split(" \u2013 ")[0].split(" - ")[0])||(c.courseCode&&t.title.toLowerCase().includes(c.courseCode.toLowerCase())));timerStart(t.title,match?.name||"")}} title="Start timer" style={{background:"none",border:"none",color:_timerState.running&&_timerState.taskTitle===t.title?T.accent:T.dim,cursor:"pointer",padding:5,fontSize:fs(14)}}>⏱</button>}
+        {!t.done && setPage && ["study","review","exam-prep"].includes(t.category) && <button className="sf-icon-btn" onClick={()=>setPage("chat")} title="Get Help" style={{background:"none",border:"none",color:T.blue,cursor:"pointer",padding:5,fontSize:fs(13),fontWeight:700}}>?</button>}
+        {!t.done && setPage && ["exam-prep","exam-day"].includes(t.category) && <button className="sf-icon-btn" onClick={()=>setPage("quiz")} title="Practice Exam" style={{background:"none",border:"none",cursor:"pointer",padding:"2px 6px",fontSize:fs(9),fontWeight:700,color:T.purple,borderRadius:4}}>PRACTICE</button>}
         <button onClick={()=>toggleTask(t.id)} style={{width:30,height:30,borderRadius:8,border:`2px solid ${t.done?T.accent:T.border}`,background:t.done?T.accentD:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.accent,transition:"all .15s"}}>{t.done&&<Ic.Check s={14}/>}</button>
         <button className="sf-icon-btn" onClick={()=>openEdit(t)} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:5}}><Ic.Edit/></button>
         <button className="sf-icon-btn" onClick={()=>deleteTask(t.id)} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:5}}><Ic.Trash/></button>
@@ -444,9 +443,9 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
         {/* Pomodoro */}
         <div style={{display:"flex",alignItems:"center",gap:6,background:pomActive?(pomBreak?T.blueD:T.accentD):T.card,border:`1.5px solid ${pomActive?(pomBreak?T.blue:T.accent):T.border}`,borderRadius:12,padding:"8px 14px",boxShadow:pomActive?`0 0 12px ${pomBreak?T.blue:T.accent}15`:"none",transition:"all .2s"}}>
-          <span style={{fontSize:fs(14),fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:pomActive?(pomBreak?T.blue:T.accent):T.dim,minWidth:40}}>{Math.floor(pomTime/60)}:{String(pomTime%60).padStart(2,'0')}</span>
+          <span style={{fontSize:fs(14),fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:pomActive?(pomBreak?T.blue:T.accent):T.dim,minWidth:40}}>{Math.floor(pomTimeSec/60)}:{String(pomTimeSec%60).padStart(2,'0')}</span>
           <button onClick={pomToggle} style={{background:"none",border:"none",cursor:"pointer",color:pomActive?T.accent:T.soft,fontSize:fs(12),fontWeight:600}}>{pomActive?"\u23F8":"\u25B6"}</button>
-          {(pomActive||pomTime!==25*60)&&<button onClick={pomReset} style={{background:"none",border:"none",cursor:"pointer",color:T.dim,fontSize:fs(10)}}>↻</button>}
+          {pomActive&&<button onClick={pomReset} style={{background:"none",border:"none",cursor:"pointer",color:T.dim,fontSize:fs(10)}}>↻</button>}
           <span style={{fontSize:fs(9),color:T.dim}}>{pomBreak?"Break":"Focus"}</span>
         </div>
         {/* Templates */}

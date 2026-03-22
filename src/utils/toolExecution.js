@@ -38,8 +38,9 @@ export function deepMergeCourse(existing, updates) {
 }
 
 export function findCourse(courses, match) {
+  if (!match || !courses?.length) return -1;
   const l = match.toLowerCase();
-  return courses.findIndex(c => c.name.toLowerCase().includes(l) || (c.courseCode||'').toLowerCase().includes(l));
+  return courses.findIndex(c => c?.name?.toLowerCase()?.includes(l) || (c?.courseCode || '').toLowerCase().includes(l));
 }
 
 const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan'];

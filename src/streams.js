@@ -1,5 +1,5 @@
-// Vorra — YouTube Stream Database
-// 541 streams across 56 subcategories
+// Vorra — YouTube Stream Database (Curated)
+// ~95 streams across 56 subcategories (1-2 top picks each)
 // type: "live" = 24/7 live stream, "video" = long video/mix
 
 export const YT_PARENT_CATS = [
@@ -77,618 +77,177 @@ const s=(cat,name,desc,vid,pop,type)=>({cat,name,desc,vid,pop,type});
 
 export const YT_STREAMS = [
   // === LO-FI ===
-  // --- Lo-fi Beats (17) ---
-  s("lofi-beats","Chillhop Cafe 24/7 - jazzhop |","Chillhop Cafe 24/7 - jazzhop | chillhop ","VowdjV2932Y",5,"live"),
-  s("lofi-beats","Chillhop Music","Lo-fi hip hop & chill beats","5yx6BWlEVcY",5,"live"),
-  s("lofi-beats","LIVE 24/7 Chill Lofi Radio - B","LIVE 24/7 Chill Lofi Radio - Beats to St","lKBXoX1McEo",5,"live"),
-  s("lofi-beats","LoFi Live Radio 24/7 - Chill B","LoFi Live Radio 24/7 - Chill Beats to Re","azpq0KKhePg",5,"live"),
+  // --- Lo-fi Beats ---
   s("lofi-beats","Lofi Girl","The OG beats to relax/study to","jfKfPfyJRdk",5,"live"),
-  s("lofi-beats","Study Cafe LIVE - 24/7 Chillho","Study Cafe LIVE - 24/7 Chillhop for Focu","wZl7Dcyn3x4",5,"live"),
-  s("lofi-beats","Asian Lofi Radio","Asian lofi beats","Na0w3Mz46GA",4,"live"),
-  s("lofi-beats","Coffee Shop Radio","24/7 chill lofi jazzy","blAFxjhg62k",4,"live"),
-  s("lofi-beats","Lofi Hip Hop 24/7","Non-stop lo-fi beats","TURbeWK2wwg",4,"video"),
-  s("lofi-beats","Lofi Sad & Sleepy","Sad and sleepy beats","FWjZ0x2M8og",4,"live"),
-  s("lofi-beats","Lofi Sleep Radio","Beats to sleep/chill to","28KRPhVzCus",4,"live"),
-  s("lofi-beats","Best of 2025 Chillhop Playlist","Best of 2025 Chillhop Playlist - Lo-fi H","-89Vlm1uXDE",3,"video"),
-  s("lofi-beats","Chill Vibes: 28-Minute Lo-fi C","Chill Vibes: 28-Minute Lo-fi Chillhop Mi","-J3yZfd4I-g",3,"video"),
-  s("lofi-beats","Chillhop Essentials - Spring 2","Chillhop Essentials - Spring 2024 [chill","0lTBaCqTmQ0",3,"video"),
-  s("lofi-beats","Chillhop Hideaway","Cozy beats lofi mix","KxpViLLzlrc",3,"video"),
-  s("lofi-beats","Dreamy Lofi","Floating lo-fi melodies","7NOSDKb0HlU",3,"live"),
-  s("lofi-beats","Relaxing Chillhop Beats for St","Relaxing Chillhop Beats for Study and Sl","wFiBxU3Bujg",3,"video"),
-  // --- Lo-fi Study (30) ---
-  s("lofi-study","Chill Lo-fi Beats Playlist - B","Chill Lo-fi Beats Playlist - Best of 202","vE3vw42Ff7c",5,"video"),
+  s("lofi-beats","Chillhop Music","Lo-fi hip hop & chill beats","5yx6BWlEVcY",5,"live"),
+  // --- Lo-fi Study ---
   s("lofi-study","LIVE Lo-Fi Hip Hop Radio - Chi","LIVE Lo-Fi Hip Hop Radio - Chill Beats t","VErOKn2cOBY",5,"live"),
   s("lofi-study","lofi hip hop radio - beats to ","lofi hip hop radio - beats to sleep/stud","rPjez8z61rI",5,"live"),
-  s("lofi-study","1990s Lofi City Rain","Cozy balcony rain lofi","TfWotiyXGfI",4,"video"),
-  s("lofi-study","1AM Study Session","Lofi hip hop study","lTRiuFIWV54",4,"video"),
-  s("lofi-study","3HR Study Tokyo Rain","Calm lofi rainy evening","grBFMP3HDZA",4,"video"),
-  s("lofi-study","3am Sad Lofi Mix","Why so sad lofi mix","hzpt3fQjY9U",4,"video"),
-  s("lofi-study","Best of Lofi 2021","Beats to relax/study","n61ULEU7CO0",4,"video"),
-  s("lofi-study","Cozy Reading Fort","Calm lofi focus beats","tIMtzkZ93gg",4,"video"),
-  s("lofi-study","Japan & Chill Tokyo Walk","Cyberpunk lofi walks","PnZN4F1-3UM",4,"video"),
-  s("lofi-study","Late Night Chill Lofi","Study relax unwind","IvNDR1wJJKQ",4,"video"),
-  s("lofi-study","Morning Coffee Lofi","Lofi hip hop morning","1fueZCTYkpA",4,"video"),
-  s("lofi-study","1 A.M. Lofi Study Music - Chil","1 A.M. Lofi Study Music - Chill Hip Hop ","BbBbL4IXd48",3,"video"),
-  s("lofi-study","1 HOUR OF CHILL BEATS TO STUDY","1 HOUR OF CHILL BEATS TO STUDY TO | CHIL","S-tv_lU2Uko",3,"video"),
-  s("lofi-study","Best of 2025 Lofi Hip Hop Musi","Best of 2025 Lofi Hip Hop Music Playlist","J8IoXFchpZo",3,"video"),
-  s("lofi-study","Chill & Deep Lounge Mix | Musi","Chill & Deep Lounge Mix | Music for Slow","cQl6gLns8CE",3,"video"),
-  s("lofi-study","Chill Hip Hop & Rap Beats - 1 ","Chill Hip Hop & Rap Beats - 1 Hour of Re","hPu51HNbk1E",3,"video"),
-  s("lofi-study","Chill Hip-Hop Playlist with Sl","Chill Hip-Hop Playlist with Slow Beats -","BiOyuVvD8kI",3,"video"),
-  s("lofi-study","Chill Lofi Beats Mix [chill lo","Chill Lofi Beats Mix [chill lo-fi hip ho","BCxTQq0UiFs",3,"video"),
-  s("lofi-study","Focus Lofi Mix","Concentration beats","_tV5LEBDs7w",3,"video"),
-  s("lofi-study","Late night - lofi hip hop [stu","Late night - lofi hip hop [study/sleep/h","Qc8RrA5KBQo",3,"video"),
-  s("lofi-study","Lazy Sunday Lofi","Lofi hip hop chill","zFhfksjf_mY",3,"video"),
-  s("lofi-study","Lofi Girl - Study Music for Co","Lofi Girl - Study Music for Concentratio","6Bq0OlGBbfk",3,"video"),
-  s("lofi-study","Lofi Hip Hop Night - Chill Bea","Lofi Hip Hop Night - Chill Beats for Stu","2au51-rm6cE",3,"video"),
-  s("lofi-study","Lofi Study Music - Chill Hip H","Lofi Study Music - Chill Hip Hop Beats t","Uq_7P09xoQg",3,"video"),
-  s("lofi-study","Lofi Study Music for Deep Focu","Lofi Study Music for Deep Focus and Rela","vGDkff67OJA",3,"video"),
-  s("lofi-study","Morning Study Lofi","Bright lo-fi for mornings","2OEL4P1Rz04",3,"video"),
-  s("lofi-study","Relaxing Hip Hop Beats | Chill","Relaxing Hip Hop Beats | Chill LoFi Musi","Vqd8jvG4ATY",3,"video"),
-  s("lofi-study","The Weight Of Words - Slowed +","The Weight Of Words - Slowed + Reverb - ","OV4MEal2XcQ",3,"video"),
-  s("lofi-study","cherry blossom. [lofi / jazzho","cherry blossom. [lofi / jazzhop / chill ","5wRWniH7rt8",3,"video"),
-  // --- Japanese Lofi (4) ---
+  // --- Japanese Lofi ---
   s("lofi-japan","Japanese Lofi HipHop Mix - Sak","Japanese Lofi HipHop Mix - Sakura Harmon","ULi7xGp1o5I",3,"video"),
   s("lofi-japan","Sakura - Japanese Lofi Beat | ","Sakura - Japanese Lofi Beat | Chill & Tr","Vru03_HAV-M",3,"video"),
-  s("lofi-japan","Sakura Lo-fi - Canon in D Meet","Sakura Lo-fi - Canon in D Meets Tokyo Ch","tcsP3vbu7O0",3,"video"),
-  s("lofi-japan","Vindu - Sakura Temple - japane","Vindu - Sakura Temple - japanese lofi / ","QVoEJi7uqdA",3,"video"),
-  // --- Korean Lofi (2) ---
+  // --- Korean Lofi ---
   s("lofi-korean","Korean Chill Rap / Neo-Soul / ","Korean Chill Rap / Neo-Soul / Lo-fi [K-H","NZ1CFc3tZoM",3,"video"),
-  s("lofi-korean","[Lofi Playlist] Korean Chill L","[Lofi Playlist] Korean Chill Lo-Fi | Hip","COiXPsB0ojM",3,"video"),
-  // --- Night Lofi (6) ---
+  // --- Night Lofi ---
   s("lofi-night","Aesthetic Night Drive | Lofi V","Aesthetic Night Drive | Lofi Vibe & Chil","x4746g11SEE",3,"video"),
-  s("lofi-night","Night Drive | Chill Aesthetic ","Night Drive | Chill Aesthetic Song for L","JJwcWICv0ZM",3,"video"),
   s("lofi-night","Night Drive ~ lofi hip hop mix","Night Drive ~ lofi hip hop mix ~ beats t","zW5wpJY1rgQ",3,"video"),
-  s("lofi-night","Night lofi playlist - lofi mus","Night lofi playlist - lofi music | chill","cIZhlFIyJ_Y",3,"video"),
-  s("lofi-night","Night lullaby ~ lofi hip hop m","Night lullaby ~ lofi hip hop mix","QltODNFwp20",3,"video"),
-  s("lofi-night","Sleepless Night [lofi hip hop]","Sleepless Night [lofi hip hop]","Nyx6SBixRE8",3,"video"),
-  // --- Retro/Nostalgic (4) ---
+  // --- Retro/Nostalgic ---
   s("lofi-retro","1980s & 90s Lofi Hip Hop Mix |","1980s & 90s Lofi Hip Hop Mix | Nostalgic","lzvZ3CELCL4",3,"video"),
-  s("lofi-retro","Lofi Hip Hop Beats ~ Nostalgic","Lofi Hip Hop Beats ~ Nostalgic Chillhop ","pk_KLI02Bss",3,"video"),
-  s("lofi-retro","Lofi Playlist, Nostalgic Lofi ","Lofi Playlist, Nostalgic Lofi Beats for ","h4_U0rITpGM",3,"video"),
-  s("lofi-retro","Retro Vibes - Vintage LoFi Bea","Retro Vibes - Vintage LoFi Beats to Boos","zmoSZeTqtGY",3,"video"),
-  // --- Sad Lofi (5) ---
-  s("lofi-sad","ALONE - SAD LOFI TYPE BEAT ( L","ALONE - SAD LOFI TYPE BEAT ( LO-FI EMOTI","PzSGsXJnI9g",3,"video"),
-  s("lofi-sad","DARK PLACE - SAD LOFI BEAT (EM","DARK PLACE - SAD LOFI BEAT (EMOTIONAL LO","JkIqeYNq_5A",3,"video"),
+  // --- Sad Lofi ---
   s("lofi-sad","Lonely Days [sad lofi]","Lonely Days [sad lofi]","O7RG-B6N1Vw",3,"video"),
-  s("lofi-sad","NOWHERE - Sad Lofi Piano Beat ","NOWHERE - Sad Lofi Piano Beat | Crying E","9J9E2K7fsw0",3,"video"),
-  s("lofi-sad","YOUTH - SAD LOFI TYPE BEAT (EM","YOUTH - SAD LOFI TYPE BEAT (EMOTIONAL CH","95P04Ek8VYY",3,"video"),
 
   // === JAZZ ===
-  // --- Jazz Cafe (24) ---
+  // --- Jazz Cafe ---
   s("jazz-cafe","Coffee Shop Jazz","Cafe jazz & bossa nova","Dx5qFachd3A",5,"live"),
-  s("jazz-cafe","Relax Jazz Café","Cozy jazz for studying","fEvM-OUbaKs",4,"live"),
-  s("jazz-cafe","Cafe Jazz Calm Focus - Evening","Cafe Jazz Calm Focus - Evening Study & W","nB1FR6h5ZqA",3,"video"),
-  s("jazz-cafe","Cafe Jazz Night Productivity -","Cafe Jazz Night Productivity - Smooth St","bH0wu2dyGBc",3,"video"),
-  s("jazz-cafe","Chill Jazz Cafe - Relaxing Mus","Chill Jazz Cafe - Relaxing Music for Stu","UwppZ7OB2Z4",3,"video"),
-  s("jazz-cafe","Chill Jazz Cafe - Smooth Jazz ","Chill Jazz Cafe - Smooth Jazz Ambience","ayqDWz-ZPCg",3,"video"),
-  s("jazz-cafe","Cozy Coffee Jazz","Winter café atmosphere","c0_ejQQcrwI",3,"video"),
-  s("jazz-cafe","Easy Listening Instrumentals -","Easy Listening Instrumentals - Backgroun","9XsQJCKyPdU",3,"video"),
-  s("jazz-cafe","Instrumental Jazz - Soft Calm ","Instrumental Jazz - Soft Calm Flow [Back","Ijb9KPPCmpY",3,"video"),
-  s("jazz-cafe","Jazz & Soul R&B - Warm Sax, Rh","Jazz & Soul R&B - Warm Sax, Rhodes & Chi","-Z2lTeSIQIw",3,"video"),
-  s("jazz-cafe","Peaceful Winter Evening - Smoo","Peaceful Winter Evening - Smooth Jazz Pi","fav1VgjYPpA",3,"video"),
-  s("jazz-cafe","Piano Bar & Piano Bar Music: B","Piano Bar & Piano Bar Music: Best of Pia","khG5ZlppKhw",3,"video"),
-  s("jazz-cafe","Relaxing Jazz Cafe Ambience fo","Relaxing Jazz Cafe Ambience for Study, W","ZY8ZzkCETAc",3,"video"),
-  s("jazz-cafe","Relaxing Jazz Cafe Ambience | ","Relaxing Jazz Cafe Ambience | Smooth Ins","5Nxjm1CHXvQ",3,"video"),
-  s("jazz-cafe","Relaxing Jazz Instrumental Mus","Relaxing Jazz Instrumental Music & Cozy ","jrN4ETs2UtQ",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Chill Jazz Loung","Smooth Jazz & Chill Jazz Lounge ~ Relaxi","iDZqTLRuKKg",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Soulful R&B - Ch","Smooth Jazz & Soulful R&B - Chill Groove","S8aaH-7B5uQ",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Soulful R&B - So","Smooth Jazz & Soulful R&B - Soft Instrum","l81sV1rqJhM",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Soulful R&B - So","Smooth Jazz & Soulful R&B - Soft Instrum","jFMkXPSjUM4",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Soulful R&B Groo","Smooth Jazz & Soulful R&B Grooves Cozy C","JdkAqW2PwX8",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Soulful R&B Inst","Smooth Jazz & Soulful R&B Instrumental -","dE-RxHJHpMY",3,"video"),
-  s("jazz-cafe","Smooth Jazz & Soulful R&B Tune","Smooth Jazz & Soulful R&B Tunes for Warm","LHoq5dkw-uk",3,"video"),
-  s("jazz-cafe","Smooth Jazz x Soulful R&B Beat","Smooth Jazz x Soulful R&B Beats for Cozy","npk--cNtoSA",3,"video"),
-  s("jazz-cafe","Soft Ambient Relaxing | Instru","Soft Ambient Relaxing | Instrumental Mus","PJykxFHSEDM",3,"video"),
-  // --- Bossa Nova (12) ---
+  s("jazz-cafe","Relax Jazz Caf\u00e9","Cozy jazz for studying","fEvM-OUbaKs",4,"live"),
+  // --- Bossa Nova ---
   s("jazz-bossa","Living Coffee: Smooth Jazz Rad","Living Coffee: Smooth Jazz Radio - Relax","SORD03t7nlo",5,"live"),
-  s("jazz-bossa","Chill Jazz at a Classic London","Chill Jazz at a Classic London Cafe - Re","dgwQnAJpkzs",3,"video"),
   s("jazz-bossa","Cozy Cafe Music - Chill Jazz &","Cozy Cafe Music - Chill Jazz & Bossa for","gCA--UKeKl0",3,"video"),
-  s("jazz-bossa","March Jazz | Soft Relaxing Jaz","March Jazz | Soft Relaxing Jazz & Happy ","j1qKevv3O-I",3,"video"),
-  s("jazz-bossa","Morning Living Coffee Jazz - P","Morning Living Coffee Jazz - Positive Ja","ITAiiJj69vM",3,"video"),
-  s("jazz-bossa","Positive Jazz Music & Sweet Au","Positive Jazz Music & Sweet Autumn Bossa","73xd5d0-y4U",3,"video"),
-  s("jazz-bossa","Positive Morning Vibes with Co","Positive Morning Vibes with Coffee & Rel","ihUlXgish_I",3,"video"),
-  s("jazz-bossa","Relax Music - Bossa Nova Beach","Relax Music - Bossa Nova Beach - Bossa N","iXchWUgWlcw",3,"video"),
-  s("jazz-bossa","Relaxing Bossa Lounge - Music ","Relaxing Bossa Lounge - Music To Relax /","5ZvHmK0Z4JM",3,"video"),
-  s("jazz-bossa","Relaxing Jazz & Bossa Nova For","Relaxing Jazz & Bossa Nova For Cafe & Ba","xYOliHI2HeA",3,"video"),
-  s("jazz-bossa","Spring March Jazz - Sweet & El","Spring March Jazz - Sweet & Elegant Boss","j-tYR6tvtb0",3,"video"),
-  s("jazz-bossa","Work & Jazz | Relaxing Bossa N","Work & Jazz | Relaxing Bossa Nova Jazz M","5XbIZCqyPII",3,"video"),
-  // --- Morning Jazz (9) ---
-  s("jazz-morning","Happy March Morning Jazz - Pos","Happy March Morning Jazz - Positive Coff","456NmeoW1oA",3,"video"),
-  s("jazz-morning","Morning Bossa Nova Jazz Cafe &","Morning Bossa Nova Jazz Cafe & Relaxing ","6k7BUaLd5pA",3,"video"),
+  // --- Morning Jazz ---
   s("jazz-morning","Morning Coffee Jazz & Bossa No","Morning Coffee Jazz & Bossa Nova - Relax","dS-7U56ubnw",3,"video"),
-  s("jazz-morning","Morning Jazz & Coffee | Relaxi","Morning Jazz & Coffee | Relaxing Breakfa","g8weZOmrap4",3,"video"),
-  s("jazz-morning","Morning Jazz Cafe Music - Inst","Morning Jazz Cafe Music - Instrumental S","yzlV5VVfjnE",3,"video"),
-  s("jazz-morning","Morning Jazz Music - Relaxing ","Morning Jazz Music - Relaxing Breakfast ","dRKyMXPOLXI",3,"video"),
   s("jazz-morning","Relaxing Breakfast Coffee Jazz","Relaxing Breakfast Coffee Jazz - Soothin","6nClIF3T_Zc",3,"video"),
-  s("jazz-morning","Relaxing Morning Jazz Cafe Pla","Relaxing Morning Jazz Cafe Playlist Perf","pB2z5UTxLz4",3,"video"),
-  s("jazz-morning","Warm Morning Jazz - Cozy Autum","Warm Morning Jazz - Cozy Autumn Coffee S","sHHpS-HhOV4",3,"video"),
-  // --- Night Jazz (7) ---
+  // --- Night Jazz ---
   s("jazz-night","Best Cozy Evening Jazz Mix Liv","Best Cozy Evening Jazz Mix Live - Relaxi","8E-Wxg39JN4",5,"live"),
   s("jazz-night","Cozy Rainy Night Jazz - Smooth","Cozy Rainy Night Jazz - Smooth Jazz with","BriPV-BHn5o",3,"video"),
-  s("jazz-night","Evening Jazz Cafe - Relaxing J","Evening Jazz Cafe - Relaxing Jazz Music ","Cmc6J7-0DWY",3,"video"),
-  s("jazz-night","Evening Jazz Cafe Ambience - R","Evening Jazz Cafe Ambience - Relaxing Sm","AnsTWoq8STk",3,"video"),
-  s("jazz-night","Relaxing Night Cafe Jazz - Nig","Relaxing Night Cafe Jazz - Night Jazz","Gaj88SxG1us",3,"video"),
-  s("jazz-night","Relaxing Night Jazz Piano - Fo","Relaxing Night Jazz Piano - For work and","O5N45PkadQs",3,"video"),
-  s("jazz-night","Warm Night Cafe Playlist | Rel","Warm Night Cafe Playlist | Relaxing Jazz","qYPuaATiPRs",3,"video"),
-  // --- Jazz Piano (6) ---
+  // --- Jazz Piano ---
   s("jazz-piano","Jazz Piano Bar","Cafe Music BGM channel","neV3EPgvZ3g",4,"video"),
-  s("jazz-piano","Cozy Rainy Evening Cafe - Smoo","Cozy Rainy Evening Cafe - Smooth Jazz Pi","c77mwJVV6bQ",3,"video"),
-  s("jazz-piano","Lounge Jazz Piano Music - Chil","Lounge Jazz Piano Music - Chill Out Cafe","6w0im3LHazY",3,"video"),
   s("jazz-piano","Melancholy Jazz Piano","Emotional jazz piano","1ZYbU82GVz4",3,"video"),
-  s("jazz-piano","Modern Jazz Piano Vol.1 - Cafe","Modern Jazz Piano Vol.1 - Cafe feeling a","hvQhq4Z3sis",3,"video"),
-  s("jazz-piano","Quiet night floating piano jaz","Quiet night floating piano jazz - Bar lo","-DyS7DGqSwc",3,"video"),
-  // --- Jazz & Soul (1) ---
+  // --- Jazz & Soul ---
   s("jazz-soul","Jazz & Soul R&B - Smooth Instr","Jazz & Soul R&B - Smooth Instrumental Gr","5-EbIpbngRI",3,"video"),
-  // --- Romantic Jazz (5) ---
+  // --- Romantic Jazz ---
   s("jazz-romantic","Romantic Dinner Jazz | Smooth ","Romantic Dinner Jazz | Smooth Piano & Sa","mJEhUn9sOtc",3,"video"),
-  s("jazz-romantic","Romantic Instrumental Jazz Mus","Romantic Instrumental Jazz Music for Dat","O0cd3sgnmHc",3,"video"),
-  s("jazz-romantic","Romantic Jazz Dinner Night - E","Romantic Jazz Dinner Night - Elegant Smo","P7UDCpzk8SQ",3,"video"),
-  s("jazz-romantic","Romantic Jazz Dinner | Elegant","Romantic Jazz Dinner | Elegant Jazz for ","S6tWUg8DUg8",3,"video"),
-  s("jazz-romantic","Romantic Jazz Evening - Smooth","Romantic Jazz Evening - Smooth Jazz Musi","XItrgOAUDcI",3,"video"),
-  // --- Holiday Jazz (6) ---
+  // --- Holiday Jazz ---
   s("jazz-holiday","Relaxing Christmas Jazz Music ","Relaxing Christmas Jazz Music 10 Hours","lJlEQim-yMo",4,"video"),
-  s("jazz-holiday","Christmas Jazz Instrumental Mu","Christmas Jazz Instrumental Music & Cozy","Na1Y1OU7c08",3,"video"),
-  s("jazz-holiday","Holiday Jazz - Christmas Instr","Holiday Jazz - Christmas Instrumental Co","2d1BTqBPD7A",3,"video"),
-  s("jazz-holiday","Relaxing Christmas Jazz in Lak","Relaxing Christmas Jazz in Lakeside - Ch","jHeS3FvYKBY",3,"video"),
-  s("jazz-holiday","Relaxing Holiday Jazz (NO MID-","Relaxing Holiday Jazz (NO MID-ROLL ADS) ","yHaTTeSbp1o",3,"video"),
-  s("jazz-holiday","Relaxing Holiday Jazz - Christ","Relaxing Holiday Jazz - Christmas Winter","Lmv3qhBK3QI",3,"video"),
 
   // === CLASSICAL ===
-  // --- Piano (29) ---
+  // --- Piano ---
   s("classical-piano","Relaxing Piano Music Radio","Relaxing Piano Music Radio","4khIPP--FDU",5,"live"),
   s("classical-piano","4 Hours Classical Music for Re","4 Hours Classical Music for Relaxation","0Tmo3KIH31c",4,"video"),
-  s("classical-piano","Calm Piano","Peaceful classical piano","lCOF9LN_Zxs",4,"video"),
-  s("classical-piano","30 Minutes Relaxing Felt Piano","30 Minutes Relaxing Felt Piano - Origina","sCwtp2lmUEU",3,"video"),
-  s("classical-piano","5 Pieces by Hans Zimmer - Icon","5 Pieces by Hans Zimmer - Iconic Soundtr","Os47nMrjw_Y",3,"video"),
-  s("classical-piano","50 Classical Music Masterpiece","50 Classical Music Masterpieces for Rela","IYd1-cPwQCk",3,"video"),
-  s("classical-piano","Calm Classical | Bach, Beethov","Calm Classical | Bach, Beethoven, Chopin","o_4cEfuyNFo",3,"video"),
-  s("classical-piano","Classical Music for Relaxation","Classical Music for Relaxation: Mozart, ","uk-DSogtQRo",3,"video"),
-  s("classical-piano","Classical Piano Music by Mozar","Classical Piano Music by Mozart - Relaxi","VB6SIKl8Md0",3,"video"),
-  s("classical-piano","Classical Piano Music for Slee","Classical Piano Music for Sleeping","RgC-8VbHMPg",3,"video"),
-  s("classical-piano","Classical Piano Radio","Classical piano compilation","eKFTSSKCzWA",3,"video"),
-  s("classical-piano","Early Mornings - Relaxing Clas","Early Mornings - Relaxing Classical Musi","orlPBh_NOMs",3,"video"),
-  s("classical-piano","Immortal Melodies of Classical","Immortal Melodies of Classical Music (No","xW6iEugZy_E",3,"video"),
-  s("classical-piano","Peaceful Classical Music | Bac","Peaceful Classical Music | Bach, Mozart,","ElWSdcg67RY",3,"video"),
-  s("classical-piano","Peaceful Classical Music | Bac","Peaceful Classical Music | Bach, Mozart,","lA7TTnZhjdY",3,"video"),
-  s("classical-piano","Peaceful Classical Piano | Cho","Peaceful Classical Piano | Chopin, Mozar","XMJbOC_2DME",3,"video"),
-  s("classical-piano","Peaceful, Relaxing Classical M","Peaceful, Relaxing Classical Music","yH3_tTPv2bo",3,"video"),
-  s("classical-piano","Quiet Mornings - Classical Mus","Quiet Mornings - Classical Music for Rel","ZBHTd3WU2To",3,"video"),
-  s("classical-piano","Relaxing Classical Piano Music","Relaxing Classical Piano Music: Beethove","tcK9lo15KMI",3,"video"),
-  s("classical-piano","Relaxing Classical Piano: Chop","Relaxing Classical Piano: Chopin, Mozart","qZMgcyaBkvc",3,"video"),
-  s("classical-piano","Relaxing Emotional Piano Music","Relaxing Emotional Piano Music - 20 Minu","NbROvvEAf0U",3,"video"),
-  s("classical-piano","Relaxing classical music. Musi","Relaxing classical music. Music for soul","t6BkO7tdZgo",3,"video"),
-  s("classical-piano","Relaxing classical music: Beet","Relaxing classical music: Beethoven, Moz","keCuINhOEVQ",3,"video"),
-  s("classical-piano","Relaxing classical music: Beet","Relaxing classical music: Beethoven | Mo","XQq9uT76dUc",3,"video"),
-  s("classical-piano","Soft Piano - Calm Classical Pi","Soft Piano - Calm Classical Pieces | Deb","IV8LO-T66ys",3,"video"),
-  s("classical-piano","Study Music for Reading Withou","Study Music for Reading Without Distract","qxR_RANyquA",3,"video"),
-  s("classical-piano","The Best of Piano. Mozart, Bee","The Best of Piano. Mozart, Beethoven, Ch","BB4m143c-O8",3,"video"),
-  s("classical-piano","The Best of Piano: Beethoven, ","The Best of Piano: Beethoven, Chopin, Ra","isPUc2p8JqU",3,"video"),
-  s("classical-piano","The Best of Piano: The most be","The Best of Piano: The most beautiful cl","cGYyOY4XaFs",3,"video"),
-  // --- Guitar (15) ---
+  // --- Guitar ---
   s("classical-guitar","3 Hour Relaxing Guitar Music: ","3 Hour Relaxing Guitar Music: Meditation","ss7EJ-PW2Uk",4,"video"),
   s("classical-guitar","Acoustic Chill - A Soft Indie ","Acoustic Chill - A Soft Indie Folk Playl","Krdt6FGuB3I",4,"video"),
-  s("classical-guitar","Acoustic Chill - A Soft Indie ","Acoustic Chill - A Soft Indie Folk Playl","cAs02QPZyc4",4,"video"),
-  s("classical-guitar","Relaxing Soothing Acoustic Gui","Relaxing Soothing Acoustic Guitar Instru","zyDcEdTMjE8",4,"video"),
-  s("classical-guitar","Acoustic Chill - Soft Indie Fo","Acoustic Chill - Soft Indie Folk Playlis","8UjJBh_GO2k",3,"video"),
-  s("classical-guitar","Acoustic Chill 2024 - Soft Ind","Acoustic Chill 2024 - Soft Indie Folk Pl","kNgmj5ewrFA",3,"video"),
-  s("classical-guitar","Acoustic Guitar to Ease your S","Acoustic Guitar to Ease your Soul...   O","NyuRqKgP2T4",3,"video"),
-  s("classical-guitar","Instrumental Acoustic Worship ","Instrumental Acoustic Worship and Hymns ","KNw8HoHu_XQ",3,"video"),
-  s("classical-guitar","Instrumental Indie-Folk | Vol.","Instrumental Indie-Folk | Vol. 3 - An Ac","Id2mbxCnxtE",3,"video"),
-  s("classical-guitar","Peace & Quiet - A Gentle Acous","Peace & Quiet - A Gentle Acoustic/Indie ","PRF30guWxqs",3,"video"),
-  s("classical-guitar","RELAXING GUITAR MUSIC - Soothi","RELAXING GUITAR MUSIC - Soothing Guitar ","m4gJCFPSu-c",3,"video"),
-  s("classical-guitar","Relaxing Guitar Music - Acoust","Relaxing Guitar Music - Acoustic - Calmi","j4OuCMnY43E",3,"video"),
-  s("classical-guitar","Relaxing Guitar Music, Calm Mu","Relaxing Guitar Music, Calm Music, Study","iIjSS_MbCGg",3,"video"),
-  s("classical-guitar","Relaxing Guitar for Stress Rel","Relaxing Guitar for Stress Relief, work ","f-i_nJLG2Is",3,"video"),
-  s("classical-guitar","The World's Best Classical Ins","The World's Best Classical Instrumental ","5GroWAOn8h8",3,"video"),
-  // --- Orchestra (2) ---
+  // --- Orchestra ---
   s("classical-orch","Heavenly Orchestra - Beautiful","Heavenly Orchestra - Beautiful Relaxing ","5fflfpMilyk",3,"video"),
-  s("classical-orch","Orchestra Music | Violin & Cel","Orchestra Music | Violin & Cello Music |","qjzQt6YezTc",3,"video"),
-  // --- Epic/Cinematic (17) ---
-  s("classical-epic","3 Hours Fantasy Ambient Music ","3 Hours Fantasy Ambient Music | Epic Mou","X5CzH3EYcno",4,"video"),
-  s("classical-epic","EPIC THUNDER & RAIN | Rainstor","EPIC THUNDER & RAIN | Rainstorm Sounds F","nDq6TstdEi8",4,"video"),
+  // --- Epic/Cinematic ---
   s("classical-epic","Epic Cinematic Soundtracks - 2","Epic Cinematic Soundtracks - 2 Hours Ins","PBSWXifeoCQ",4,"video"),
-  s("classical-epic","Epic Motivational and Cinemati","Epic Motivational and Cinematic Inspirat","WMdhPtS5vio",4,"video"),
-  s("classical-epic","Epic Orchestral Music for Powe","Epic Orchestral Music for Powerful Motiv","9bJPxO9iWKM",4,"video"),
-  s("classical-epic","1 Hour Epic Cinematic Music fo","1 Hour Epic Cinematic Music for Focus, R","5hukzVdx8Ac",3,"video"),
-  s("classical-epic","1 Hour Of The Most Beautiful E","1 Hour Of The Most Beautiful Emotional O","f6MinONmdX0",3,"video"),
-  s("classical-epic","A HERO'S RETURN (Epic Instrume","A HERO'S RETURN (Epic Instrumental) - To","vWT-XkCl41E",3,"video"),
-  s("classical-epic","Epic Cinematic Ambient Backgro","Epic Cinematic Ambient Background Music","u-ArBIOZJQo",3,"video"),
-  s("classical-epic","Epic Cinematic Ambient Music |","Epic Cinematic Ambient Music | The Journ","Lh3dCJp025E",3,"video"),
-  s("classical-epic","Epic Instrumental Music - Powe","Epic Instrumental Music - Powerful and D","GVqE_OPzN6c",3,"video"),
-  s("classical-epic","Epic Instrumental Music Mix 20","Epic Instrumental Music Mix 2025 | Cinem","x3bjFqJvJhw",3,"video"),
-  s("classical-epic","Ethereal Anomaly - Emotional C","Ethereal Anomaly - Emotional Cinematic S","5AK6F462ccs",3,"video"),
   s("classical-epic","Hans Zimmer EPIC MUSIC - Best ","Hans Zimmer EPIC MUSIC - Best of 1 Hour","hHwqfT4mhfI",3,"video"),
-  s("classical-epic","Intense Dramatic Music - Epic ","Intense Dramatic Music - Epic Instrument","IVZ9zpBPVEE",3,"video"),
-  s("classical-epic","The Beauty Of Epic Music | A B","The Beauty Of Epic Music | A Beautiful Y","dnGz4kIzMMQ",3,"video"),
-  s("classical-epic","YOU WILL BE THIS HERO | Orches","YOU WILL BE THIS HERO | Orchestral Epic ","xbMZBjc8Oe4",3,"video"),
 
   // === AMBIENT ===
-  // --- Rain (24) ---
+  // --- Rain ---
   s("ambient-rain","sad lofi radio - beats for rai","sad lofi radio - beats for rainy days","P6Segk8cr-c",5,"live"),
-  s("ambient-rain","2 Hour Study Music Brain Power","2 Hour Study Music Brain Power: Focus Co","pmoGdaOeUkQ",4,"video"),
-  s("ambient-rain","Cozy Room Urban Rain","Chill lofi rain playlist","NHebkfRSIeA",4,"video"),
   s("ambient-rain","Rain on Window","Gentle rain on glass","mPZkdNFkNps",4,"video"),
-  s("ambient-rain","(4K) Breathtaking Colorful Bir","(4K) Breathtaking Colorful Birds of the ","tbodhmmqa-g",3,"video"),
-  s("ambient-rain","11 HOURS of Rainforest Birds i","11 HOURS of Rainforest Birds in 4K - Col","qQgNWg96Rls",3,"video"),
-  s("ambient-rain","ASMR Tingly Mouth Sounds & Tri","ASMR Tingly Mouth Sounds & Triggers for ","Zb6D5Gxlktw",3,"video"),
-  s("ambient-rain","Chill Lofi Beats | Retro Japan","Chill Lofi Beats | Retro Japanese Train ","vmrxB-70yHo",3,"video"),
-  s("ambient-rain","Cozy Coffee Shop Rain Sounds -","Cozy Coffee Shop Rain Sounds - Soft Jazz","k7lU621kCvk",3,"video"),
-  s("ambient-rain","Cozy Fall Coffee Shop Ambience","Cozy Fall Coffee Shop Ambience: Relaxing","VMAPTo7RVCo",3,"video"),
-  s("ambient-rain","Cozy Rain Evening Cafe Jazz - ","Cozy Rain Evening Cafe Jazz - Soft Sprin","HRvbcVDuLeE",3,"video"),
-  s("ambient-rain","Exotic Birds 4K - Beautiful Bi","Exotic Birds 4K - Beautiful Bird Sounds ","1Dylx9JBBZg",3,"video"),
-  s("ambient-rain","FOREST AT NIGHT - Crickets Owl","FOREST AT NIGHT - Crickets Owls Rain Win","3TNK916Pjto",3,"video"),
-  s("ambient-rain","FOREST AT NIGHT - Owls, Cricke","FOREST AT NIGHT - Owls, Crickets, Light ","msHDP4U61e8",3,"video"),
-  s("ambient-rain","Heavy Rain","Intense rainfall sounds","q76bMs-NwRk",3,"video"),
-  s("ambient-rain","Hyper Focus Music To Increase ","Hyper Focus Music To Increase Concentrat","TPLyoDVbLJI",3,"video"),
-  s("ambient-rain","Jungle Birds 4K - Beautiful Bi","Jungle Birds 4K - Beautiful Birds Sound ","BM8sjq5O9Dg",3,"video"),
-  s("ambient-rain","Rain in Forest","Forest rain ambience","xNN7iTA57jM",3,"video"),
-  s("ambient-rain","Rainforest Nature Sounds with ","Rainforest Nature Sounds with Relaxing R","Ly7lqJkwYPA",3,"video"),
-  s("ambient-rain","Rainy Night Lofi Hip Hop Beats","Rainy Night Lofi Hip Hop Beats - Study, ","ZzEIzBer3dA",3,"video"),
-  s("ambient-rain","Seoul Lofi Korean Rain Chill  ","Seoul Lofi Korean Rain Chill  Hip Hop Be","qi6vo8CqdJQ",3,"video"),
-  s("ambient-rain","Study Focus Music, Concentrati","Study Focus Music, Concentration Music, ","9xXmy1Ts-SU",3,"video"),
-  s("ambient-rain","Study Music: Brain Music for S","Study Music: Brain Music for Studying, B","uoDGHoFVZpQ",3,"video"),
-  s("ambient-rain","Tropical Birds In 4k - Beautif","Tropical Birds In 4k - Beautiful Bird So","hedeOWP4KXs",3,"video"),
-  // --- Storms (9) ---
+  // --- Storms ---
   s("ambient-storm","Heavy Rain and Thunder Sounds ","Heavy Rain and Thunder Sounds for Sleepi","0V0SKiiFZMs",5,"live"),
   s("ambient-storm","Thunderstorm Rain Sounds for S","Thunderstorm Rain Sounds for Sleeping - ","M7IW6xtVxuw",5,"live"),
-  s("ambient-storm","No Ads, Rain Sounds For Sleepi","No Ads, Rain Sounds For Sleeping - 10 Ho","ugxR1fXe-lg",4,"video"),
-  s("ambient-storm","Gentle Night RAIN - Rain Sound","Gentle Night RAIN - Rain Sounds For Slee","dvQelfoNmrs",3,"video"),
-  s("ambient-storm","Heavy Rainstorm in the Mountai","Heavy Rainstorm in the Mountains with No","NdKZn4CXuXc",3,"video"),
-  s("ambient-storm","Heavy Thunderstorm & Rain Soun","Heavy Thunderstorm & Rain Sounds: Sleepi","HKLKV8sjWKs",3,"video"),
-  s("ambient-storm","Rain Sound On Window with Thun","Rain Sound On Window with Thunder Sounds","g2dWy9TTFN4",3,"video"),
-  s("ambient-storm","Rainforest sounds with thunder","Rainforest sounds with thunder, rain and","kvBXhc4qePw",3,"video"),
-  s("ambient-storm","Tropical Thunderstorm & Rain S","Tropical Thunderstorm & Rain Sounds for ","oKPHUjZZ_Sg",3,"video"),
-  // --- Rain Cafe (3) ---
+  // --- Rain Cafe ---
   s("ambient-raincafe","Cozy Evening Rain Cafe Vibes -","Cozy Evening Rain Cafe Vibes - Cafe ASMR","MM_hG2z6gRs",3,"video"),
   s("ambient-raincafe","Cozy Rainy Evening - Relaxing ","Cozy Rainy Evening - Relaxing Jazz Music","AGtye69u67c",3,"video"),
-  s("ambient-raincafe","Jazz on a Rainy Evening | Cozy","Jazz on a Rainy Evening | Cozy Books, Wa","uaByJiODwV0",3,"video"),
-  // --- Ocean (8) ---
+  // --- Ocean ---
   s("ambient-ocean","Ocean Waves White Noise for Sl","Ocean Waves White Noise for Sleeping 10 ","JekUNGo-RVk",4,"video"),
   s("ambient-ocean","Ocean Waves for Sleep | relaxi","Ocean Waves for Sleep | relaxing beach s","K-NtrkLy7U4",3,"video"),
-  s("ambient-ocean","Peaceful REAL Ocean Waves on a","Peaceful REAL Ocean Waves on a Tropical ","Smt9jH7orY0",3,"video"),
-  s("ambient-ocean","Power Focus - 14Hz Beta Waves ","Power Focus - 14Hz Beta Waves that Impro","YWIhyOWxKPw",3,"video"),
-  s("ambient-ocean","Relaxing Beach Sounds Gentle R","Relaxing Beach Sounds Gentle Ripples - S","34nlvZvXkEY",3,"video"),
-  s("ambient-ocean","Relaxing Sunday - Peaceful Oce","Relaxing Sunday - Peaceful Ocean Sounds ","nJ1hNvRDVeE",3,"video"),
-  s("ambient-ocean","The Most Relaxing Waves Ever -","The Most Relaxing Waves Ever - Ocean Sou","vPhg6sc1Mk4",3,"video"),
-  s("ambient-ocean","Tokiwave - Sakura (Official Au","Tokiwave - Sakura (Official Audio) | Jap","RnJkgSLo-hk",3,"video"),
-  // --- River (8) ---
+  // --- River ---
   s("ambient-river","Forest Stream Flowing Sound 24","Forest Stream Flowing Sound 24/7. Relaxi","jKtofppPJFk",5,"live"),
   s("ambient-river","Lofi Girl Live Stream - Chill ","Lofi Girl Live Stream - Chill Beats, Sof","83ILtWq7HX0",5,"live"),
-  s("ambient-river","Campfire by the River at Night","Campfire by the River at Night Ambience ","yBlPHvfP8_E",4,"video"),
-  s("ambient-river","Relaxing River Sounds - Peacef","Relaxing River Sounds - Peaceful Forest ","IvjMgVS6kng",4,"video"),
-  s("ambient-river","Crackling Mountain Campfire wi","Crackling Mountain Campfire with Relaxin","EqqpcFj8G-s",3,"video"),
-  s("ambient-river","Forest River Nature Sounds - G","Forest River Nature Sounds - Gentle Stre","29XymHesxa0",3,"video"),
-  s("ambient-river","Relaxing Piano Music: Tranquil","Relaxing Piano Music: Tranquil Waters Fl","in-VJ86cX-8",3,"video"),
-  s("ambient-river","Relaxing River Stream Sounds |","Relaxing River Stream Sounds | Flowing W","9UersZ8OqnY",3,"video"),
-  // --- Nature (13) ---
+  // --- Nature ---
   s("ambient-nature","Live: Crackling Campfire & Soo","Live: Crackling Campfire & Soothing Cric","vR7rWIs4wbc",5,"live"),
-  s("ambient-nature","12 Hours of Calming Summer Nig","12 Hours of Calming Summer Night Sounds ","X4Ykb2xVh-c",4,"video"),
-  s("ambient-nature","Coffee Shop Ambience","Busy café background","h2zkV-l_TbY",4,"video"),
-  s("ambient-nature","Idaho Mountain Campsite: Frogs","Idaho Mountain Campsite: Frogs, Crickets","INaKdIeSPeo",4,"video"),
-  s("ambient-nature","Ocean Waves","Calming ocean sounds","bn9F19Hi1Lk",4,"video"),
   s("ambient-nature","Spring Forest Ambience - Natur","Spring Forest Ambience - Nature Sounds, ","bN6PNAN3ZCc",4,"video"),
-  s("ambient-nature","4K Soothing Cricket Owl & Wate","4K Soothing Cricket Owl & Water sounds a","9tZLnEBQyPI",3,"video"),
-  s("ambient-nature","Campfire Ambience with Night A","Campfire Ambience with Night Animals suc","E77jmtut1Zc",3,"video"),
-  s("ambient-nature","Forest at Night Sounds | Owls ","Forest at Night Sounds | Owls & Crickets","PjjojjUn0bk",3,"video"),
-  s("ambient-nature","Jungle Sounds - Exotic Birds S","Jungle Sounds - Exotic Birds Singing - T","MCuFfW3X324",3,"video"),
-  s("ambient-nature","Morning Birds","Dawn chorus birdsong","rYoZgpAEkFs",3,"video"),
-  s("ambient-nature","Peaceful Lake Sounds at Night ","Peaceful Lake Sounds at Night | Frogs, C","p1HzxO_SKOI",3,"video"),
-  s("ambient-nature","Peder Helin - Slowly Healing |","Peder Helin - Slowly Healing | Peaceful ","Xb8MUYFljqg",3,"video"),
-  // --- Fire/Cozy (11) ---
-  s("ambient-fire","12 HOURS of Cozy Fireplace - R","12 HOURS of Cozy Fireplace - Relaxing 4K","t07uMW0Zq5U",4,"video"),
-  s("ambient-fire","12 Hours of Crackling Fireplac","12 Hours of Crackling Fireplace Sounds, ","IJf4QMPEbOI",4,"video"),
-  s("ambient-fire","Calming sound of a crackling c","Calming sound of a crackling campfire fo","ymzJA_-QGg8",4,"video"),
-  s("ambient-fire","Cozy Campfire at Night - Burni","Cozy Campfire at Night - Burning Fire & ","sZzdM3b7lPE",4,"video"),
-  s("ambient-fire","Cozy Crackling Fire - 9 Hour H","Cozy Crackling Fire - 9 Hour HD Virtual ","SKaIkbgyhU8",4,"video"),
-  s("ambient-fire","Cozy Fireplace 4K (12 HOURS). ","Cozy Fireplace 4K (12 HOURS). Fireplace ","J-0cGMDo1mU",4,"video"),
+  // --- Fire/Cozy ---
   s("ambient-fire","Fireplace & Rain","Cozy fire + rainfall","3sL0omwElxw",4,"video"),
-  s("ambient-fire","Cozy Campfire - Relaxing Firep","Cozy Campfire - Relaxing Fireplace Sound","VGlYxtkZUXI",3,"video"),
-  s("ambient-fire","Crackling Campfire on the Wind","Crackling Campfire on the Windy Tundra o","0yfH53kBiYA",3,"video"),
-  s("ambient-fire","Crackling Fireplace","Pure fireplace sounds","UgHKb_7884o",3,"video"),
-  s("ambient-fire","Virtual Bonfire with Crackling","Virtual Bonfire with Crackling Fire Soun","bbLDfueL7eU",3,"video"),
-  // --- Cafe Ambience (5) ---
-  s("ambient-cafe","ASMR Coffee Shop Sound | NO MU","ASMR Coffee Shop Sound | NO MUSIC | Coff","qU8o3_T5y5M",3,"video"),
-  s("ambient-cafe","Busy Friday Cafe Ambience & Ja","Busy Friday Cafe Ambience & Jazz Music -","unxrg8UfGx8",3,"video"),
+  s("ambient-fire","Cozy Fireplace 4K (12 HOURS). ","Cozy Fireplace 4K (12 HOURS). Fireplace ","J-0cGMDo1mU",4,"video"),
+  // --- Cafe Ambience ---
   s("ambient-cafe","Coffee Shop Ambience | Cafe Ba","Coffee Shop Ambience | Cafe Background N","uiMXGIG_DQo",3,"video"),
-  s("ambient-cafe","Cozy Sakura Coffee Shop - Lofi","Cozy Sakura Coffee Shop - Lofi Cafe Chil","QjW-1ogaAsc",3,"video"),
-  s("ambient-cafe","Morning Spring Jazz - Gentle J","Morning Spring Jazz - Gentle Jazz Music ","sYwC7lhccis",3,"video"),
-  // --- Space (7) ---
-  s("ambient-space","Going to Space Lofi","Space lofi mixtape","8vOZYwsm8X0",4,"video"),
+  s("ambient-cafe","ASMR Coffee Shop Sound | NO MU","ASMR Coffee Shop Sound | NO MUSIC | Coff","qU8o3_T5y5M",3,"video"),
+  // --- Space ---
   s("ambient-space","Space Ambient","Cosmic ambient soundscapes","S_MOd40zlYU",4,"video"),
-  s("ambient-space","Calm Space Ambient Music. Cosm","Calm Space Ambient Music. Cosmic Harmony","MvtWljsraTs",3,"video"),
-  s("ambient-space","Cosmic Ambient Music | Deep Sp","Cosmic Ambient Music | Deep Space Explor","d1ADoytfy-o",3,"video"),
-  s("ambient-space","Cosmic Eternity - Space Ambien","Cosmic Eternity - Space Ambient Music fo","2bburzrOK2k",3,"video"),
-  s("ambient-space","Space Ambient  Music - Pure Co","Space Ambient  Music - Pure Cosmic Relax","gCWaRhNUvfc",3,"video"),
-  s("ambient-space","The Most Relaxing Space Ambien","The Most Relaxing Space Ambient Music in","DQzRLoFqFvg",3,"video"),
-  // --- Dark Ambient (2) ---
+  s("ambient-space","Going to Space Lofi","Space lofi mixtape","8vOZYwsm8X0",4,"video"),
+  // --- Dark Ambient ---
   s("ambient-dark","Ad-Free Dark Ambient Mix - 12 ","Ad-Free Dark Ambient Mix - 12 Hours of D","8yc2mzZfmJI",4,"video"),
-  s("ambient-dark","7+ Hours of Dark Ambient Music","7+ Hours of Dark Ambient Music | Focus &","bD167AWNd2g",3,"video"),
-  // --- Ethereal (5) ---
+  // --- Ethereal ---
   s("ambient-ethereal","Elysium - Ethereal Fantasy Amb","Elysium - Ethereal Fantasy Ambient Journ","9p5Tokd-93k",3,"video"),
   s("ambient-ethereal","Flow - Ethereal Healing Medita","Flow - Ethereal Healing Meditation Music","plWAM6wUeI0",3,"video"),
-  s("ambient-ethereal","HIDDEN PLACE | Ethereal Medita","HIDDEN PLACE | Ethereal Meditative Ambie","sTyXfPVw9-I",3,"video"),
-  s("ambient-ethereal","Legend - Ethereal Space Ambien","Legend - Ethereal Space Ambient Music - ","WQANK05cX94",3,"video"),
-  s("ambient-ethereal","Utopia - Calming Ethereal Ambi","Utopia - Calming Ethereal Ambient Music ","cBSUf04SHYY",3,"video"),
-  // --- Fantasy (5) ---
-  s("ambient-fantasy","A Magical Fantasy Ambient Jour","A Magical Fantasy Ambient Journey [DEEPL","zWK6ZeYllq8",3,"video"),
-  s("ambient-fantasy","Fairy Lands | FANTASY MUSIC in","Fairy Lands | FANTASY MUSIC in a Magical","syp6Lsd8HOo",3,"video"),
+  // --- Fantasy ---
   s("ambient-fantasy","Immersive Middle Earth Atmosph","Immersive Middle Earth Atmosphere - Fant","Jj-tbczVi44",3,"video"),
-  s("ambient-fantasy","Magical Forest Soundscape - Ca","Magical Forest Soundscape - Calm Fantasy","DUuBi5UG-b8",3,"video"),
-  s("ambient-fantasy","THE FAIRY RIVER | Magical Fant","THE FAIRY RIVER | Magical Fantasy Music ","OC23KpzsEdo",3,"video"),
+  s("ambient-fantasy","A Magical Fantasy Ambient Jour","A Magical Fantasy Ambient Journey [DEEPL","zWK6ZeYllq8",3,"video"),
 
   // === ELECTRONIC ===
-  // --- Retrowave (2) ---
+  // --- Retrowave ---
   s("synth-retro","Synthwave Radio","80s synth vibes 24/7","4xDzrJKXOOY",4,"live"),
   s("synth-retro","Retrowave TV","Neon-drenched retro","5-anTj1QrWs",3,"live"),
-  // --- Chillsynth (6) ---
+  // --- Chillsynth ---
   s("synth-chill","ChillSynth FM","Relaxed synth music","UedTcufyrHc",4,"live"),
-  s("synth-chill","4 A.M Chill Session - synthwav","4 A.M Chill Session - synthwave music fo","cyzx45mupcQ",3,"video"),
-  s("synth-chill","Aesthetic Night Drive Music | ","Aesthetic Night Drive Music | 30-Min Chi","vHcV3lImNgI",3,"video"),
-  s("synth-chill","Electronic Chill Vibes ~ Ambie","Electronic Chill Vibes ~ Ambient Downtem","nV2TDDLY-lg",3,"video"),
-  s("synth-chill","Electronic Chillout - Progress","Electronic Chillout - Progressive Chill ","NXq905HXXgg",3,"video"),
   s("synth-chill","Nostalgic 80s lofi - Retro Bea","Nostalgic 80s lofi - Retro Beats & Synth","sYmWml0DEiI",3,"video"),
-  // --- Cyberpunk (6) ---
+  // --- Cyberpunk ---
   s("synth-cyber","Cyberpunk Night City 9hrs","ASMR ambience","SthlzIeMNW8",5,"video"),
   s("synth-cyber","Cyberpunk 2077 Rain","Arasaka docks ambience","xMvm9U8wEdA",4,"video"),
-  s("synth-cyber","Cyberpunk 9hr Rain","Rain ambience","K3zmaxSHNsE",4,"video"),
-  s("synth-cyber","Cyberpunk Rain on Car","Quadra Vtech 4hrs","PhlrR5W89FI",4,"video"),
-  s("synth-cyber","Night City Synthwave Rain","Dreamy neon vibes","KlcsGjI6Jms",4,"video"),
-  s("synth-cyber","Midnight City Lofi - Night Dri","Midnight City Lofi - Night Drive Chillho","HpM-1d50SSE",3,"video"),
-  // --- Deep House (6) ---
+  // --- Deep House ---
   s("synth-lounge","3 HOURS Deep House - Chillout ","3 HOURS Deep House - Chillout - Lounge M","IPjZM9o6ukc",4,"video"),
   s("synth-lounge","DEEP HOUSE - CHILLOUT - LOUNGE","DEEP HOUSE - CHILLOUT - LOUNGE BEATS | 3","59LMreYagUU",4,"video"),
-  s("synth-lounge","AMBIENT CHILLOUT LOUNGE RELAXI","AMBIENT CHILLOUT LOUNGE RELAXING MUSIC -","cq2Ef6rvL6g",3,"video"),
-  s("synth-lounge","Deep House 2026 - Best Of Chil","Deep House 2026 - Best Of Chill Out & Lo","wCTgbJmHaYM",3,"video"),
-  s("synth-lounge","Deep House Lounge - Relaxing H","Deep House Lounge - Relaxing House Music","49sUjH7Xazk",3,"video"),
-  s("synth-lounge","Deep House Mix | Chillout Loun","Deep House Mix | Chillout Lounge Music f","qrgEsl2sqxc",3,"video"),
 
   // === FOCUS ===
-  // --- Deep Focus (11) ---
+  // --- Deep Focus ---
   s("focus-deep","Deep Focus Music","Intense concentration","oPVte6aMprI",4,"video"),
-  s("focus-deep","1 Hour Peaceful Reading Music ","1 Hour Peaceful Reading Music | Soft Ins","XNBhr8FYPWQ",3,"video"),
-  s("focus-deep","Ambient Study Music For Effect","Ambient Study Music For Effective Studyi","Q5aGoc2pW04",3,"video"),
-  s("focus-deep","Calm Focus Music for Reading &","Calm Focus Music for Reading & Studying ","enuEJ2hDvtQ",3,"video"),
   s("focus-deep","Coding Music","Programming focus beats","f02mOEt11OQ",3,"video"),
-  s("focus-deep","Deep Focus - Music For Concent","Deep Focus - Music For Concentration And","qQjQvGm4QZM",3,"video"),
-  s("focus-deep","Deep Focus Music for Studying ","Deep Focus Music for Studying and Work, ","jKAXK_Ar72Y",3,"video"),
-  s("focus-deep","Deep Work Focus Music | for Co","Deep Work Focus Music | for Coding and R","J9dMcNRpfjI",3,"video"),
-  s("focus-deep","Focus Music for Reading | Stud","Focus Music for Reading | Study and Work","xuTjsmIeCMY",3,"video"),
-  s("focus-deep","Relaxing Study Music: Deep Wor","Relaxing Study Music: Deep Work - Ambien","kYjjMVnwvl8",3,"video"),
-  s("focus-deep","Work Music for Deep Focus and ","Work Music for Deep Focus and Efficiency","1vmOa9oRMvA",3,"video"),
-  // --- Alpha/Binaural (16) ---
-  s("focus-alpha","10Hz Binaural Beats | Alpha Wa","10Hz Binaural Beats | Alpha Waves for Fo","z5hBiW3BV4M",4,"video"),
+  // --- Alpha/Binaural ---
   s("focus-alpha","3 Hour Focus Music: Study Musi","3 Hour Focus Music: Study Music, Alpha W","5LXhPbmoHmU",4,"video"),
-  s("focus-alpha","3 Hour Study Focus Music: Alph","3 Hour Study Focus Music: Alpha Waves, B","ctXQxPO3bbg",4,"video"),
-  s("focus-alpha","6 Hour Study Music, Alpha Wave","6 Hour Study Music, Alpha Waves, Studyin","lecITZkWqzg",4,"video"),
-  s("focus-alpha","8 Hours of Alpha Waves for Str","8 Hours of Alpha Waves for Stress Relief","f6IcR9gFfx4",4,"video"),
-  s("focus-alpha","Relax & Focus with Alpha Waves","Relax & Focus with Alpha Waves - 8 Hours","enhCPRYcUzk",4,"video"),
-  s("focus-alpha","Alpha Waves for Focus & Relaxa","Alpha Waves for Focus & Relaxation | Bin","VQI7IhydQks",3,"video"),
-  s("focus-alpha","Alpha wave study and focus mus","Alpha wave study and focus music with oc","vr9dLvJs7VE",3,"video"),
-  s("focus-alpha","Alpha waves | Increase Concent","Alpha waves | Increase Concentration, Fo","FAko_2eo_50",3,"video"),
-  s("focus-alpha","Concentration Music, Study Mus","Concentration Music, Study Music, Relaxi","aVzLNwUpQpE",3,"video"),
-  s("focus-alpha","Focus Music: Binaural Beats Al","Focus Music: Binaural Beats Alpha Waves ","LXsfShblX-8",3,"video"),
-  s("focus-alpha","Increase Brain Power, Enhance ","Increase Brain Power, Enhance Intelligen","J2ZFNjPEDZo",3,"video"),
-  s("focus-alpha","Study Music Alpha Waves - Stud","Study Music Alpha Waves - Studying Music","rEEHdaRo5mE",3,"video"),
-  s("focus-alpha","Study Music Alpha Waves, Relax","Study Music Alpha Waves, Relaxing Studyi","fYpZxtx6gek",3,"video"),
-  s("focus-alpha","Study Music Alpha Waves: Impro","Study Music Alpha Waves: Improve Your Fo","p0VRHH_SgKI",3,"video"),
-  s("focus-alpha","Super Focus: Flow State Music ","Super Focus: Flow State Music - Alpha Bi","p2_zDvtPQ-g",3,"video"),
-  // --- Brain Waves (1) ---
+  s("focus-alpha","10Hz Binaural Beats | Alpha Wa","10Hz Binaural Beats | Alpha Waves for Fo","z5hBiW3BV4M",4,"video"),
+  // --- Brain Waves ---
   s("focus-brain","Brain Power Music","Alpha wave focus","WPni755-Krg",4,"video"),
-  // --- Inspirational (3) ---
+  // --- Inspirational ---
   s("focus-inspire","Inspirational Music Instrument","Inspirational Music Instrumental | Calmi","T96iWDuubEI",3,"video"),
-  s("focus-inspire","Uplifting Background Music | I","Uplifting Background Music | Inspiration","Bjvu_gFs4Tk",3,"video"),
-  s("focus-inspire","World's Most Inspiring Uplifti","World's Most Inspiring Uplifting Music |","37W8cH2ibZI",3,"video"),
 
   // === CHILL ===
-  // --- Gaming Beats (16) ---
-  s("chill-gaming","Chill Electronic 24/7 - Sheepy","Chill Electronic 24/7 - Sheepy Radio | M","GXjgYZ4ALpg",5,"live"),
-  s("chill-gaming","No Copyright Music - Gaming Mu","No Copyright Music - Gaming Music - Chil","ATYtS3c4ytI",5,"live"),
-  s("chill-gaming","Pokemon & Chill","Full album 4K","wQ2OhGwZaK4",5,"video"),
+  // --- Gaming Beats ---
   s("chill-gaming","Zelda & Chill","Full album GameChops","icwbu-9douY",5,"video"),
-  s("chill-gaming","Final Fantasy LoFi Radio","24/7 No AI","gEGQciAcSnI",4,"live"),
-  s("chill-gaming","Minecraft Vol Alpha","C418 full album","8NlYZ-f8wHk",4,"video"),
-  s("chill-gaming","Stardew Valley OST","Complete soundtrack","UKZF5k5cqOs",4,"video"),
-  s("chill-gaming","Chill Electronic Music | Elect","Chill Electronic Music | Electronic Chil","z4F9ZxVZJqE",3,"video"),
-  s("chill-gaming","Chill Gaming Beats","Chill Gaming Beats","im3xshpy_yk",3,"video"),
-  s("chill-gaming","Chill, Electronic, Lounge No C","Chill, Electronic, Lounge No Copyright M","Q95GYgC1mTE",3,"video"),
-  s("chill-gaming","City of Gamers - Chill/Gaming/","City of Gamers - Chill/Gaming/Studying L","FFfdyV8gnWk",3,"video"),
-  s("chill-gaming","Cool Gaming Music 2026 - Best ","Cool Gaming Music 2026 - Best Music Mix,","PP2Uvesx4ls",3,"video"),
-  s("chill-gaming","Electronic Chill Vibes ~ Ambie","Electronic Chill Vibes ~ Ambient Downtem","2T0G6PNm68g",3,"video"),
-  s("chill-gaming","Minecraft Vol Alpha C418","Full album playthrough","m0apGY2GmFU",3,"video"),
-  s("chill-gaming","Minecraft Vol Alpha Visual","C418 with visuals","UCAimtF6qgY",3,"video"),
-  s("chill-gaming","Retro LoFi Beats for Late Nigh","Retro LoFi Beats for Late Night Gaming |","cA5UlGt8NrY",3,"video"),
-  // --- Studio Ghibli (9) ---
+  s("chill-gaming","Pokemon & Chill","Full album 4K","wQ2OhGwZaK4",5,"video"),
+  // --- Studio Ghibli ---
   s("chill-ghibli","Ghibli Coffee Shop","Lofi songs to study","zhDwjnYZiCo",5,"video"),
   s("chill-ghibli","Studio Ghibli Lofi","Ghibli but lofi beats","N3ur5Ey21zg",5,"video"),
-  s("chill-ghibli","Chill Morning Ghibli","Lofi Cat 90s vibes","GBz5_IvngL8",4,"video"),
-  s("chill-ghibli","Ghibli Chillhop Mix","Totoro Spirited Away etc","Udh9T3DQNjo",4,"video"),
-  s("chill-ghibli","Ghibli Lo-Fi Jazz Mix","Relax study jazz","AZals4U6Z_I",4,"video"),
-  s("chill-ghibli","1 hour Ghibli Lofi Chill - Stu","1 hour Ghibli Lofi Chill - Studying, rea","CIURW8fofYI",3,"video"),
-  s("chill-ghibli","Ghibli Music - Relaxing Ghibli","Ghibli Music - Relaxing Ghibli Collectio","rU_SK2DbFqQ",3,"video"),
-  s("chill-ghibli","Studio Ghibli Lofi - Rainy Day","Studio Ghibli Lofi - Rainy Day Chill | S","xXG_SOIQLZ4",3,"video"),
-  s("chill-ghibli","Studio Ghibli Lofi - Relaxing ","Studio Ghibli Lofi - Relaxing Ghibli Mus","sTV9hk6Iwx4",3,"video"),
-  // --- RPG Ambience (13) ---
+  // --- RPG Ambience ---
   s("chill-rpg","Persona 5 Beneath Mask","Rainy mood 10hrs","Uq7kyf1T_lk",5,"video"),
   s("chill-rpg","Skyrim Atmospheres","Jeremy Soule OST","YPZtRmx1Dyk",5,"video"),
-  s("chill-rpg","FFXIV Gridania Night","Ambience study relax","tUtWmxvzb_8",4,"video"),
-  s("chill-rpg","FFXIV Relaxing OST","3hrs study music","WFRzzhpvlqs",4,"video"),
-  s("chill-rpg","Peaceful Night Skyrim","Music and ambience","YKJ-fkbMOOg",4,"video"),
-  s("chill-rpg","Persona 5 Rain 10hrs","Gentle rain version","a3jwPhPT2AI",4,"video"),
-  s("chill-rpg","Skyrim Atmospheres 10hrs","Extended ambient","iXKMJ7M88Uc",4,"video"),
-  s("chill-rpg","FFXIV Crystarium Day","The Dark Which Illuminates","u3J3aDfPGWg",3,"video"),
-  s("chill-rpg","FFXIV Crystarium Night","Entrance night ambience","lSqOhGppRws",3,"video"),
-  s("chill-rpg","FFXIV Ul'Dah Night","Ambience study relax","8vCFnSNz0E4",3,"video"),
-  s("chill-rpg","Persona 5 Rain 1hr","Instrumental rain","Osk6gX6R_bA",3,"video"),
-  s("chill-rpg","Persona 5 Rain Sleep","10hrs raining relax","HbT8Ptc3pOI",3,"video"),
-  s("chill-rpg","Skyrim Atmospheres Alt","Extended version","4-Q5o4-Ejls",3,"video"),
 
   // === SLEEP ===
-  // --- Deep Sleep (35) ---
+  // --- Deep Sleep ---
   s("sleep-deep","Cozy Fireplace  24/7 - Crackli","Cozy Fireplace  24/7 - Crackling Fire So","CZUe5P8R_X8",5,"live"),
-  s("sleep-deep","12 Hours of Relaxing Sleep Mus","12 Hours of Relaxing Sleep Music for Str","lh4JdZTJe7k",4,"video"),
-  s("sleep-deep","6 Hour Relaxing Spa Music, Cal","6 Hour Relaxing Spa Music, Calming Music","N_G1IQLz6ig",4,"video"),
-  s("sleep-deep","7 Hours of Relaxing Sleep Musi","7 Hours of Relaxing Sleep Music - Soft P","eiV0nvJ9fRM",4,"video"),
   s("sleep-deep","8 Hour Deep Sleep Music: Sleep","8 Hour Deep Sleep Music: Sleep Meditatio","v-Ryb13PUIs",4,"video"),
-  s("sleep-deep","8 Hours of Relaxing Sleep Musi","8 Hours of Relaxing Sleep Music - Sleepi","hsGOT_0L16U",4,"video"),
-  s("sleep-deep","9 Hours of Relaxing Sleep Musi","9 Hours of Relaxing Sleep Music - Soft P","EQ205a0P10Y",4,"video"),
-  s("sleep-deep","Ambient Sleep Music + Soft Win","Ambient Sleep Music + Soft Wind Sounds -","mrRPET9ZD4c",4,"video"),
-  s("sleep-deep","Cozy Fireplace in 4K - 12 Hour","Cozy Fireplace in 4K - 12 Hours of Crack","OfC7pHpgMP8",4,"video"),
-  s("sleep-deep","Relaxing River Stream Sounds f","Relaxing River Stream Sounds for Deep Sl","zxHTW7w3bp0",4,"video"),
-  s("sleep-deep","ASMR | PURE TINGLES - Hypnotic","ASMR | PURE TINGLES - Hypnotic Ear Trigg","bwH3rMr734s",3,"video"),
-  s("sleep-deep","Calming Beach Waves with Soft ","Calming Beach Waves with Soft Ocean Soun","VFu03Rd2SQE",3,"video"),
-  s("sleep-deep","Deep Relaxing Music - Meditati","Deep Relaxing Music - Meditation Music, ","fNh2yB0w8gU",3,"video"),
-  s("sleep-deep","Deep Sleep Ambient Music | Rel","Deep Sleep Ambient Music | Relaxing Soun","o29r266N9q0",3,"video"),
-  s("sleep-deep","Deep Sleep Meditation: Relax, ","Deep Sleep Meditation: Relax, Heal & Fal","XJ_QnvX4oFo",3,"video"),
-  s("sleep-deep","Deep Sleep Ocean Waves | Ocean","Deep Sleep Ocean Waves | Ocean Sounds fo","Xtf4seUACG8",3,"video"),
-  s("sleep-deep","Deep Sleep Story: Bedtime Stor","Deep Sleep Story: Bedtime Stories For Gr","4id1Gni6Ghc",3,"video"),
-  s("sleep-deep","FOREST AT NIGHT - Crickets Owl","FOREST AT NIGHT - Crickets Owls Rain & W","aiAmAcaDQrM",3,"video"),
-  s("sleep-deep","Fall Asleep With Waves All Nig","Fall Asleep With Waves All Night Long, O","4KlE5wN4n3E",3,"video"),
-  s("sleep-deep","Instant Relief from Stress and","Instant Relief from Stress and Anxiety |","79kpoGF8KWU",3,"video"),
-  s("sleep-deep","Instant Relief from Stress and","Instant Relief from Stress and Anxiety, ","5bmDMFqnTs0",3,"video"),
-  s("sleep-deep","Natural River Stream White Noi","Natural River Stream White Noise | Relax","-szOXc4-osY",3,"video"),
-  s("sleep-deep","Natural River Stream White Noi","Natural River Stream White Noise | Relax","a2ERuxigH64",3,"video"),
-  s("sleep-deep","Ocean Sounds for Deep Sleep - ","Ocean Sounds for Deep Sleep - Relaxing W","ZVdlWeOr3Rg",3,"video"),
-  s("sleep-deep","Ocean Waves: Fall Asleep with ","Ocean Waves: Fall Asleep with Relaxing S","PgkvwG971hw",3,"video"),
-  s("sleep-deep","Peaceful Forest Cabin Night So","Peaceful Forest Cabin Night Sounds - Nat","kx3DPzh-XaI",3,"video"),
-  s("sleep-deep","Relaxing Asian Music | Traditi","Relaxing Asian Music | Traditional Asian","Lm8gZ7WngQM",3,"video"),
-  s("sleep-deep","Relaxing Guitar Music, Calming","Relaxing Guitar Music, Calming Music, Re","77YwsoKsNV8",3,"video"),
-  s("sleep-deep","Relaxing Music with Ocean Wave","Relaxing Music with Ocean Waves: Beautif","QR3lp0ptpy8",3,"video"),
-  s("sleep-deep","Relaxing Zen Music with Water ","Relaxing Zen Music with Water Sounds - D","IRJUQ60EMmU",3,"video"),
-  s("sleep-deep","Relaxing music Relieves stress","Relaxing music Relieves stress, Anxiety ","I3OJUwILelU",3,"video"),
-  s("sleep-deep","River Stream Sounds for Sleepi","River Stream Sounds for Sleeping | Relax","yCku9LKFXtY",3,"video"),
-  s("sleep-deep","Space Ambient Music | Cosmic R","Space Ambient Music | Cosmic Relaxation,","ugKm4OXDDBE",3,"video"),
-  s("sleep-deep","Traditional Asian Music | Peac","Traditional Asian Music | Peaceful Zen M","IAN_OuCg6ko",3,"video"),
-  s("sleep-deep","Traditional Asian Music | Peac","Traditional Asian Music | Peaceful Zen M","PeLyuJdJ63g",3,"video"),
-  // --- Delta Waves (12) ---
+  // --- Delta Waves ---
   s("sleep-delta","10 Hours Deep SLEEP Music, [2.","10 Hours Deep SLEEP Music, [2.8 Hz] DELT","TaDKA-b8sk8",4,"video"),
-  s("sleep-delta","10 Hours Deep SLEEPING Music, ","10 Hours Deep SLEEPING Music, [2-4 Hz] D","7viH-Ojq6e0",4,"video"),
-  s("sleep-delta","10 Hours Deepest HEALING Sleep","10 Hours Deepest HEALING Sleep, [2-3 Hz]","OHIfkiytH-Y",4,"video"),
-  s("sleep-delta","10 Hours Of Deepest SLEEP Musi","10 Hours Of Deepest SLEEP Music, DELTA W","tx7W3_uIXFA",4,"video"),
-  s("sleep-delta","10 Hours Relaxing DELTA Brainw","10 Hours Relaxing DELTA Brainwaves, Deep","cBB3LadbfTI",4,"video"),
-  s("sleep-delta","8 Hour Deep Sleep Music ~ Rela","8 Hour Deep Sleep Music ~ Relaxing Ambie","IKPWNmcU7Po",4,"video"),
   s("sleep-delta","8 Hour Deep Sleep Music: Delta","8 Hour Deep Sleep Music: Delta Waves, Re","txQ6t4yPIM0",4,"video"),
-  s("sleep-delta","Delta Waves Deep Sleep for Res","Delta Waves Deep Sleep for Restorative H","7aD1w-3ha4I",4,"video"),
-  s("sleep-delta","Delta Waves for Deep Sleep (8 ","Delta Waves for Deep Sleep (8 Hours) | R","reQ_Y1wBZ0A",4,"video"),
-  s("sleep-delta","DEEP HEALING SLEEP: Sleep Musi","DEEP HEALING SLEEP: Sleep Music - Delta ","_VWIBVB88l0",3,"video"),
-  s("sleep-delta","Delta Waves Deep Sleep | 1 Hou","Delta Waves Deep Sleep | 1 Hour Binaural","IDNiwWiGUXM",3,"video"),
-  s("sleep-delta","Relaxing DELTA Waves, Deep SLE","Relaxing DELTA Waves, Deep SLEEP Music, ","CS1fbIwoybc",3,"video"),
-  // --- Lucid Dreaming (9) ---
+  // --- Lucid Dreaming ---
   s("sleep-lucid","10 Hours of Deep Relaxing Musi","10 Hours of Deep Relaxing Music for Slee","22q2O_fibaU",4,"video"),
   s("sleep-lucid","8 Hour Lucid Dreaming Sleep Mu","8 Hour Lucid Dreaming Sleep Music NOW WI","EPaQWg1yUMw",4,"video"),
-  s("sleep-lucid","Control Your Dreams - Deep Sle","Control Your Dreams - Deep Sleeping Musi","DqEWO-Swt1o",3,"video"),
-  s("sleep-lucid","DREAM WAVE Sleep Hypnosis [ 4,","DREAM WAVE Sleep Hypnosis [ 4,8Hz Binaur","W-MD_XgjYz8",3,"video"),
-  s("sleep-lucid","Deep Sleep Music - REM Sleep |","Deep Sleep Music - REM Sleep | Lucid Dre","CQHh8IIjWXU",3,"video"),
-  s("sleep-lucid","Deep Sleep Music: Binaural Bea","Deep Sleep Music: Binaural Beats Sleepin","lV42_YdGIBQ",3,"video"),
-  s("sleep-lucid","Guided Sleep Meditation, Lucid","Guided Sleep Meditation, Lucid Dreaming ","XHEzYgJ8Jhc",3,"video"),
-  s("sleep-lucid","Lucid Dreaming Sleep Hypnosis,","Lucid Dreaming Sleep Hypnosis, Manifest ","3TDj28lHZBI",3,"video"),
-  s("sleep-lucid","[Try Listening for 3 Minutes] ","[Try Listening for 3 Minutes] Fall Aslee","E2qihhWiSN0",3,"video"),
-  // --- ASMR (6) ---
-  s("sleep-asmr","A Symphony of ASMR Tingles - B","A Symphony of ASMR Tingles - Beautiful W","ppG9Ikf7ibQ",3,"video"),
+  // --- ASMR ---
   s("sleep-asmr","ASMR Tingles for When You Need","ASMR Tingles for When You Need to SLEEP ","xKl3aI3IU9Q",3,"video"),
-  s("sleep-asmr","Echoed ASMR Sounds That Will G","Echoed ASMR Sounds That Will Give You Ti","22sAeHAVxos",3,"video"),
   s("sleep-asmr","Extremely Tingly ASMR (for Sle","Extremely Tingly ASMR (for Sleep)","pHg3ytkLWuI",3,"video"),
-  s("sleep-asmr","Feel the Tingles: Incredible A","Feel the Tingles: Incredible ASMR Experi","XggMsLkqKbs",3,"video"),
-  s("sleep-asmr","Iconic Triggers ASMR - Sleepy ","Iconic Triggers ASMR - Sleepy Sounds fro","3U9c3g9CLWI",3,"video"),
-  // --- Healing Hz (20) ---
+  // --- Healing Hz ---
   s("heal-freq","432 Hz Deep Healing Frequency ","432 Hz Deep Healing Frequency | Golden H","nLr7dHZqxng",4,"video"),
-  s("heal-freq","432Hz Deep Sleep Music | Heali","432Hz Deep Sleep Music | Healing Frequen","UVyq4RQ6VtA",4,"video"),
   s("heal-freq","Gregorian Chants at 432Hz | 3 ","Gregorian Chants at 432Hz | 3 Hours of H","W-hrBhA4XkM",4,"video"),
-  s("heal-freq","417 Hz - CLEANSE ALL THAT TRAP","417 Hz - CLEANSE ALL THAT TRAPPED NEGATI","yQ4MnNIhqEI",3,"video"),
-  s("heal-freq","432Hz - The DEEPEST Healing | ","432Hz - The DEEPEST Healing | Let Go Of ","4wtG01ymIjE",3,"video"),
-  s("heal-freq","432Hz Cosmic Music for Sleep &","432Hz Cosmic Music for Sleep & Lucid Dre","lA10OhfsjaM",3,"video"),
-  s("heal-freq","432Hz Healing Frequency | Fall","432Hz Healing Frequency | Fall Into Deep","M7_AYwzfsYo",3,"video"),
-  s("heal-freq","432Hz Miracle Tone | Cleanse N","432Hz Miracle Tone | Cleanse Negative En","94Jh3iUzqM0",3,"video"),
-  s("heal-freq","432Hz- Deep Healing Sleep Musi","432Hz- Deep Healing Sleep Music | Energy","FHD-HdsqhjA",3,"video"),
-  s("heal-freq","ALL 7 Solfeggio Frequencies | ","ALL 7 Solfeggio Frequencies | 396Hz to 9","b_Qzw5rFOuM",3,"video"),
-  s("heal-freq","All 9 Solfeggio Frequencies - ","All 9 Solfeggio Frequencies - Full Body ","goyZbut_KFY",3,"video"),
-  s("heal-freq","All 9 Solfeggio Frequencies, F","All 9 Solfeggio Frequencies, Full Body H","SyMGEKtBIyg",3,"video"),
-  s("heal-freq","All 9 Solfeggio Frequencies, H","All 9 Solfeggio Frequencies, Healing Fre","8Vlow-vPfe4",3,"video"),
-  s("heal-freq","Deep Sleep Gregorian Chant: Ad","Deep Sleep Gregorian Chant: Ad-Free Jour","4Ghn1RbAFoA",3,"video"),
-  s("heal-freq","Full Body Healing Frequencies,","Full Body Healing Frequencies, 528Hz + 1","Pu-Ny1L8yDU",3,"video"),
-  s("heal-freq","Gregorian Chant for Healing - ","Gregorian Chant for Healing - Divine Res","d2MfVktfYFU",3,"video"),
-  s("heal-freq","Lucid Dreaming Music | 963Hz +","Lucid Dreaming Music | 963Hz + 4Hz Theta","-bGNtNLjq5Q",3,"video"),
-  s("heal-freq","OM Chanting + Tibetan Singing ","OM Chanting + Tibetan Singing Bowls Medi","6GicBf262fA",3,"video"),
-  s("heal-freq","OM Chanting @ 432 Hz","OM Chanting @ 432 Hz","SBiwLibZqfw",3,"video"),
-  s("heal-freq","OM Chanting @417 Hz | Removes ","OM Chanting @417 Hz | Removes All Negati","8sYK7lm3UKg",3,"video"),
-  // --- Relaxation (17) ---
+  // --- Relaxation ---
   s("heal-relax","8 HOURS Calming Music for High","8 HOURS Calming Music for Highly Sensiti","zaCWSv4P254",4,"video"),
-  s("heal-relax","Ambient Music Mix & Relaxing W","Ambient Music Mix & Relaxing Waterfall S","_TcGXaBU3QU",3,"video"),
-  s("heal-relax","Beautiful Relaxing Ambient Mus","Beautiful Relaxing Ambient Music - Relax","OKHSQveDPMk",3,"video"),
   s("heal-relax","Beautiful Relaxing Music for S","Beautiful Relaxing Music for Stress Reli","lFcSrYw-ARY",3,"video"),
-  s("heal-relax","Beautiful Relaxing Music, Peac","Beautiful Relaxing Music, Peaceful Sooth","GPcA0qx05Z0",3,"video"),
-  s("heal-relax","Deep Calm Ambient Music for Sl","Deep Calm Ambient Music for Sleep, Stres","tdsCxmCHHKo",3,"video"),
-  s("heal-relax","FALL INTO SLEEP INSTANTLY - Re","FALL INTO SLEEP INSTANTLY - Relaxing Mus","VlTj6GFM7vU",3,"video"),
-  s("heal-relax","Irresistibly Comforting Tones ","Irresistibly Comforting Tones - Calm & P","A8m0Br4Wopk",3,"video"),
-  s("heal-relax","Relaxing Instrumental Music: s","Relaxing Instrumental Music: soft & calm","muSlNENHAU0",3,"video"),
-  s("heal-relax","Relaxing Music For Anxiety and","Relaxing Music For Anxiety and Depressio","hplgBU6P7T0",3,"video"),
-  s("heal-relax","Relaxing Music Healing Stress,","Relaxing Music Healing Stress, Anxiety a","eKbfUtLoQwE",3,"video"),
-  s("heal-relax","Relaxing Music for Stress Reli","Relaxing Music for Stress Relief. Calm M","sztFHij0_W0",3,"video"),
-  s("heal-relax","Relaxing Music to Relieve Stre","Relaxing Music to Relieve Stress, Anxiet","LoGz-0Qf9GA",3,"video"),
-  s("heal-relax","Relaxing Music to Relieve Stre","Relaxing Music to Relieve Stress, Anxiet","4HVqC4zEPDc",3,"video"),
-  s("heal-relax","Soothing Music for Anxiety & S","Soothing Music for Anxiety & Stress Reli","QjDnjoaUJtI",3,"video"),
-  s("heal-relax","Tranquility - Deep Healing Rel","Tranquility - Deep Healing Relaxing Musi","DRFHklnN-SM",3,"video"),
-  s("heal-relax","Ultimate Stress Relief - Sooth","Ultimate Stress Relief - Soothing Music ","YabbXKzZmiM",3,"video"),
-  // --- Spa (4) ---
+  // --- Spa ---
   s("heal-spa","10 Hours Relaxing Spa Music - ","10 Hours Relaxing Spa Music - Spa Massag","HW5AHoclaYc",4,"video"),
   s("heal-spa","6 Hour Relaxing Spa Music: Mas","6 Hour Relaxing Spa Music: Massage Music","EZVHjVbUP40",4,"video"),
-  s("heal-spa","6 Hour Super Relaxing Spa Musi","6 Hour Super Relaxing Spa Music: Meditat","NvxA8evuaGM",4,"video"),
-  s("heal-spa","Relaxing Spa Music - Stress Re","Relaxing Spa Music - Stress Relief & Dee","yNvhTPuYw9k",3,"video"),
-  // --- Reiki (5) ---
+  // --- Reiki ---
   s("heal-reiki","3 Hour Reiki Healing Music: Me","3 Hour Reiki Healing Music: Meditation M","j_XvqwnGDko",4,"video"),
-  s("heal-reiki","Meditation Music for Reiki Ene","Meditation Music for Reiki Energy Healin","mGF3V09m1Is",3,"video"),
-  s("heal-reiki","Reiki Music for Energy Healing","Reiki Music for Energy Healing | Relaxin","UjbDaVZxgy4",3,"video"),
-  s("heal-reiki","Reiki Music, Energy Healing, N","Reiki Music, Energy Healing, Nature Soun","7zld6ZSxJNs",3,"video"),
-  s("heal-reiki","Reiki Music, Energy Healing, N","Reiki Music, Energy Healing, Nature Soun","HPOLGMv72GQ",3,"video"),
-  // --- Brown Noise (10) ---
+  // --- Brown Noise ---
   s("noise-brown","LIVE 24/7 Deep Brown Noise for","LIVE 24/7 Deep Brown Noise for Sleep and","boRR7Mdbit8",5,"live"),
-  s("noise-brown","10 Hours of Brown Noise for De","10 Hours of Brown Noise for Deep Sleep, ","za1HrEPDvt4",4,"video"),
-  s("noise-brown","12 Hour BROWN NOISE for FOCUS,","12 Hour BROWN NOISE for FOCUS, DEEP SLEE","hBHTHz6HLHs",4,"video"),
-  s("noise-brown","Brown Noise for Deep Sleep, Ca","Brown Noise for Deep Sleep, Calm & Focus","nONyaA_T_lA",4,"video"),
-  s("noise-brown","Brown Noise, Black Screen - 12","Brown Noise, Black Screen - 12 hours - N","snlA7rFR0iQ",4,"video"),
-  s("noise-brown","Deep Brown Noise for Sleep and","Deep Brown Noise for Sleep and Focus ( 1","PbknXuKKWrM",4,"video"),
   s("noise-brown","Smoothed Brown Noise - 12 Hour","Smoothed Brown Noise - 12 Hours, for Sle","-teK_6JX9gc",4,"video"),
-  s("noise-brown","Super Deep Smoothed Brown Nois","Super Deep Smoothed Brown Noise - 12 Hou","P48QELwruQs",4,"video"),
-  s("noise-brown","Brown Noise | Sleep, Study, Fo","Brown Noise | Sleep, Study, Focus | Supe","gJnxtjE1FY0",3,"video"),
-  s("noise-brown","Smoothed Brown Noise 8-Hours -","Smoothed Brown Noise 8-Hours - Remastere","RqzGzwTY-6w",3,"video"),
-  // --- Pink Noise (4) ---
+  // --- Pink Noise ---
   s("noise-pink","12 HOURS of PINK NOISE - Get B","12 HOURS of PINK NOISE - Get Baby to Sle","2UfzOXyp8MY",4,"video"),
-  s("noise-pink","Pink Noise for Babies & Toddle","Pink Noise for Babies & Toddlers Sleep |","FiriM6NQtlM",4,"video"),
-  s("noise-pink","Pink Noise for Babies | Perfec","Pink Noise for Babies | Perfect Sleep Ai","7S55Zcx3n1s",3,"video"),
-  s("noise-pink","Sleepy Pink Noise for the Whol","Sleepy Pink Noise for the Whole Family","lZtDyK6EEjI",3,"video"),
 
   // === WORLD ===
-  // --- Zen/Asian (8) ---
+  // --- Zen/Asian ---
   s("world-zen","3 Hour Zen Meditation Music: N","3 Hour Zen Meditation Music: Nature Soun","WZKW2Hq2fks",4,"video"),
   s("world-zen","6 Hour Zen Meditation Music: C","6 Hour Zen Meditation Music: Calming Mus","aaEvhnb2vDE",4,"video"),
-  s("world-zen","Zen Meditation Music | 12 Hour","Zen Meditation Music | 12 Hours Deep Rel","H1JhaqVxLY0",4,"video"),
-  s("world-zen","Traditional Asian Music for De","Traditional Asian Music for Deep Focus -","ZZ1F3JcXXqw",3,"video"),
-  s("world-zen","Traditional Asian Music for In","Traditional Asian Music for Inner Peace ","XJlptusz_sg",3,"video"),
-  s("world-zen","Traditional Asian Music | Rela","Traditional Asian Music | Relaxing Zen S","s5bu3VM3mVM",3,"video"),
-  s("world-zen","Zen Deep Meditation Music for ","Zen Deep Meditation Music for Focus, Rel","5ceDAJo2Zyg",3,"video"),
-  s("world-zen","Zen Meditation Music - Stress ","Zen Meditation Music - Stress Relief & D","S2aXAUWLKDw",3,"video"),
-  // --- Celtic (6) ---
+  // --- Celtic ---
   s("world-celtic","Instrumental Celtic Music Live","Instrumental Celtic Music Live 24/7 | De","knuQ2T5HWMQ",5,"live"),
   s("world-celtic","Relaxing Irish Music - 3 Hour ","Relaxing Irish Music - 3 Hour Celtic Ins","pw4_C4zmGKo",4,"video"),
-  s("world-celtic","1 HOUR of Most Beautiful Irish","1 HOUR of Most Beautiful Irish Celtic Mu","z5npAoa9eKg",3,"video"),
-  s("world-celtic","Beautiful Celtic Music for Rel","Beautiful Celtic Music for Relaxation an","AIfBqNNhSQo",3,"video"),
-  s("world-celtic","Calm Celtic Music for Sleep an","Calm Celtic Music for Sleep and Relaxati","VNdAHpNAtvo",3,"video"),
-  s("world-celtic","Celtic Dreams - Relaxing Irish","Celtic Dreams - Relaxing Irish Music for","tEyXfgz2VUM",3,"video"),
-  // --- Sacred Chants (11) ---
+  // --- Sacred Chants ---
   s("world-sacred","1 hour of Peaceful Gregorian C","1 hour of Peaceful Gregorian Chants: Dan","WreFJzRPYng",4,"video"),
   s("world-sacred","OM Chanting @528 Hz | 8 Hours","OM Chanting @528 Hz | 8 Hours","J7mZXwbddWg",4,"video"),
-  s("world-sacred","Gregorian Chant for Protection","Gregorian Chant for Protection & Peace |","z96qe75LOF8",3,"video"),
-  s("world-sacred","Gregorian Chants for Eucharist","Gregorian Chants for Eucharistic Adorati","i3spz3FFmTo",3,"video"),
-  s("world-sacred","Gregorian Chants for Inner Pea","Gregorian Chants for Inner Peace and Div","3CC1jwr7rak",3,"video"),
-  s("world-sacred","Gregorian Chants of the Benedi","Gregorian Chants of the Benedictine Monk","c79SszUBZUE",3,"video"),
-  s("world-sacred","Mass in Gregorian Chant | 1 Ho","Mass in Gregorian Chant | 1 Hour of Sacr","Ed90FUyE4rM",3,"video"),
-  s("world-sacred","Mystical Realms - Enchanted Me","Mystical Realms - Enchanted Medieval Fan","3EcWAWOuVko",3,"video"),
-  s("world-sacred","Om 108 Times - Music for Yoga ","Om 108 Times - Music for Yoga & Meditati","ijfLsKg8jFY",3,"video"),
-  s("world-sacred","These Gregorian Chants Heal th","These Gregorian Chants Heal the Soul and","QC6ZAzv62rY",3,"video"),
-  s("world-sacred","Tibetan Monks Chantiing Om for","Tibetan Monks Chantiing Om for Deep Medi","0D4V5awe-PA",3,"video"),
-  // --- New Age (4) ---
+  // --- New Age ---
   s("world-newage","New Age Meditation Music - Dee","New Age Meditation Music - Deep Relaxati","k_zfpw6uPeI",3,"video"),
   s("world-newage","Spiritual New Age Music - Deep","Spiritual New Age Music - Deep Inner Hea","43olDlb-qFA",3,"video"),
-  s("world-newage","Spiritual New Age Music - Deep","Spiritual New Age Music - Deep Spiritual","jz1g6WWFaB0",3,"video"),
-  s("world-newage","Spiritual New Age Music - Deep","Spiritual New Age Music - Deep Spiritual","MHd6rMx3lF8",3,"video"),
 
 ];

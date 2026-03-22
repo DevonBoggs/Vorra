@@ -20,6 +20,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   const [filter, setFilter] = useState("all");
   const [showCheckin, setShowCheckin] = useState(false);
   const [expanded, setExpanded] = useState({});
+  const [alertsExpanded, setAlertsExpanded] = useState(false);
   const courses = data.courses || [];
   const sessions = data.studySessions || [];
   const streak = data.studyStreak || { lastStudyDate:"", currentStreak:0, longestStreak:0 };
@@ -142,8 +143,23 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         <Btn v="ai" onClick={()=>setPage("courses")}><Ic.Edit s={14}/> My Courses</Btn>
       </div>
 
+      {/* Welcome Back Banner — returning user detection */}
+      {(() => {
+        const daysSinceLastStudy = streak.lastStudyDate ? diffDays(streak.lastStudyDate, todayStr()) : null;
+        if (daysSinceLastStudy !== null && daysSinceLastStudy >= 3) return (
+          <div className="fade" style={{background:`linear-gradient(135deg, ${T.accentD}, ${T.purpleD})`,border:`1.5px solid ${T.accent}55`,borderRadius:14,padding:"18px 22px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+            <div>
+              <div style={{fontSize:fs(15),fontWeight:700,color:T.text}}>Welcome back!</div>
+              <div style={{fontSize:fs(12),color:T.soft,marginTop:2}}>You've been away {daysSinceLastStudy} days. Your plan may need adjusting.</div>
+            </div>
+            <Btn small v="primary" onClick={()=>setPage("planner")}>Replan from Today {"\u2192"}</Btn>
+          </div>
+        );
+        return null;
+      })()}
+
       {/* Study Check-in Prompt */}
-      {showCheckin && (
+      {showCheckin && !(streak.lastStudyDate && diffDays(streak.lastStudyDate, todayStr()) >= 3) && (
         <div className="fade" style={{background:`linear-gradient(135deg, ${T.purpleD}, ${T.accentD})`,border:`1.5px solid ${T.purple}55`,borderRadius:14,padding:"16px 22px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
           <div>
             <div style={{fontSize:fs(14),fontWeight:700,color:T.text}}>Did you study yesterday?</div>
@@ -242,80 +258,109 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         );
       })()}
 
-      {/* Global Schedule Conflicts */}
-      {globalConflicts.totalConflicts > 0 && (
-        <div style={{padding:"12px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,marginBottom:16}}>
-          <div style={{fontSize:fs(11),color:T.red,fontWeight:700,marginBottom:8}}>{'\u26A0\uFE0F'} {globalConflicts.totalConflicts} time overlap{globalConflicts.totalConflicts>1?"s":""} across {globalConflicts.conflictDays} day{globalConflicts.conflictDays>1?"s":""}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {globalConflicts.dates.slice(0,10).map(cd => (
-              <button key={cd.date} onClick={()=>{setDate(cd.date);setPage("daily")}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(10),fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                {new Date(cd.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})} <span style={{opacity:0.7}}>({cd.count})</span>
-              </button>
-            ))}
-            {globalConflicts.dates.length > 10 && <span style={{fontSize:fs(9),color:T.red,alignSelf:"center"}}>+{globalConflicts.dates.length-10} more days</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Schedule Coverage */}
-      {scheduledHrs > 0 && totalEstHrs > 0 && scheduledHrs < totalEstHrs * 0.9 && (
-        <div style={{padding:"10px 14px",borderRadius:10,background:T.blueD,border:`1px solid ${T.blue}33`,fontSize:fs(11),color:T.blue,marginBottom:16}}>
-          {"\ud83d\udcc5"} Your calendar has {scheduledHrs}h of study scheduled but courses need ~{totalEstHrs}h total. {Math.round(scheduledHrs/totalEstHrs*100)}% coverage{lastScheduledDate ? ` \u2014 last scheduled day: ${new Date(lastScheduledDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}` : ""}.
-          {scheduledHrs < totalEstHrs * 0.5 && " Consider regenerating your study plan in Study Planner to fill in the remaining weeks."}
-        </div>
-      )}
-
-      {/* Velocity Warning */}
-      {avgHrsPerDay14 > 0 && avgHrsPerDay14 < hrsPerDay && (
-        <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-          {'\u26A0\uFE0F'} Your 14-day average ({avgHrsPerDay14}h/day) is below your target ({hrsPerDay}h/day).
-          {estDaysAtPace && ` At current pace, you need ~${estDaysAtPace} days to finish.`}
-          {effectiveDaysLeft!=null && estDaysAtPace && estDaysAtPace > effectiveDaysLeft && <span style={{fontWeight:700}}> That's {estDaysAtPace - effectiveDaysLeft} days past your target completion date.</span>}
-        </div>
-      )}
-
-      {/* Hours/day config warning */}
-      {hrsPerDay < 2 && totalEstHrs > 0 && (
-        <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-          {'\u26A0\uFE0F'} Hours/day is set to {hrsPerDay}h {'\u2014'} this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Study Planner</span>
-        </div>
-      )}
-      {estFinish && data.targetDate && estFinish > data.targetDate && (
-        <div style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:16}}>
-          {"\ud83d\udea8"} At {hrsPerDay}h/day, estimated finish ({new Date(estFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}) is past your term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}). <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust study plan</span>
-        </div>
-      )}
-      {/* On Track / Behind indicators */}
+      {/* Start Studying Card — next undone plan task today */}
       {(() => {
-        // Use actual schedule last date if available, otherwise math estimate
-        const projectedFinish = scheduleFinish || estFinish;
-        if (!projectedFinish || !effectiveTarget) return null;
-        const source = scheduleFinish ? "schedule" : "estimate";
-        const finishLabel = new Date(projectedFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
-
-        if (projectedFinish <= effectiveTarget) {
-          return (
-            <div style={{padding:"10px 14px",borderRadius:10,background:T.accentD,border:`1px solid ${T.accent}33`,fontSize:fs(11),color:T.accent,marginBottom:16}}>
-              {'\u2705'} On track! {source==="schedule"?"Last scheduled study day":"Estimated finish"}: {finishLabel} {'\u2014'} {diffDays(projectedFinish, effectiveTarget)} days before your target completion date.            </div>
-          );
-        } else if (data.targetDate && projectedFinish <= data.targetDate) {
-          return (
-            <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-              {'\u26A0\uFE0F'} {source==="schedule"?"Schedule runs":"Estimated finish"} through {finishLabel} {'\u2014'} past your target completion but before term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}).
+        const todayTasks = safeArr((data.tasks || {})[todayStr()]);
+        const nextTask = todayTasks.find(t => !t.done && t.planId);
+        if (!nextTask) return null;
+        const course = (data.courses || []).find(c => nextTask.title && (nextTask.title.toLowerCase().includes(c.name.toLowerCase().split(" \u2013 ")[0].split(" - ")[0]) || (c.courseCode && nextTask.title.toLowerCase().includes(c.courseCode.toLowerCase()))));
+        return (
+          <div style={{background:`linear-gradient(135deg, ${T.accentD}, ${T.accent}11)`,border:`1.5px solid ${T.accent}44`,borderRadius:12,padding:16,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:14}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:fs(13),fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nextTask.title}</div>
+              <div style={{fontSize:fs(11),color:T.soft,marginTop:3,display:"flex",alignItems:"center",gap:8}}>
+                {nextTask.time && <span>{nextTask.time}{nextTask.endTime ? ` \u2013 ${nextTask.endTime}` : ""}</span>}
+                {course && <Badge color={T.accent} bg={T.accentD}>{course.courseCode || course.name.slice(0,20)}</Badge>}
+              </div>
             </div>
-          );
-        } else if (data.targetDate) {
-          return (
-            <div style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:16}}>
-              {"\ud83d\udea8"} {source==="schedule"?"Schedule extends":"Estimated finish"} to {finishLabel} {"\u2014"} {diffDays(data.targetDate, projectedFinish)} days PAST your term end date! Increase study hours or adjust your plan.
+            <Btn v="primary" onClick={()=>{setDate(todayStr());setPage("daily")}}>Start Studying {"\u2192"}</Btn>
+          </div>
+        );
+      })()}
+
+      {/* Collapsible Alert Banners */}
+      {(() => {
+        const alerts = [];
+
+        // Global Schedule Conflicts
+        if (globalConflicts.totalConflicts > 0) {
+          alerts.push(
+            <div key="conflicts" style={{padding:"12px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,marginBottom:8}}>
+              <div style={{fontSize:fs(11),color:T.red,fontWeight:700,marginBottom:8}}>{'\u26A0\uFE0F'} {globalConflicts.totalConflicts} time overlap{globalConflicts.totalConflicts>1?"s":""} across {globalConflicts.conflictDays} day{globalConflicts.conflictDays>1?"s":""}</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {globalConflicts.dates.slice(0,10).map(cd => (
+                  <button key={cd.date} onClick={()=>{setDate(cd.date);setPage("daily")}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(10),fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                    {new Date(cd.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})} <span style={{opacity:0.7}}>({cd.count})</span>
+                  </button>
+                ))}
+                {globalConflicts.dates.length > 10 && <span style={{fontSize:fs(9),color:T.red,alignSelf:"center"}}>+{globalConflicts.dates.length-10} more days</span>}
+              </div>
             </div>
           );
         }
-        return null;
-      })()}
 
-      {/* Time Conflict Detection — scan today's tasks */}
-      {(() => {
+        // Finish date past term end
+        if (estFinish && data.targetDate && estFinish > data.targetDate) {
+          alerts.push(
+            <div key="finish-past" style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:8}}>
+              {"\ud83d\udea8"} At {hrsPerDay}h/day, estimated finish ({new Date(estFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}) is past your term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}). <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust study plan</span>
+            </div>
+          );
+        }
+
+        // Velocity Warning
+        if (avgHrsPerDay14 > 0 && avgHrsPerDay14 < hrsPerDay) {
+          alerts.push(
+            <div key="velocity" style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:8}}>
+              {'\u26A0\uFE0F'} Your 14-day average ({avgHrsPerDay14}h/day) is below your target ({hrsPerDay}h/day).
+              {estDaysAtPace && ` At current pace, you need ~${estDaysAtPace} days to finish.`}
+              {effectiveDaysLeft!=null && estDaysAtPace && estDaysAtPace > effectiveDaysLeft && <span style={{fontWeight:700}}> That's {estDaysAtPace - effectiveDaysLeft} days past your target completion date.</span>}
+            </div>
+          );
+        }
+
+        // Hours/day config warning
+        if (hrsPerDay < 2 && totalEstHrs > 0) {
+          alerts.push(
+            <div key="low-hours" style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:8}}>
+              {'\u26A0\uFE0F'} Hours/day is set to {hrsPerDay}h {'\u2014'} this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Study Planner</span>
+            </div>
+          );
+        }
+
+        // Schedule Coverage
+        if (scheduledHrs > 0 && totalEstHrs > 0 && scheduledHrs < totalEstHrs * 0.9) {
+          alerts.push(
+            <div key="coverage" style={{padding:"10px 14px",borderRadius:10,background:T.blueD,border:`1px solid ${T.blue}33`,fontSize:fs(11),color:T.blue,marginBottom:8}}>
+              {"\ud83d\udcc5"} Your calendar has {scheduledHrs}h of study scheduled but courses need ~{totalEstHrs}h total. {Math.round(scheduledHrs/totalEstHrs*100)}% coverage{lastScheduledDate ? ` \u2014 last scheduled day: ${new Date(lastScheduledDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}` : ""}.
+              {scheduledHrs < totalEstHrs * 0.5 && " Consider regenerating your study plan in Study Planner to fill in the remaining weeks."}
+            </div>
+          );
+        }
+
+        // On Track / Behind indicators
+        const projectedFinish = scheduleFinish || estFinish;
+        if (projectedFinish && effectiveTarget) {
+          const source = scheduleFinish ? "schedule" : "estimate";
+          const finishLabel = new Date(projectedFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+          if (projectedFinish > effectiveTarget && data.targetDate && projectedFinish <= data.targetDate) {
+            alerts.push(
+              <div key="behind-goal" style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:8}}>
+                {'\u26A0\uFE0F'} {source==="schedule"?"Schedule runs":"Estimated finish"} through {finishLabel} {'\u2014'} past your target completion but before term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}).
+              </div>
+            );
+          } else if (projectedFinish > (data.targetDate || effectiveTarget)) {
+            alerts.push(
+              <div key="behind-term" style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:8}}>
+                {"\ud83d\udea8"} {source==="schedule"?"Schedule extends":"Estimated finish"} to {finishLabel} {"\u2014"} {diffDays(data.targetDate || effectiveTarget, projectedFinish)} days PAST your term end date! Increase study hours or adjust your plan.
+              </div>
+            );
+          } else if (projectedFinish <= effectiveTarget) {
+            // On track — this is positive, not a warning. Show outside the collapsible.
+          }
+        }
+
+        // Time Conflict Detection — scan today's tasks
         const todayTasks = safeArr(tasks[today]).sort((a,b)=>(parseTime(a.time)?.mins??9999)-(parseTime(b.time)?.mins??9999));
         const overlaps = [];
         for (let i=0; i<todayTasks.length; i++) {
@@ -327,23 +372,60 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
             if(as.mins < be.mins && ae.mins > bs.mins) overlaps.push({a:a.title, b:b.title, aTime:`${a.time}\u2013${a.endTime}`, bTime:`${b.time}\u2013${b.endTime}`});
           }
         }
-        if (overlaps.length === 0) return null;
-        return (
-          <div style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <span style={{fontWeight:700}}>{'\u26A0\uFE0F'} {overlaps.length} time conflict{overlaps.length>1?"s":""} in today{'\u2019'}s schedule</span>
-              <button onClick={()=>{setDate(today);setPage("daily")}} style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(11),fontWeight:600,cursor:"pointer"}}>Fix in Schedule \u2192</button>
-            </div>
-            {overlaps.slice(0,3).map((o,i) => (
-              <div key={i} style={{fontSize:fs(10),opacity:0.85,marginBottom:2}}>
-                {o.aTime} "{o.a.slice(0,30)}" overlaps with {o.bTime} "{o.b.slice(0,30)}"
+        if (overlaps.length > 0) {
+          alerts.push(
+            <div key="today-conflicts" style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontWeight:700}}>{'\u26A0\uFE0F'} {overlaps.length} time conflict{overlaps.length>1?"s":""} in today{'\u2019'}s schedule</span>
+                <button onClick={()=>{setDate(today);setPage("daily")}} style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(11),fontWeight:600,cursor:"pointer"}}>Fix in Schedule {"\u2192"}</button>
               </div>
-            ))}
-            {overlaps.length > 3 && <div style={{fontSize:fs(9),opacity:0.7}}>+{overlaps.length-3} more conflicts</div>}
+              {overlaps.slice(0,3).map((o,i) => (
+                <div key={i} style={{fontSize:fs(10),opacity:0.85,marginBottom:2}}>
+                  {o.aTime} "{o.a.slice(0,30)}" overlaps with {o.bTime} "{o.b.slice(0,30)}"
+                </div>
+              ))}
+              {overlaps.length > 3 && <div style={{fontSize:fs(9),opacity:0.7}}>+{overlaps.length-3} more conflicts</div>}
+            </div>
+          );
+        }
+
+        if (alerts.length === 0) return null;
+
+        const visibleAlerts = alertsExpanded ? alerts : [alerts[0]];
+        const hiddenCount = alerts.length - 1;
+
+        return (
+          <div style={{marginBottom:16}}>
+            {visibleAlerts}
+            {hiddenCount > 0 && !alertsExpanded && (
+              <button onClick={()=>setAlertsExpanded(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 14px",fontSize:fs(11),color:T.soft,cursor:"pointer",fontWeight:600,width:"100%",textAlign:"center",marginTop:2}}>
+                {hiddenCount} more alert{hiddenCount>1?"s":""} {"\u25BC"}
+              </button>
+            )}
+            {alertsExpanded && alerts.length > 1 && (
+              <button onClick={()=>setAlertsExpanded(false)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 14px",fontSize:fs(11),color:T.soft,cursor:"pointer",fontWeight:600,width:"100%",textAlign:"center",marginTop:2}}>
+                Show less {"\u25B2"}
+              </button>
+            )}
           </div>
         );
       })()}
 
+      {/* On Track positive indicator — shown outside collapsible */}
+      {(() => {
+        const projectedFinish = scheduleFinish || estFinish;
+        if (!projectedFinish || !effectiveTarget) return null;
+        if (projectedFinish <= effectiveTarget) {
+          const source = scheduleFinish ? "schedule" : "estimate";
+          const finishLabel = new Date(projectedFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+          return (
+            <div style={{padding:"10px 14px",borderRadius:10,background:T.accentD,border:`1px solid ${T.accent}33`,fontSize:fs(11),color:T.accent,marginBottom:16}}>
+              {'\u2705'} On track! {source==="schedule"?"Last scheduled study day":"Estimated finish"}: {finishLabel} {'\u2014'} {diffDays(projectedFinish, effectiveTarget)} days before your target completion date.
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Per-Course Study Time */}
       {Object.keys(courseHours).length > 0 && (

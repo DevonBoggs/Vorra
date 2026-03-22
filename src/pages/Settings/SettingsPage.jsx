@@ -58,9 +58,9 @@ const PROVIDERS = {
 };
 
 const PROVIDER_CATS = [
-  { key:"direct", label:"Direct API", desc:"Connect directly to AI providers", icon:"IcGlobe" },
-  { key:"aggregator", label:"Aggregator / Proxy", desc:"Multi-model access with one API key", icon:"AI" },
-  { key:"local", label:"Local / Self-Hosted", desc:"Run models on your own hardware", icon:"IcChart" },
+  { key:"direct", label:"AI Provider Accounts", desc:"Connect directly to AI providers", icon:"IcGlobe" },
+  { key:"aggregator", label:"Multi-Provider Services", desc:"Multi-model access with one API key", icon:"AI" },
+  { key:"local", label:"Run AI Locally", desc:"Run models on your own hardware", icon:"IcChart" },
 ];
 function getAuthHeaders(profile) {
   const h = { "Content-Type": "application/json" };
@@ -259,6 +259,18 @@ const SettingsPage = ({ data, setData, setPage }) => {
           </div>
           <Btn small v="ai" onClick={() => { setAddCategory(null); setEditId(null); setTestResult(null); setModels([]); setForm({ provider:"", name:"", apiKey:"", baseUrl:"", model:"" }); setShowAdd(true); }}>+ Add Profile</Btn>
         </div>
+        {/* Free provider guidance */}
+        <div style={{display:'flex',gap:10,padding:'10px 14px',borderRadius:10,background:T.blueD,border:`1px solid ${T.blue}44`,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
+          <span style={{fontSize:fs(11),fontWeight:600,color:T.blue}}>New to AI? Start with a free provider:</span>
+          <div style={{display:'flex',gap:8}}>
+            <div style={{padding:'4px 10px',borderRadius:6,background:T.input,border:`1px solid ${T.border}`,fontSize:fs(10),color:T.soft}}>
+              <span style={{fontWeight:700}}>Groq</span> — Free tier, fast responses, 30 req/min
+            </div>
+            <div style={{padding:'4px 10px',borderRadius:6,background:T.input,border:`1px solid ${T.border}`,fontSize:fs(10),color:T.soft}}>
+              <span style={{fontWeight:700}}>Google Gemini</span> — Free tier, generous daily limits
+            </div>
+          </div>
+        </div>
         {profiles.length===0?<p style={{fontSize:fs(12),color:T.dim,textAlign:"center",padding:20,background:T.input,borderRadius:10}}>No AI profiles yet — add one to get started</p>:(
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {profiles.map(p=>(
@@ -367,18 +379,21 @@ const SettingsPage = ({ data, setData, setPage }) => {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
                   <div>
                     <Label>Education Model</Label>
+                    <div style={{fontSize:fs(9),color:T.dim,marginBottom:4,marginTop:-2}}>(How your school structures learning)</div>
                     <select value={up.educationModel || ''} onChange={e => updateUP({educationModel: e.target.value})} style={selStyle}>
                       {EDUCATION_MODELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <Label>Grading System</Label>
+                    <div style={{fontSize:fs(9),color:T.dim,marginBottom:4,marginTop:-2}}>(How you're graded)</div>
                     <select value={up.gradingSystem || ''} onChange={e => updateUP({gradingSystem: e.target.value})} style={selStyle}>
                       {GRADING_SYSTEMS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <Label>Assessment Model</Label>
+                    <div style={{fontSize:fs(9),color:T.dim,marginBottom:4,marginTop:-2}}>(How you're tested)</div>
                     <select value={up.assessmentModel || ''} onChange={e => updateUP({assessmentModel: e.target.value})} style={selStyle}>
                       {ASSESSMENT_MODELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -666,6 +681,42 @@ const SettingsPage = ({ data, setData, setPage }) => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* TERM MANAGEMENT */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:22,marginBottom:20}}>
+        <h3 style={{fontSize:fs(16),fontWeight:700,marginBottom:3}}>Term Management</h3>
+        <p style={{fontSize:fs(11),color:T.dim,marginBottom:14}}>Archive your current courses and start fresh for a new term. Your AI profiles, school profile, planner config, and theme are kept.</p>
+        <Btn v="secondary" onClick={() => {
+          const courseCount = (data.courses || []).length;
+          if (!courseCount) { toast('No courses to archive', 'info'); return; }
+          if (!confirm(`Start a new term? This will archive ${courseCount} course(s) and reset your study plan. Your settings, AI profiles, and school profile will be kept.`)) return;
+          setData(d => {
+            const archivedCourses = [...(d.courses || [])];
+            const archivedPlanHistory = [...(d.planHistory || [])];
+            return {
+              ...d,
+              termHistory: [...(d.termHistory || []), {
+                id: uid(),
+                archivedAt: new Date().toISOString(),
+                courses: archivedCourses,
+                planHistory: archivedPlanHistory,
+              }],
+              courses: [],
+              studyStartDate: '',
+              targetCompletionDate: '',
+              targetDate: '',
+              pendingPlan: null,
+              planHistory: [],
+            };
+          });
+          toast('New term started', 'success');
+        }}>Start New Term</Btn>
+        {(data.termHistory || []).length > 0 && (
+          <div style={{marginTop:12,fontSize:fs(10),color:T.dim}}>
+            {(data.termHistory || []).length} previous term{(data.termHistory || []).length !== 1 ? 's' : ''} archived
           </div>
         )}
       </div>

@@ -129,6 +129,13 @@ window.addEventListener('message',e=>{
       }
 
       let filePath = path.join(distPath, parsed.pathname === '/' ? 'index.html' : parsed.pathname);
+      // Security: prevent path traversal (../../../etc/passwd)
+      const resolved = path.resolve(filePath);
+      if (!resolved.startsWith(path.resolve(distPath))) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
       const ext = path.extname(filePath).toLowerCase();
       fs.readFile(filePath, (err, data) => {
         if (!err) {
@@ -208,7 +215,8 @@ function createWindow() {
 
   // Strip X-Frame-Options for YouTube (for chat iframe)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    if (details.url.includes('youtube.com') || details.url.includes('youtube-nocookie.com')) {
+    const isYtEmbed = details.url.includes('youtube.com/live_chat') || details.url.includes('youtube.com/embed') || details.url.includes('youtube-nocookie.com/embed') || details.url.includes('youtube.com/iframe_api');
+    if (isYtEmbed) {
       const h = { ...details.responseHeaders };
       delete h['x-frame-options']; delete h['X-Frame-Options'];
       delete h['content-security-policy']; delete h['Content-Security-Policy'];

@@ -14,7 +14,7 @@ class RootErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return React.createElement('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',background:'#060a11',color:'#8b9dc3',fontFamily:"'Outfit','Inter',sans-serif",padding:40,textAlign:'center'}},
-        React.createElement('div', {style:{fontSize:48,marginBottom:16}}, '\u26A0\uFE0F'),
+        React.createElement('div', {style:{fontSize:48,marginBottom:16}}, '\u26A0\uFE0F' ),
         React.createElement('h1', {style:{fontSize:24,fontWeight:800,color:'#ff6b6b',marginBottom:12}}, 'Vorra Crashed'),
         React.createElement('p', {style:{color:'#8b9dc3',marginBottom:20,maxWidth:600}}, 'A rendering error occurred. Your data is safe in localStorage.'),
         React.createElement('pre', {style:{background:'#0d1117',padding:16,borderRadius:10,fontSize:12,color:'#ff6b6b',maxWidth:700,overflow:'auto',textAlign:'left',marginBottom:20,border:'1px solid #ff6b6b33',maxHeight:200}}, String(this.state.error) + (this.state.info?.componentStack?.slice(0,500)||'')),
@@ -27,6 +27,11 @@ class RootErrorBoundary extends Component {
     return this.props.children;
   }
 }
+
+// Global unhandled rejection handler
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[Vorra] Unhandled rejection:', e.reason);
+});
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   React.createElement(React.StrictMode, null,

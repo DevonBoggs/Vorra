@@ -156,7 +156,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const copyDayToAll = (dow) => { const s = wa[dow]; if (!s) return; const u = { ...wa }; for (let d = 0; d < 7; d++) if (d !== dow) u[d] = JSON.parse(JSON.stringify(s)); onUpdate({ weeklyAvailability: u }); };
   const copyDayToWeekdays = (dow) => { const s = wa[dow]; if (!s) return; const u = { ...wa }; for (const d of [1,2,3,4,5]) if (d !== dow) u[d] = JSON.parse(JSON.stringify(s)); onUpdate({ weeklyAvailability: u }); };
   const copyDayToWeekends = (dow) => { const s = wa[dow]; if (!s) return; const u = { ...wa }; for (const d of [0,6]) if (d !== dow) u[d] = JSON.parse(JSON.stringify(s)); onUpdate({ weeklyAvailability: u }); };
-  const clearDayWindows = (dow) => { onUpdate({ weeklyAvailability: { ...wa, [dow]: { available: true, windows: [] } } }); };
+  const clearDayWindows = (dow) => { wrappedOnUpdate({ weeklyAvailability: { ...wa, [dow]: { available: false, windows: [] } } }); };
 
   // Split a study window into two halves with a 30-min gap
   const splitWindow = (dow, winIdx) => {
@@ -501,7 +501,6 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   // ── Double-click to add a new study window ──
   const handleBarDoubleClick = (e, dow) => {
     const day = wa[dow] || { available: true, windows: [] };
-    if (!day.available) return;
     const barEl = barRefs.current[dow]; if (!barEl) return;
     const rect = barEl.getBoundingClientRect();
     const clickMin = e._forceMin != null ? e._forceMin : snapMin(((e.clientX - rect.left) / rect.width) * 1440);
@@ -590,10 +589,19 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                 onClick={(e) => { if (e.target === barRefs.current[dow]) setSelectedBlock(null); }}
                 onDoubleClick={(e) => handleBarDoubleClick(e, dow)}
                 onContextMenu={(e) => {
-                  const barEl = barRefs.current[dow]; if (!barEl || isOff) return;
+                  const barEl = barRefs.current[dow]; if (!barEl) return;
                   const rect = barEl.getBoundingClientRect();
                   const clickMin = snapMin(((e.clientX - rect.left) / rect.width) * 1440);
-                  openCtx(e, buildEmptyCtx(dow, clickMin));
+                  if (isOff) {
+                    openCtx(e, [
+                      { label: 'Turn day on', action: () => setDayAvailable(dow, true) },
+                      { label: `Add study window at ${fmtTime(clickMin)}`, action: () => handleBarDoubleClick({ clientX: e.clientX, _forceMin: clickMin, preventDefault: () => {} }, dow) },
+                      { divider: true },
+                      { label: 'Add commitment here...', action: () => { setCommitmentPrefill({ days: [dow], start: minToTime(clickMin), end: minToTime(Math.min(clickMin + 120, 1440)) }); setShowCommitmentForm(true); } },
+                    ]);
+                  } else {
+                    openCtx(e, buildEmptyCtx(dow, clickMin));
+                  }
                 }}>
                 {/* Hourly grid lines */}
                 {GRID_HOURS.map(h => {

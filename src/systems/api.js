@@ -7,7 +7,7 @@ import { toast } from "./toast.js";
 import { bgNewAbort, bgStream, bgSet, bgLog, getBgState } from "./background.js";
 import { TOOLS, TOOLS_OPENAI, getProviderQuirks } from "../constants/tools.js";
 import { repairTruncatedJSON } from "../utils/jsonRepair.js";
-import { deriveStartTime as deriveStartTimeFromAvailability } from "../utils/availabilityCalc.js";
+import { deriveStartTime as deriveStartTimeFromAvailability, getEffectiveHours as getEffectiveHoursFromConfig } from "../utils/availabilityCalc.js";
 
 // ── Constants ────────────────────────────────────────────────────────
 export const APP_VERSION = "7.3.0";
@@ -563,7 +563,10 @@ export function buildSystemPrompt(data, ctx = "") {
   const doneStr = done.length > 0 ? done.map(c => `  ✅ ${c.name} (${c.credits} ${creditLabel})`).join("\n") : "None completed yet.";
 
   const exDates = safeArr(data.exceptionDates);
-  const hrsPerDay = data.studyHoursPerDay || 4;
+  // Use availability-aware hours when plannerConfig exists, otherwise legacy flat field
+  const hrsPerDay = data.plannerConfig
+    ? (() => { let total = 0, days = 0; for (let d = 0; d < 7; d++) { const h = getEffectiveHoursFromConfig(data.plannerConfig, d); if (h > 0) { total += h; days++; } } return days > 0 ? Math.round(total / days * 10) / 10 : 4; })()
+    : (data.studyHoursPerDay || 4);
   const startDate = data.studyStartDate || todayStr();
   const earlyFinishDate = data.targetCompletionDate || "";
 

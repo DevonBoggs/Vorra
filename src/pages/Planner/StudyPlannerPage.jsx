@@ -438,8 +438,8 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
 COURSES (PRIORITY ORDER):
 ${courseDetails}
 
-PROGRESS: ~${Math.round(hoursAssigned)}h already scheduled of ~${totalEstHours}h total. ~${Math.round(hoursRemaining)}h remaining.
-${weekExDts.length > 0 ? `Exception dates this week: ${weekExDts.join(', ')}` : 'No days off this week'}
+PROGRESS: ${Math.round(hoursAssigned)}h of ${totalEstHours}h assigned. ${Math.round(hoursRemaining)}h remaining.
+${weekExDts.length > 0 ? `Exception dates this week (no study): ${weekExDts.join(', ')}` : 'No days off this week'}
 ${week === 0 ? `First day starts at ${derivedStart}` : ''}
 
 ${modePrompt}
@@ -450,7 +450,12 @@ ${blockPrompt}
 
 ${availPrompt}${weekAvailStr}
 
-PROGRESS CONTEXT: ${Math.round(hoursAssigned)}h of ${totalEstHours}h assigned so far.
+CRITICAL SCHEDULING RULES:
+- Do NOT create tasks for days marked "OFF" — no study on those days.
+- Do NOT schedule study during blocked commitment times (work, family, etc.).
+- Windows like "22:00-06:00" span midnight — schedule across the day boundary.
+- Only schedule within the available time windows shown above.
+
 ${weekContinuity || 'This is the first week — start with course #1.'}
 
 CATEGORY TAGS (use these exactly):

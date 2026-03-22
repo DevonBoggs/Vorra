@@ -163,11 +163,19 @@ export function executeTools(toolCalls, data, setData) {
             const cc = (c.courseCode || '').toLowerCase().trim();
             // Exact match on normalized name or code
             if (cn === l || cc === l) return true;
-            // Course code appears in the match string (e.g., "D415 Software Defined Networking")
+            // Course code appears in the match string
             if (cc && cc.length >= 2 && l.includes(cc)) return true;
-            // Course name appears in the match string or vice versa (normalized, dash-insensitive)
+            // Normalized name containment (either direction)
             if (l.length >= 4 && cn.includes(l) && l.length > cn.length * 0.4) return true;
             if (cn.length >= 4 && l.includes(cn)) return true;
+            // Fallback: extract courseCode from match string and compare
+            const codeInMatch = (e.course_name_match.match(/\b([A-Z]{1,4}\d{2,4})\b/i) || [])[1];
+            if (codeInMatch && cc && codeInMatch.toLowerCase() === cc) return true;
+            if (codeInMatch && c.courseCode && codeInMatch.toLowerCase() === c.courseCode.toLowerCase()) return true;
+            // Last resort: check if the AI also sent a courseCode field in the enrichment
+            if (e.courseCode && c.courseCode && e.courseCode.toLowerCase() === c.courseCode.toLowerCase()) return true;
+            if (e.courseCode && normMatch(c.name).includes(e.courseCode.toLowerCase())) return true;
+            dlog('debug', 'tool', `No match: stored="${c.name}" (cc="${c.courseCode}") vs match="${e.course_name_match}" | norm: "${cn}" vs "${l}"`);
             return false;
           });
           if (!e) return c;

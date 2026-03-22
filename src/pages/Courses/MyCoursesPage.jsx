@@ -126,45 +126,41 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   const handleDrop = (e, toIdx) => { e.preventDefault(); const fromIdx = dragIdx; setDragIdx(null); setDragOverIdx(null); if (fromIdx !== null) moveCourse(fromIdx, toIdx); };
   const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
 
-  // Fix 3: Per-course timer — capture intervalId in closure for guaranteed cleanup
+  // Batch timer: runs while bg.loading is true (total enrichment time)
+  useEffect(() => {
+    if (bg.loading) {
+      batchStartRef.current = Date.now();
+      enrichTimesRef.current = {};
+      setBatchElapsed(0);
+      const id = setInterval(() => {
+        setBatchElapsed(Math.floor((Date.now() - batchStartRef.current) / 1000));
+      }, 1000);
+      batchTimerRef.current = id;
+      return () => { clearInterval(id); batchTimerRef.current = null; };
+    } else {
+      batchStartRef.current = null;
+    }
+  }, [bg.loading]);
+
+  // Per-course timer: resets when bg.regenId changes
   useEffect(() => {
     if (bg.loading && bg.regenId) {
-      // Save previous course's elapsed time
+      // Save previous course's time
       if (prevRegenIdRef.current && prevRegenIdRef.current !== bg.regenId) {
         enrichTimesRef.current[prevRegenIdRef.current] = enrichElapsed;
       }
       prevRegenIdRef.current = bg.regenId;
-
-      // Start batch timer on first course
-      if (!batchStartRef.current) {
-        batchStartRef.current = Date.now();
-        enrichTimesRef.current = {};
-        const batchId = setInterval(() => {
-          setBatchElapsed(Math.floor((Date.now() - batchStartRef.current) / 1000));
-        }, 1000);
-        batchTimerRef.current = batchId;
-      }
-
-      // Per-course timer — intervalId captured in closure
       setEnrichElapsed(0);
       const start = Date.now();
-      const intervalId = setInterval(() => {
+      const id = setInterval(() => {
         setEnrichElapsed(Math.floor((Date.now() - start) / 1000));
       }, 1000);
-      return () => clearInterval(intervalId);
-    } else {
-      // Save final course's elapsed time
-      if (prevRegenIdRef.current) {
-        enrichTimesRef.current[prevRegenIdRef.current] = enrichElapsed;
-        prevRegenIdRef.current = null;
-      }
+      return () => clearInterval(id);
+    }
+    if (!bg.loading && prevRegenIdRef.current) {
+      enrichTimesRef.current[prevRegenIdRef.current] = enrichElapsed;
+      prevRegenIdRef.current = null;
       setEnrichElapsed(0);
-
-      // Stop batch timer
-      if (batchStartRef.current) {
-        clearInterval(batchTimerRef.current);
-        batchStartRef.current = null;
-      }
     }
   }, [bg.loading, bg.regenId]);
 

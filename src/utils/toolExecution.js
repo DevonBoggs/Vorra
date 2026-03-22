@@ -7,6 +7,9 @@ import { uid, todayStr } from "../utils/helpers.js";
 
 export function safeArr(v) { return Array.isArray(v) ? v : []; }
 
+// Normalize strings for matching — strip dashes, em-dashes, en-dashes, extra spaces
+function normMatch(s) { return (s || '').toLowerCase().replace(/[\u2013\u2014\-\u2212]/g, ' ').replace(/\s+/g, ' ').trim(); }
+
 export function deepMergeCourse(existing, updates, opts = {}) {
   const m = { ...existing };
   for (const [k, v] of Object.entries(updates)) {
@@ -50,20 +53,24 @@ export function deepMergeCourse(existing, updates, opts = {}) {
 
 export function findCourse(courses, match) {
   if (!match || !courses?.length) return -1;
-  const l = match.toLowerCase().trim();
-  // Prefer exact matches first (name or courseCode)
+  const l = normMatch(match);
+  // Prefer exact matches first (normalized name or courseCode)
   const exact = courses.findIndex(c =>
-    c?.name?.toLowerCase() === l ||
-    (c?.courseCode || '').toLowerCase() === l
+    normMatch(c?.name) === l ||
+    (c?.courseCode || '').toLowerCase().trim() === l
   );
   if (exact >= 0) return exact;
-  // Then try courseCode substring (short codes like "D415" are safe)
-  const codeMatch = courses.findIndex(c =>
-    (c?.courseCode || '').toLowerCase() && l.includes((c?.courseCode || '').toLowerCase())
-  );
+  // Then try courseCode in match string (short codes like "D415" are safe)
+  const codeMatch = courses.findIndex(c => {
+    const cc = (c?.courseCode || '').toLowerCase().trim();
+    return cc && cc.length >= 2 && l.includes(cc);
+  });
   if (codeMatch >= 0) return codeMatch;
-  // Finally fall back to name contains (for AI that sends partial names)
-  return courses.findIndex(c => c?.name?.toLowerCase()?.includes(l) || l.includes(c?.name?.toLowerCase() || ''));
+  // Finally fall back to normalized name contains
+  return courses.findIndex(c => {
+    const cn = normMatch(c?.name);
+    return (cn && l.includes(cn)) || (cn && cn.includes(l) && l.length > cn.length * 0.3);
+  });
 }
 
 const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan'];
@@ -149,16 +156,18 @@ export function executeTools(toolCalls, data, setData) {
         let enriched = 0;
         const enrichNames = [];
         setData(d => ({...d, courses:d.courses.map(c => {
-          // Tighter matching: prefer exact name/code, then courseCode in match string
           const e = safeArr(input.enrichments).find(e => {
             if (!e?.course_name_match) return false;
-            const l = e.course_name_match.toLowerCase().trim();
-            // Exact match on name or code
-            if (c.name.toLowerCase() === l || (c.courseCode || '').toLowerCase() === l) return true;
-            // Course code appears in the match string (e.g., "D415 - Software Defined Networking")
-            if (c.courseCode && l.includes(c.courseCode.toLowerCase())) return true;
-            // Match string appears as substantial portion of course name (>60% length to avoid "Data" matching everything)
-            if (l.length >= 4 && c.name.toLowerCase().includes(l) && l.length > c.name.length * 0.4) return true;
+            const l = normMatch(e.course_name_match);
+            const cn = normMatch(c.name);
+            const cc = (c.courseCode || '').toLowerCase().trim();
+            // Exact match on normalized name or code
+            if (cn === l || cc === l) return true;
+            // Course code appears in the match string (e.g., "D415 Software Defined Networking")
+            if (cc && cc.length >= 2 && l.includes(cc)) return true;
+            // Course name appears in the match string or vice versa (normalized, dash-insensitive)
+            if (l.length >= 4 && cn.includes(l) && l.length > cn.length * 0.4) return true;
+            if (cn.length >= 4 && l.includes(cn)) return true;
             return false;
           });
           if (!e) return c;

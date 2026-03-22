@@ -8,7 +8,7 @@ import { Badge } from "../../components/ui/Badge.jsx";
 
 function safeArr(v) { return Array.isArray(v) ? v : []; }
 
-const CalendarPage=({date,setDate,tasks,setPage,Btn})=>{
+const CalendarPage=({date,setDate,tasks,setPage,Btn,data})=>{
   const T = useTheme();
   const CAT = getCAT(T);
   const d=new Date(date+"T12:00:00");const[vm,setVm]=useState(d.getMonth());const[vy,setVy]=useState(d.getFullYear());const today=todayStr();
@@ -108,19 +108,38 @@ const CalendarPage=({date,setDate,tasks,setPage,Btn})=>{
           const isHov = hovDay === ds;
           const hasTasks = dt.length > 0;
           const allDone = hasTasks && dt.every(t=>t.done);
+          const doneCount = dt.filter(t=>t.done).length;
+          const totalMins = dt.reduce((s,t) => { const st=parseTime(t.time),et=parseTime(t.endTime); return s+(st&&et?Math.max(0,et.mins-st.mins):0); }, 0);
+          const totalHrs = Math.round(totalMins / 60 * 10) / 10;
+          const hasPlanTasks = dt.some(t=>t.planId);
+          const planDone = isPast && hasPlanTasks ? dt.filter(t=>t.planId&&t.done).length : 0;
+          const planTotal = dt.filter(t=>t.planId).length;
+          const pct = hasTasks ? Math.round((doneCount / dt.length) * 100) : 0;
           return (
             <div key={i} className="sf-cal-cell" onClick={()=>{setDate(ds);setPage("daily")}} onMouseEnter={()=>setHovDay(ds)} onMouseLeave={()=>setHovDay(null)}
-              style={{background:isT?`${T.accent}12`:isHov?`${T.accent}08`:T.bg2,padding:"8px 8px 6px",cursor:"pointer",borderLeft:isT?`3px solid ${T.accent}`:"3px solid transparent",overflow:"hidden",opacity:isPast&&!isT?0.45:1,position:"relative",minHeight:90}}>
+              style={{background:isT?`${T.accent}12`:isHov?`${T.accent}08`:T.bg2,padding:"8px 8px 6px",cursor:"pointer",borderLeft:isT?`3px solid ${T.accent}`:"3px solid transparent",overflow:"hidden",opacity:isPast&&!isT?0.45:1,position:"relative",minHeight:90,display:"flex",flexDirection:"column"}}>
               {isPast&&!isT&&<div style={{position:"absolute",inset:0,background:`repeating-linear-gradient(135deg,transparent,transparent 8px,${T.border}15 8px,${T.border}15 9px)`,pointerEvents:"none"}}/>}
               <div style={{fontSize:fs(13),fontWeight:isT?800:500,color:isT?T.accent:isPast?T.dim:T.text,marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <span style={{display:"flex",alignItems:"center",gap:4}}>
                   {isT&&<span style={{width:6,height:6,borderRadius:"50%",background:T.accent,boxShadow:`0 0 6px ${T.accent}`}}/>}
                   {day}
                 </span>
-                {hasTasks&&<span style={{width:7,height:7,borderRadius:"50%",background:allDone?T.dim:T.accent,boxShadow:allDone?"none":`0 0 4px ${T.accent}66`}}/>}
+                <span style={{display:"flex",alignItems:"center",gap:4}}>
+                  {totalHrs > 0 && <span style={{fontSize:fs(8),color:T.dim,fontFamily:"'JetBrains Mono',monospace"}}>{totalHrs}h</span>}
+                  {hasPlanTasks&&<span style={{width:5,height:5,borderRadius:2,background:T.purple,flexShrink:0}} title="Has plan tasks"/>}
+                  {hasTasks&&<span style={{width:7,height:7,borderRadius:"50%",background:isPast?(allDone?T.accent:doneCount>0?T.orange:T.red):(allDone?T.dim:T.accent),boxShadow:allDone&&!isPast?"none":`0 0 4px ${isPast?(allDone?T.accent:T.orange):T.accent}66`}}/>}
+                </span>
               </div>
-              {dt.slice(0,3).map((t,j)=>{const c=CAT[t.category]||CAT.other; return (<div key={j} style={{fontSize:fs(10),padding:"2px 6px",borderRadius:5,marginBottom:2,background:t.done?`${c.bg}88`:c.bg,color:t.done?T.dim:c.fg,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textDecoration:t.done?"line-through":"none"}}><span className="mono" style={{fontSize:fs(9),marginRight:3,opacity:.7}}>{t.time}</span>{t.title}</div>);})}
-              {dt.length>3&&<div style={{fontSize:fs(9),color:T.dim,fontWeight:600,marginTop:1}}>+{dt.length-3} more</div>}
+              <div style={{flex:1}}>
+                {dt.slice(0,3).map((t,j)=>{const c=CAT[t.category]||CAT.other; return (<div key={j} style={{fontSize:fs(10),padding:"2px 6px",borderRadius:5,marginBottom:2,background:t.done?`${c.bg}88`:c.bg,color:t.done?T.dim:c.fg,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textDecoration:t.done?"line-through":"none",borderLeft:t.planId?`2px solid ${T.purple}`:"2px solid transparent"}}><span className="mono" style={{fontSize:fs(9),marginRight:3,opacity:.7}}>{t.time}</span>{t.title}</div>);})}
+                {dt.length>3&&<div style={{fontSize:fs(9),color:T.dim,fontWeight:600,marginTop:1}}>+{dt.length-3} more</div>}
+              </div>
+              {/* Progress bar at bottom */}
+              {hasTasks && (
+                <div style={{height:3,borderRadius:2,background:T.input,marginTop:4,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,borderRadius:2,background:allDone?T.accent:pct>50?T.blue:T.soft,transition:"width .3s"}}/>
+                </div>
+              )}
             </div>
           );
         })}

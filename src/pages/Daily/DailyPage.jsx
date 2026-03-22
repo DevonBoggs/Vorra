@@ -133,8 +133,16 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
   const yesterdayStr = useMemo(() => { const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().split("T")[0]; }, []);
   const carryTasks = useMemo(() => {
     if(!isToday) return [];
-    return safeArr(data.tasks?.[yesterdayStr]).filter(t => !t.done && t.category === "study");
-  }, [data.tasks, yesterdayStr, isToday]);
+    // Expanded: all categories (not just study), look back up to 3 days
+    const lookback = [];
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const incomplete = safeArr(data.tasks?.[ds]).filter(t => !t.done && t.category !== 'break');
+      lookback.push(...incomplete.map(t => ({ ...t, fromDate: ds })));
+    }
+    return lookback;
+  }, [data.tasks, isToday]);
   const carryForward = (task) => {
     setTasks([...tasks, {...task, id:uid(), done:false}]);
     toast(`Carried forward: ${task.title}`, "info");
@@ -150,7 +158,20 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
   const saveTask=()=>{
     if(!form.title.trim())return;
     const taskData = {...form};
+    delete taskData.moveToDate; // don't persist the move field on the task
+    delete taskData.fromDate; // clean up carry-forward metadata
     if(editId){
+      // Handle move-to-date: remove from current day, add to target day
+      if (form.moveToDate && form.moveToDate !== date) {
+        setTasks(tasks.filter(t => t.id !== editId));
+        setData(d => {
+          const targetTasks = safeArr(d.tasks?.[form.moveToDate]);
+          return { ...d, tasks: { ...d.tasks, [form.moveToDate]: [...targetTasks, { ...taskData, id: editId, done: false }] } };
+        });
+        toast(`Task moved to ${new Date(form.moveToDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}`, 'success');
+        setShowAdd(false);
+        return;
+      }
       setTasks(tasks.map(t=>t.id===editId?{...t,...taskData}:t));
     } else {
       setTasks([...tasks,{...taskData,id:uid(),done:false}]);
@@ -178,7 +199,7 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate})=>{
     }
     setShowAdd(false);
   };
-  const toggleTask=id=>setTasks(tasks.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const toggleTask=id=>setTasks(tasks.map(t=>t.id===id?{...t,done:!t.done,completedAt:!t.done?new Date().toISOString():null}:t));
   const deleteTask=id=>setTasks(tasks.filter(t=>t.id!==id));
 
   const [showRestructure, setShowRestructure] = useState(null);
@@ -356,12 +377,13 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:fs(13),fontWeight:500,textDecoration:t.done?"line-through":"none",color:t.done?T.dim:T.text}}>{t.title}</span>
           {isCur&&!t.done&&<span style={{fontSize:fs(8),padding:"2px 5px",borderRadius:3,background:T.accentD,color:T.accent,fontWeight:700}}>NOW</span>}
+          {t.planId&&<span style={{fontSize:fs(8),padding:"1px 5px",borderRadius:3,background:T.purpleD,color:T.purple,fontWeight:600}}>PLAN</span>}
           {t.recurring&&<span style={{fontSize:fs(8),padding:"1px 5px",borderRadius:3,background:T.blueD,color:T.blue,fontWeight:600}}>\u21BB {t.recurring}</span>}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:5}}>
           <Badge color={c.fg} bg={c.bg}>{c.l}</Badge>
-          <span style={{fontSize:fs(9),color:PRIO[t.priority]||T.soft,fontWeight:600}}>\u25CF {t.priority}</span>
-          {t.notes&&<span style={{fontSize:fs(10),color:T.dim}}>\u2014 {t.notes}</span>}
+          <span style={{fontSize:fs(9),color:PRIO[t.priority]||T.soft,fontWeight:600}}>{'\u25CF'} {t.priority}</span>
+          {t.notes&&<span style={{fontSize:fs(10),color:T.dim}}>{'\u2014'} {t.notes}</span>}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 10px"}}>
@@ -447,8 +469,8 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
       {carryTasks.length > 0 && (
         <div style={{background:T.orangeD,border:`1px solid ${T.orange}33`,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
-            <div style={{fontSize:fs(12),fontWeight:600,color:T.orange}}>{carryTasks.length} incomplete task{carryTasks.length>1?"s":""} from yesterday</div>
-            <div style={{fontSize:fs(10),color:T.soft,marginTop:2}}>{carryTasks.map(t=>t.title).join(", ")}</div>
+            <div style={{fontSize:fs(12),fontWeight:600,color:T.orange}}>{carryTasks.length} incomplete task{carryTasks.length>1?"s":""} from recent days</div>
+            <div style={{fontSize:fs(10),color:T.soft,marginTop:2}}>{carryTasks.slice(0,5).map(t => `${t.title}${t.fromDate ? ` (${new Date(t.fromDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})` : ''}`).join(', ')}{carryTasks.length > 5 ? `, +${carryTasks.length-5} more` : ''}</div>
           </div>
           <div style={{display:"flex",gap:6,flexShrink:0}}>
             <Btn small onClick={carryAll}>Carry All Forward</Btn>
@@ -456,7 +478,7 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         </div>
       )}
 
-      {/* Plan progress banner — shows today's plan tasks */}
+      {/* Plan Pulse — today's plan progress + overall context */}
       {(() => {
         const lastPlan = (data.planHistory || []).slice(-1)[0];
         if (!lastPlan) return null;
@@ -473,17 +495,50 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
           return s + (st && et ? Math.max(0, et.mins - st.mins) : 0);
         }, 0);
         const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-        const color = pct >= 100 ? T.accent : pct >= 50 ? T.blue : T.soft;
+        const allDone = done >= total;
+        const color = allDone ? T.accent : pct >= 50 ? T.blue : T.soft;
+
+        // Overall plan progress
+        let overallDone = 0, overallTotal = 0;
+        for (const [, dayTasks] of Object.entries(data.tasks || {})) {
+          for (const t of safeArr(dayTasks)) {
+            if (t.planId !== lastPlan.planId) continue;
+            overallTotal++;
+            if (t.done) overallDone++;
+          }
+        }
+        const overallPct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+
+        // Streak calculation
+        let streak = 0;
+        const today = todayStr();
+        const allDates = Object.keys(data.tasks || {}).filter(d => d <= today).sort().reverse();
+        for (const dt of allDates) {
+          const dayPlanTasks = safeArr(data.tasks[dt]).filter(t => t.planId === lastPlan.planId);
+          if (dayPlanTasks.length === 0) continue;
+          if (dayPlanTasks.some(t => t.done)) streak++;
+          else break;
+        }
+
         return (
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>Today{'\u2019'}s Plan: {done}/{total} tasks</span>
-                <span style={{ fontSize: fs(10), color, fontWeight: 600 }}>{Math.round(doneMins / 60 * 10) / 10}h / {Math.round(totalMins / 60 * 10) / 10}h</span>
+          <div style={{ background: T.card, border: `1px solid ${allDone ? T.accent + '44' : T.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: fs(11), fontWeight: 600, color: T.text }}>
+                  {allDone ? `${'\u2705'} All plan tasks done!` : `Today${'\u2019'}s Plan: ${done}/${total} tasks`}
+                </span>
+                {streak > 1 && <Badge color={T.accent} bg={T.accentD}>{'\uD83D\uDD25'} {streak}d</Badge>}
               </div>
-              <div style={{ height: 4, borderRadius: 2, background: T.input, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2, background: color, transition: 'width .3s' }} />
-              </div>
+              <span style={{ fontSize: fs(10), color, fontWeight: 600 }}>{Math.round(doneMins / 60 * 10) / 10}h / {Math.round(totalMins / 60 * 10) / 10}h</span>
+            </div>
+            <div style={{ height: 5, borderRadius: 3, background: T.input, overflow: 'hidden', marginBottom: 4 }}>
+              <div style={{ height: '100%', width: `${pct}%`, borderRadius: 3, background: allDone ? T.accent : color, transition: 'width .3s' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: fs(9), color: T.dim }}>Overall: {overallPct}% complete ({overallDone}/{overallTotal} tasks)</span>
+              {allDone && !safeArr(tasks).every(t => t.done) && (
+                <span style={{ fontSize: fs(9), color: T.accent }}>Plan tasks done {'\u2014'} finish remaining tasks or rest!</span>
+              )}
             </div>
           </div>
         );
@@ -623,7 +678,7 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         <div className="fade" style={{background:T.accentD,border:`1px solid ${T.accent}44`,borderRadius:12,padding:16,marginTop:12}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{fontSize:fs(13),fontWeight:600,color:T.accent}}>\u23E9 You finished {minsToStr(showRestructure.savedMins)} early!</div>
+              <div style={{fontSize:fs(13),fontWeight:600,color:T.accent}}>{'\u23E9'} You finished {minsToStr(showRestructure.savedMins)} early!</div>
               <div style={{fontSize:fs(12),color:T.soft,marginTop:2}}>Shift remaining tasks forward?</div>
             </div>
             <div style={{display:"flex",gap:8}}>
@@ -653,6 +708,12 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
             </div>
           </div>
           <div><Label>Notes</Label><input value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Optional details..."/></div>
+          {editId && (
+            <div><Label>Move to Date</Label>
+              <input type="date" value={form.moveToDate || ''} onChange={e => setForm({...form, moveToDate: e.target.value})} />
+              {form.moveToDate && form.moveToDate !== date && <span style={{fontSize:fs(10),color:T.orange,marginLeft:8}}>Task will move to {new Date(form.moveToDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>}
+            </div>
+          )}
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
             <Btn v="secondary" onClick={()=>setShowAdd(false)}>Cancel</Btn>
             <Btn onClick={saveTask} disabled={!form.title.trim()}>{editId?"Update":"Add Task"}</Btn>

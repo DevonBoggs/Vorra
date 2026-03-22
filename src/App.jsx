@@ -500,7 +500,7 @@ export default function App() {
               {page === "courses" && <MyCoursesPage data={data} setData={setData} profile={profile} setPage={setPage} setDate={setDate} />}
               {page === "planner" && <StudyPlannerPage data={data} setData={setData} profile={profile} setPage={setPage} />}
               {page === "daily" && <DailyPage date={date} tasks={dayTasks} setTasks={setDayTasks} profile={profile} data={data} setData={setData} setDate={setDate} Btn={Btn} />}
-              {page === "calendar" && <CalendarPage date={date} setDate={setDate} tasks={data.tasks || {}} setPage={setPage} Btn={Btn} />}
+              {page === "calendar" && <CalendarPage date={date} setDate={setDate} tasks={data.tasks || {}} setPage={setPage} Btn={Btn} data={data} />}
               {page === "chat" && <StudyChatPage data={data} setData={setData} profile={profile} Btn={Btn} />}
               {page === "quiz" && <PracticeExamPage data={data} setData={setData} profile={profile} Btn={Btn} Label={Label} />}
               {page === "report" && <WeeklyReportPage data={data} Btn={Btn} />}

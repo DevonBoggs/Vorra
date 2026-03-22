@@ -177,10 +177,75 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         Btn={Btn}
       />
 
+      {/* Plan Health Widget */}
+      {(() => {
+        const lastPlan = (data.planHistory || []).slice(-1)[0];
+        if (!lastPlan) return null;
+        const planId = lastPlan.planId;
+        let done = 0, total = 0, totalMins = 0, doneMins = 0;
+        const today = todayStr();
+        for (const [dt, dayTasks] of Object.entries(data.tasks || {})) {
+          for (const t of safeArr(dayTasks)) {
+            if (t.planId !== planId) continue;
+            total++;
+            const st = parseTime(t.time), et = parseTime(t.endTime);
+            const mins = st && et ? Math.max(0, et.mins - st.mins) : 0;
+            totalMins += mins;
+            if (t.done) { done++; doneMins += mins; }
+          }
+        }
+        if (total === 0) return null;
+        const pct = Math.round((doneMins / totalMins) * 100);
+        const doneHrs = Math.round(doneMins / 60 * 10) / 10;
+        const totalHrs = Math.round(totalMins / 60 * 10) / 10;
+        const remainHrs = Math.round((totalMins - doneMins) / 60 * 10) / 10;
+        // Streak
+        let streak = 0;
+        const allDates = Object.keys(data.tasks || {}).filter(d => d <= today).sort().reverse();
+        for (const dt of allDates) {
+          const dayPlanTasks = safeArr(data.tasks[dt]).filter(t => t.planId === planId);
+          if (dayPlanTasks.length === 0) continue;
+          if (dayPlanTasks.some(t => t.done)) streak++;
+          else break;
+        }
+        return (
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <h3 style={{fontSize:fs(14),fontWeight:700,margin:0}}>Plan Health</h3>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {streak > 0 && <Badge color={T.accent} bg={T.accentD}>{"\uD83D\uDD25"} {streak}d streak</Badge>}
+                <button onClick={()=>setPage("planner")} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",fontSize:fs(10),fontWeight:600,textDecoration:"underline"}}>View plan {"\u2192"}</button>
+              </div>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:fs(10),color:T.dim,marginBottom:4}}>
+              <span>{doneHrs}h / {totalHrs}h completed</span>
+              <span style={{fontWeight:700,color:pct>=80?T.accent:T.text}}>{pct}%</span>
+            </div>
+            <div style={{height:8,borderRadius:4,background:T.input,overflow:"hidden",marginBottom:8}}>
+              <div style={{height:"100%",width:`${pct}%`,borderRadius:4,background:`linear-gradient(90deg, ${T.accent}, ${T.blue})`,transition:"width .6s"}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <div style={{flex:1,padding:"6px 10px",background:T.input,borderRadius:6,textAlign:"center"}}>
+                <div style={{fontSize:fs(14),fontWeight:700,color:T.text}}>{done}/{total}</div>
+                <div style={{fontSize:fs(9),color:T.dim}}>tasks done</div>
+              </div>
+              <div style={{flex:1,padding:"6px 10px",background:T.input,borderRadius:6,textAlign:"center"}}>
+                <div style={{fontSize:fs(14),fontWeight:700,color:T.accent}}>{remainHrs}h</div>
+                <div style={{fontSize:fs(9),color:T.dim}}>remaining</div>
+              </div>
+              <div style={{flex:1,padding:"6px 10px",background:T.input,borderRadius:6,textAlign:"center"}}>
+                <div style={{fontSize:fs(14),fontWeight:700,color:T.purple}}>{new Date(lastPlan.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                <div style={{fontSize:fs(9),color:T.dim}}>started</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Global Schedule Conflicts */}
       {globalConflicts.totalConflicts > 0 && (
         <div style={{padding:"12px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,marginBottom:16}}>
-          <div style={{fontSize:fs(11),color:T.red,fontWeight:700,marginBottom:8}}>\u26A0\uFE0F {globalConflicts.totalConflicts} time overlap{globalConflicts.totalConflicts>1?"s":""} across {globalConflicts.conflictDays} day{globalConflicts.conflictDays>1?"s":""}</div>
+          <div style={{fontSize:fs(11),color:T.red,fontWeight:700,marginBottom:8}}>{'\u26A0\uFE0F'} {globalConflicts.totalConflicts} time overlap{globalConflicts.totalConflicts>1?"s":""} across {globalConflicts.conflictDays} day{globalConflicts.conflictDays>1?"s":""}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {globalConflicts.dates.slice(0,10).map(cd => (
               <button key={cd.date} onClick={()=>{setDate(cd.date);setPage("daily")}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(10),fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
@@ -203,7 +268,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
       {/* Velocity Warning */}
       {avgHrsPerDay14 > 0 && avgHrsPerDay14 < hrsPerDay && (
         <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-          \u26A0\uFE0F Your 14-day average ({avgHrsPerDay14}h/day) is below your target ({hrsPerDay}h/day).
+          {'\u26A0\uFE0F'} Your 14-day average ({avgHrsPerDay14}h/day) is below your target ({hrsPerDay}h/day).
           {estDaysAtPace && ` At current pace, you need ~${estDaysAtPace} days to finish.`}
           {effectiveDaysLeft!=null && estDaysAtPace && estDaysAtPace > effectiveDaysLeft && <span style={{fontWeight:700}}> That's {estDaysAtPace - effectiveDaysLeft} days past your target completion date.</span>}
         </div>
@@ -212,7 +277,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
       {/* Hours/day config warning */}
       {hrsPerDay < 2 && totalEstHrs > 0 && (
         <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-          \u26A0\uFE0F Hours/day is set to {hrsPerDay}h \u2014 this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Study Planner</span>
+          {'\u26A0\uFE0F'} Hours/day is set to {hrsPerDay}h {'\u2014'} this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Study Planner</span>
         </div>
       )}
       {estFinish && data.targetDate && estFinish > data.targetDate && (
@@ -231,12 +296,12 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         if (projectedFinish <= effectiveTarget) {
           return (
             <div style={{padding:"10px 14px",borderRadius:10,background:T.accentD,border:`1px solid ${T.accent}33`,fontSize:fs(11),color:T.accent,marginBottom:16}}>
-              \u2705 On track! {source==="schedule"?"Last scheduled study day":"Estimated finish"}: {finishLabel} \u2014 {diffDays(projectedFinish, effectiveTarget)} days before your target completion date.            </div>
+              {'\u2705'} On track! {source==="schedule"?"Last scheduled study day":"Estimated finish"}: {finishLabel} {'\u2014'} {diffDays(projectedFinish, effectiveTarget)} days before your target completion date.            </div>
           );
         } else if (data.targetDate && projectedFinish <= data.targetDate) {
           return (
             <div style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:16}}>
-              \u26A0\uFE0F {source==="schedule"?"Schedule runs":"Estimated finish"} through {finishLabel} \u2014 past your target completion but before term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}).
+              {'\u26A0\uFE0F'} {source==="schedule"?"Schedule runs":"Estimated finish"} through {finishLabel} {'\u2014'} past your target completion but before term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}).
             </div>
           );
         } else if (data.targetDate) {
@@ -266,7 +331,7 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
         return (
           <div style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <span style={{fontWeight:700}}>\u26A0\uFE0F {overlaps.length} time conflict{overlaps.length>1?"s":""} in today's schedule</span>
+              <span style={{fontWeight:700}}>{'\u26A0\uFE0F'} {overlaps.length} time conflict{overlaps.length>1?"s":""} in today{'\u2019'}s schedule</span>
               <button onClick={()=>{setDate(today);setPage("daily")}} style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(11),fontWeight:600,cursor:"pointer"}}>Fix in Schedule \u2192</button>
             </div>
             {overlaps.slice(0,3).map((o,i) => (

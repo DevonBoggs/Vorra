@@ -997,7 +997,7 @@ ${fsrsReviewPrompt}${userCtx}`;
               {/* Template cards */}
               <Label>What does your week look like?</Label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8, marginBottom: 16 }}>
-                {LIFE_TEMPLATE_IDS.slice(0, 6).map(id => {
+                {LIFE_TEMPLATE_IDS.map(id => {
                   const tpl = LIFE_TEMPLATES[id];
                   const isActive = pc?.lifeTemplate === id;
                   return (

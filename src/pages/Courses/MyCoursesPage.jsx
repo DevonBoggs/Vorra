@@ -38,7 +38,8 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
 
   // Timer state — computed from bg timestamps (persist across navigation)
   const [now, setNow] = useState(Date.now());
-  const prevRegenIdRef = useRef(null);
+  // Initialize from current bg state so remount doesn't reset the course tracking
+  const prevRegenIdRef = useRef(getBgState().regenId || null);
 
   // Import zone — only used as a secondary "Import More" collapsible after first import
   const [importMoreOpen, setImportMoreOpen] = useState(false);
@@ -129,20 +130,18 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
     return () => clearInterval(id);
   }, [bg.loading]);
 
-  // Track course transitions via bg timestamps (persisted in background.js)
+  // Track course transitions — only set courseStartedAt on genuine regenId changes
   useEffect(() => {
-    if (bg.loading && bg.regenId) {
-      if (prevRegenIdRef.current && prevRegenIdRef.current !== bg.regenId && bg.courseStartedAt) {
-        // Save previous course's elapsed time
-        const prev = getBgState();
-        prev.courseTimes[prevRegenIdRef.current] = Math.floor((Date.now() - bg.courseStartedAt) / 1000);
+    if (bg.loading && bg.regenId && prevRegenIdRef.current !== bg.regenId) {
+      // Save previous course's elapsed time
+      if (prevRegenIdRef.current && bg.courseStartedAt) {
+        getBgState().courseTimes[prevRegenIdRef.current] = Math.floor((Date.now() - bg.courseStartedAt) / 1000);
       }
       prevRegenIdRef.current = bg.regenId;
       bgSet({ courseStartedAt: Date.now() });
     }
     if (!bg.loading && prevRegenIdRef.current && bg.courseStartedAt) {
-      const prev = getBgState();
-      prev.courseTimes[prevRegenIdRef.current] = Math.floor((Date.now() - bg.courseStartedAt) / 1000);
+      getBgState().courseTimes[prevRegenIdRef.current] = Math.floor((Date.now() - bg.courseStartedAt) / 1000);
       prevRegenIdRef.current = null;
     }
   }, [bg.loading, bg.regenId]);
@@ -374,14 +373,14 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
         const sys = buildSystemPrompt(dataRef.current, `Generate deep context for ONLY "${course.name}" (${course.courseCode || 'no code'}) using enrich_course_context. Use the EXACT course name "${course.name}" as the course_name_match value. Include ALL fields. Do NOT enrich other courses.`);
         const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours). Use course_name_match: "${course.name}"` }], dataRef.current, setData, enrichOnlyTools, null, true, 1);
         for (const l of cLogs) bgLog(l);
-        // Verify enrichment using fresh data ref (not stale closure)
-        const freshCourse = (dataRef.current.courses || []).find(c => c.id === course.id);
-        if (freshCourse && hasCtx(freshCourse)) {
+        // Verify enrichment by checking tool result logs (dataRef may not have updated yet)
+        const wasEnriched = cLogs.some(l => l.type === 'tool_result' && l.content.includes('Enriched') && !l.content.includes('Enriched 0'));
+        if (wasEnriched) {
           completed++;
           dlog('info', 'api', `Enriched ${completed}/${toEnrich.length}: ${course.name}`);
         } else {
-          bgLog({ type: 'warn', content: `${course.name}: AI responded but did not call the enrichment tool. Your model may not support function calling.` });
-          dlog('warn', 'api', `Enrichment may have failed for ${course.name} — hasCtx check failed`);
+          bgLog({ type: 'warn', content: `${course.name}: AI may not have called the enrichment tool correctly. Check if your model supports function calling.` });
+          dlog('warn', 'api', `Enrichment may have failed for ${course.name} — no successful tool result in logs`);
         }
       } catch (e) {
         bgLog({ type: 'error', content: `Failed: ${course.name} \u2014 ${e.message}` });

@@ -36,12 +36,8 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   const [expanded, setExpanded] = useState({});
   const fileRef = useRef(null);
 
-  // Timer state — Fix 2 + Fix 3
-  const [enrichElapsed, setEnrichElapsed] = useState(0);
-  const [batchElapsed, setBatchElapsed] = useState(0);
-  const enrichTimesRef = useRef({});     // { courseId: elapsed seconds }
-  const batchStartRef = useRef(null);
-  const batchTimerRef = useRef(null);
+  // Timer state — computed from bg timestamps (persist across navigation)
+  const [now, setNow] = useState(Date.now());
   const prevRegenIdRef = useRef(null);
 
   // Import zone — only used as a secondary "Import More" collapsible after first import
@@ -126,43 +122,35 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   const handleDrop = (e, toIdx) => { e.preventDefault(); const fromIdx = dragIdx; setDragIdx(null); setDragOverIdx(null); if (fromIdx !== null) moveCourse(fromIdx, toIdx); };
   const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
 
-  // Batch timer: runs while bg.loading is true (total enrichment time)
+  // Single tick interval — drives both timers from bg timestamps
   useEffect(() => {
-    if (bg.loading) {
-      batchStartRef.current = Date.now();
-      enrichTimesRef.current = {};
-      setBatchElapsed(0);
-      const id = setInterval(() => {
-        setBatchElapsed(Math.floor((Date.now() - batchStartRef.current) / 1000));
-      }, 1000);
-      batchTimerRef.current = id;
-      return () => { clearInterval(id); batchTimerRef.current = null; };
-    } else {
-      batchStartRef.current = null;
-    }
+    if (!bg.loading) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
   }, [bg.loading]);
 
-  // Per-course timer: resets when bg.regenId changes
+  // Track course transitions via bg timestamps (persisted in background.js)
   useEffect(() => {
     if (bg.loading && bg.regenId) {
-      // Save previous course's time
-      if (prevRegenIdRef.current && prevRegenIdRef.current !== bg.regenId) {
-        enrichTimesRef.current[prevRegenIdRef.current] = enrichElapsed;
+      if (prevRegenIdRef.current && prevRegenIdRef.current !== bg.regenId && bg.courseStartedAt) {
+        // Save previous course's elapsed time
+        const prev = getBgState();
+        prev.courseTimes[prevRegenIdRef.current] = Math.floor((Date.now() - bg.courseStartedAt) / 1000);
       }
       prevRegenIdRef.current = bg.regenId;
-      setEnrichElapsed(0);
-      const start = Date.now();
-      const id = setInterval(() => {
-        setEnrichElapsed(Math.floor((Date.now() - start) / 1000));
-      }, 1000);
-      return () => clearInterval(id);
+      bgSet({ courseStartedAt: Date.now() });
     }
-    if (!bg.loading && prevRegenIdRef.current) {
-      enrichTimesRef.current[prevRegenIdRef.current] = enrichElapsed;
+    if (!bg.loading && prevRegenIdRef.current && bg.courseStartedAt) {
+      const prev = getBgState();
+      prev.courseTimes[prevRegenIdRef.current] = Math.floor((Date.now() - bg.courseStartedAt) / 1000);
       prevRegenIdRef.current = null;
-      setEnrichElapsed(0);
     }
   }, [bg.loading, bg.regenId]);
+
+  // Computed timer values (derived from persistent bg timestamps)
+  const batchElapsed = bg.batchStartedAt && bg.loading ? Math.floor((now - bg.batchStartedAt) / 1000) : (bg.batchStartedAt ? Math.floor((Date.now() - bg.batchStartedAt) / 1000) : 0);
+  const enrichElapsed = bg.courseStartedAt && bg.loading ? Math.floor((now - bg.courseStartedAt) / 1000) : 0;
+  const enrichTimesRef = { current: bg.courseTimes || {} };
 
   // Fix 3: Detect enrichment completion → show "Complete" state for 5 seconds
   // Only show "Complete" if enrichment actually succeeded (no errors as last log, and courses were enriched)
@@ -340,7 +328,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     const active = courses.filter(c => c.status !== 'completed');
     if (!active.length) return;
     bgNewAbort();
-    bgSet({ loading: true, logs: [{ type: 'user', content: `\uD83D\uDD04 Regenerating ${active.length} courses individually` }], label: `Regenerating 1/${active.length}...` });
+    bgSet({ loading: true, logs: [{ type: 'user', content: `\uD83D\uDD04 Regenerating ${active.length} courses individually` }], label: `Regenerating 1/${active.length}...`, batchStartedAt: Date.now(), courseStartedAt: null, courseTimes: {} });
     dlog('info', 'api', `Regen all (sequential): ${active.length} courses`);
     let completed = 0;
     let wasCancelled = false;
@@ -367,7 +355,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     if (!toEnrich.length) { toast('All courses already enriched!', 'info'); return; }
 
     bgNewAbort();
-    bgSet({ loading: true, regenId: null, logs: [{ type: 'user', content: `\u2728 Enriching ${toEnrich.length} course${toEnrich.length > 1 ? 's' : ''} individually` }], label: `Enriching 1/${toEnrich.length}...` });
+    bgSet({ loading: true, regenId: null, logs: [{ type: 'user', content: `\u2728 Enriching ${toEnrich.length} course${toEnrich.length > 1 ? 's' : ''} individually` }], label: `Enriching 1/${toEnrich.length}...`, batchStartedAt: Date.now(), courseStartedAt: null, courseTimes: {} });
     dlog('info', 'api', `Enrich new (sequential): ${toEnrich.length} courses`);
 
     let completed = 0;
@@ -415,7 +403,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     const coursesWithGaps = activeCourses.filter(c => hasCtx(c) && missingSections(c).length > 0);
     if (!coursesWithGaps.length) { toast('All sections populated!', 'info'); return; }
 
-    bgSet({ loading: true, logs: [{ type: 'user', content: `\u2728 Filling gaps in ${coursesWithGaps.length} course${coursesWithGaps.length > 1 ? 's' : ''}` }], label: `Filling gaps 1/${coursesWithGaps.length}...` });
+    bgSet({ loading: true, logs: [{ type: 'user', content: `\u2728 Filling gaps in ${coursesWithGaps.length} course${coursesWithGaps.length > 1 ? 's' : ''}` }], label: `Filling gaps 1/${coursesWithGaps.length}...`, batchStartedAt: Date.now(), courseStartedAt: null, courseTimes: {} });
     dlog('info', 'api', `Fill all gaps: ${coursesWithGaps.length} courses`);
 
     let completed = 0;
@@ -510,7 +498,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {bg.loading && getBgState().abortCtrl && <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, regenId: null, label: '' }); toast('Cancelled', 'info'); }} style={{ color: T.red, borderColor: T.red }}>Stop</Btn>}
-              {!bg.loading && bg.logs.length > 0 && <Btn small v="ghost" onClick={() => { bgSet({ logs: [] }); enrichTimesRef.current = {}; setBatchElapsed(0); setEnrichDoneAt(null); }}>Clear</Btn>}
+              {!bg.loading && bg.logs.length > 0 && <Btn small v="ghost" onClick={() => { bgSet({ logs: [], batchStartedAt: null, courseStartedAt: null, courseTimes: {} }); setEnrichDoneAt(null); }}>Clear</Btn>}
             </div>
           </div>
           {/* Enrichment progress bar */}

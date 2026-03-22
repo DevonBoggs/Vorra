@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { dlog } from "./debug.js";
 
-let _bgState = { loading: false, regenId: null, logs: [], label: "", streamText: "", abortCtrl: null };
+let _bgState = { loading: false, regenId: null, logs: [], label: "", streamText: "", abortCtrl: null, batchStartedAt: null, courseStartedAt: null, courseTimes: {} };
 let _bgSubs = [];
 
 function bgNotify() {
@@ -15,7 +15,7 @@ export function bgSet(patch) { Object.assign(_bgState, patch); bgNotify(); }
 export function bgLog(entry) { _bgState.logs.push(entry); bgNotify(); }
 export function bgStream(text) { _bgState.streamText = text; bgNotify(); }
 export function bgClear() {
-  _bgState = { loading: false, regenId: null, logs: [], label: "", streamText: "", abortCtrl: null };
+  _bgState = { loading: false, regenId: null, logs: [], label: "", streamText: "", abortCtrl: null, batchStartedAt: null, courseStartedAt: null, courseTimes: {} };
   bgNotify();
 }
 export function bgAbort() {

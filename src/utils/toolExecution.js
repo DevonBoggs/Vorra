@@ -7,8 +7,18 @@ import { uid, todayStr } from "../utils/helpers.js";
 
 export function safeArr(v) { return Array.isArray(v) ? v : []; }
 
-// Normalize strings for matching — strip dashes, em-dashes, en-dashes, extra spaces
-function normMatch(s) { return (s || '').toLowerCase().replace(/[\u2013\u2014\-\u2212]/g, ' ').replace(/\s+/g, ' ').trim(); }
+// Normalize strings for matching — strip ALL punctuation/dashes, collapse whitespace
+function normMatch(s) {
+  return (s || '').toLowerCase()
+    .replace(/[\u2013\u2014\u2015\u2212\u2010\u2011\u00AD\-]/g, ' ') // all dash/hyphen variants
+    .replace(/[^\w\s]/g, ' ') // strip remaining punctuation
+    .replace(/\s+/g, ' ').trim();
+}
+// Extract course code from a string (e.g., "D415" from "Software Defined Networking – D415")
+function extractCode(s) {
+  const m = (s || '').match(/\b([A-Za-z]{1,4}\d{2,4})\b/);
+  return m ? m[1].toUpperCase() : '';
+}
 
 export function deepMergeCourse(existing, updates, opts = {}) {
   const m = { ...existing };
@@ -157,25 +167,29 @@ export function executeTools(toolCalls, data, setData) {
         const enrichNames = [];
         setData(d => ({...d, courses:d.courses.map(c => {
           const e = safeArr(input.enrichments).find(e => {
-            if (!e?.course_name_match) return false;
-            const l = normMatch(e.course_name_match);
-            const cn = normMatch(c.name);
-            const cc = (c.courseCode || '').toLowerCase().trim();
-            // Exact match on normalized name or code
-            if (cn === l || cc === l) return true;
-            // Course code appears in the match string
-            if (cc && cc.length >= 2 && l.includes(cc)) return true;
-            // Normalized name containment (either direction)
-            if (l.length >= 4 && cn.includes(l) && l.length > cn.length * 0.4) return true;
-            if (cn.length >= 4 && l.includes(cn)) return true;
-            // Fallback: extract courseCode from match string and compare
-            const codeInMatch = (e.course_name_match.match(/\b([A-Z]{1,4}\d{2,4})\b/i) || [])[1];
-            if (codeInMatch && cc && codeInMatch.toLowerCase() === cc) return true;
-            if (codeInMatch && c.courseCode && codeInMatch.toLowerCase() === c.courseCode.toLowerCase()) return true;
-            // Last resort: check if the AI also sent a courseCode field in the enrichment
-            if (e.courseCode && c.courseCode && e.courseCode.toLowerCase() === c.courseCode.toLowerCase()) return true;
+            if (!e?.course_name_match && !e?.courseCode && !e?.name) return false;
+            // Strategy: try multiple matching approaches, most specific first
+            const storedCode = (c.courseCode || '').toUpperCase().trim();
+            const storedName = normMatch(c.name);
+
+            // 1. CourseCode match (most reliable) — from enrichment's courseCode field
+            if (e.courseCode && storedCode && e.courseCode.toUpperCase().trim() === storedCode) return true;
+
+            // 2. CourseCode extracted from course_name_match or name
+            const matchCode = extractCode(e.course_name_match || e.name || '');
+            if (matchCode && storedCode && matchCode === storedCode) return true;
+
+            // 3. CourseCode from enrichment data found in stored course name
+            if (matchCode && normMatch(c.name).includes(matchCode.toLowerCase())) return true;
             if (e.courseCode && normMatch(c.name).includes(e.courseCode.toLowerCase())) return true;
-            dlog('debug', 'tool', `No match: stored="${c.name}" (cc="${c.courseCode}") vs match="${e.course_name_match}" | norm: "${cn}" vs "${l}"`);
+
+            // 4. Normalized name matching
+            const matchName = normMatch(e.course_name_match || e.name || '');
+            if (storedName && matchName && storedName === matchName) return true;
+            if (storedName.length >= 8 && matchName.includes(storedName)) return true;
+            if (matchName.length >= 8 && storedName.includes(matchName)) return true;
+
+            dlog('debug', 'tool', `No match: stored="${c.name}" code="${storedCode}" vs match="${e.course_name_match}" eCode="${e.courseCode}" | norm: "${storedName}" vs "${matchName}" | codes: "${storedCode}" vs "${matchCode}"`);
             return false;
           });
           if (!e) return c;

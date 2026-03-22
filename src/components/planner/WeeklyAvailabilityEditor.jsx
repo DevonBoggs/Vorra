@@ -89,6 +89,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const [drag, setDrag] = useState(null);
   const [contextDay, setContextDay] = useState(null);
   const [showCommitmentForm, setShowCommitmentForm] = useState(false);
+  const [editingCommitmentId, setEditingCommitmentId] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, items }
   const [clipboardWindow, setClipboardWindow] = useState(null); // { start, end }
   const [commitmentPrefill, setCommitmentPrefill] = useState(null);
@@ -295,7 +296,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     const isOnThisDay = (c.days || []).includes(dow);
     const isMultiDay = (c.days || []).length > 1;
     return [
-      { label: 'Edit commitment...', action: () => { setShowCommitmentForm(true); } },
+      { label: 'Edit commitment...', action: () => { setShowCommitmentForm(true); setEditingCommitmentId(c.id); } },
       // Remove this commitment from just this day (keep it on other days)
       ...(isMultiDay && isOnThisDay ? [{
         label: `Remove from ${dayName} only`,
@@ -439,6 +440,8 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   // ── Drag handling (study windows + commitments) ──
   const handleBlockMouseDown = (e, dow, winIdx, mode, blockType, commitmentId) => {
     e.stopPropagation(); e.preventDefault();
+    // Capture undo snapshot before any drag operation
+    pushUndo();
     const barEl = barRefs.current[dow]; if (!barEl) return;
     const barRect = barEl.getBoundingClientRect();
     const day = wa[dow] || { available: true, windows: [] };
@@ -718,7 +721,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
         </div>
         {showCommitmentForm && (
           <div style={{ marginTop: 8 }}>
-            <CommitmentEditor commitments={commitments} onUpdate={updated => { wrappedOnUpdateCommitments(updated); setCommitmentPrefill(null); }} prefill={commitmentPrefill} />
+            <CommitmentEditor commitments={commitments} onUpdate={updated => { wrappedOnUpdateCommitments(updated); setCommitmentPrefill(null); }} prefill={commitmentPrefill} autoEditId={editingCommitmentId} onAutoEditDone={() => setEditingCommitmentId(null)} />
           </div>
         )}
       </div>

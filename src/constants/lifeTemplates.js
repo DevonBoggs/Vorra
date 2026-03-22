@@ -200,6 +200,21 @@ export const LIFE_TEMPLATES = {
     },
     commitments: [],
   },
+  'clear-schedule': {
+    label: 'Clear Schedule',
+    icon: '\uD83D\uDDD1',
+    description: 'Empty — build from scratch',
+    weeklyAvailability: {
+      0: { available: false, windows: [] },
+      1: { available: false, windows: [] },
+      2: { available: false, windows: [] },
+      3: { available: false, windows: [] },
+      4: { available: false, windows: [] },
+      5: { available: false, windows: [] },
+      6: { available: false, windows: [] },
+    },
+    commitments: [],
+  },
 };
 
 export const LIFE_TEMPLATE_IDS = Object.keys(LIFE_TEMPLATES);

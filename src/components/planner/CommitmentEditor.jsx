@@ -23,11 +23,24 @@ const PRESETS = [
   { label: 'Evening Commute (M-F)', commitment: { label: 'Commute', days: [1, 2, 3, 4, 5], start: '17:00', end: '18:00', category: 'commute' } },
 ];
 
-export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null }) => {
+export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null, autoEditId = null, onAutoEditDone = null }) => {
   const T = useTheme();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ label: '', days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00', category: 'work' });
+
+  // Auto-open edit form for a specific commitment (from right-click "Edit commitment")
+  useEffect(() => {
+    if (autoEditId) {
+      const c = commitments.find(cm => cm.id === autoEditId);
+      if (c) {
+        setForm({ label: c.label, days: [...c.days], start: c.start, end: c.end, category: c.category || 'other' });
+        setEditId(c.id);
+        setShowAdd(true);
+      }
+      if (onAutoEditDone) onAutoEditDone();
+    }
+  }, [autoEditId]);
 
   // Apply prefill from context menu
   useEffect(() => {

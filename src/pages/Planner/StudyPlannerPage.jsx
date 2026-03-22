@@ -277,8 +277,8 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     }
 
     // Pre-flight validation — warn but allow
-    if (!feasible) toast('Warning: schedule is aggressive \u2014 consider adjusting dates or availability', 'warn');
-    if (estCompletionDate && data.targetDate && estCompletionDate > data.targetDate) toast('Warning: estimated finish is past your term end date', 'warn');
+    if (!feasible) toast('Heads up: this is a very tight schedule. The plan will be generated, but you may want to extend your deadline afterward.', 'warn');
+    if (estCompletionDate && data.targetDate && estCompletionDate > data.targetDate) toast('Note: your estimated finish date is past your term end. The plan will still be generated.', 'warn');
     if (hrsPerDay < 0.5) { toast('Not enough study hours configured', 'warn'); return; }
 
     const planId = `plan_${Date.now()}`;
@@ -968,16 +968,16 @@ ${fsrsReviewPrompt}${userCtx}`;
               </div>
             )}
 
-            {/* Feasibility summary sentence */}
+            {/* Feasibility check — explains whether the schedule is realistic */}
             {hasSettings && (
-              <div style={{ padding: '8px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, fontSize: fs(11), color: feasibilityColor, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: fs(14) }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
+              <div style={{ padding: '10px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, fontSize: fs(11), color: feasibilityColor, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, lineHeight: 1.5 }}>
+                <span style={{ fontSize: fs(14), flexShrink: 0 }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
                 <span>
                   {feasibilityLevel === 'green'
-                    ? `On track ${'\u2014'} ${totalEstHours}h across ${activeCourses.length} course${activeCourses.length !== 1 ? 's' : ''}${finishVsGoal != null && finishVsGoal > 0 ? `, finishing ${finishVsGoal}d early` : ''}${bufferDays != null && bufferDays > 0 ? ` with ${bufferDays}d extra time` : ''}.`
+                    ? `Your schedule looks good! ${totalEstHours}h of coursework across ${activeCourses.length} course${activeCourses.length !== 1 ? 's' : ''}, at ~${Math.round(hrsPerDay * 10) / 10}h/day.${finishVsGoal != null && finishVsGoal > 0 ? ` You should finish about ${finishVsGoal} days before your deadline.` : ''}${bufferDays != null && bufferDays > 0 ? ` That gives you ${bufferDays} days of buffer for unexpected interruptions.` : ''}`
                     : feasibilityLevel === 'yellow'
-                      ? `Tight schedule ${'\u2014'} ${minHrsPerDay}h/day needed${utilizationPct != null ? ` (${utilizationPct}% of your time)` : ''}. Consider extending your target or adjusting availability.`
-                      : `Won${'\u2019'}t fit ${'\u2014'} ${minHrsPerDay != null ? `${minHrsPerDay}h/day needed` : 'no study days available'}. Extend your target date, add study hours, or remove days off.`
+                      ? `This schedule is tight but possible. You${'\u2019'}ll need about ${minHrsPerDay}h of study per day${utilizationPct != null ? ` (using ${utilizationPct}% of your available time)` : ''}. If you miss a few days, you may fall behind. Consider adding more study windows or pushing your deadline back a bit.`
+                      : `This schedule doesn${'\u2019'}t have enough time. ${minHrsPerDay != null ? `You${'\u2019'}d need ${minHrsPerDay}h/day, which isn${'\u2019'}t sustainable.` : 'There are no study days available.'} Try: moving your target date later, adding more study time to your weekly schedule, or reducing the number of courses.`
                   }
                 </span>
               </div>
@@ -1070,9 +1070,6 @@ ${fsrsReviewPrompt}${userCtx}`;
                 }} disabled={bg.loading || !profile || activeCourses.length === 0}>
                   {isGenerating ? <><Ic.Spin s={14} /> Generating...</> : 'Generate Study Plan'}
                 </Btn>
-                <button onClick={() => setShowAdvanced(true)} style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(11), textDecoration: 'underline', padding: '8px 4px', whiteSpace: 'nowrap' }}>
-                  Customize schedule
-                </button>
               </div>
 
               {/* Inline AI Activity — only during plan generation */}
@@ -1191,16 +1188,16 @@ ${fsrsReviewPrompt}${userCtx}`;
                   </div>
                 )}
 
-                {/* Warnings */}
+                {/* Schedule warnings — with student-friendly explanations */}
                 {(() => {
                   const warns = [];
-                  if (hrsPerDay < 2 && totalEstHours > 0) warns.push({ c: T.orange, m: `${Math.round(hrsPerDay * 10) / 10}h/day is very low. Most students need 3-6h/day.` });
-                  if (hrsPerDay > 12) warns.push({ c: T.orange, m: `${Math.round(hrsPerDay * 10) / 10}h/day is extremely high. Risk of burnout.` });
-                  if (data.targetCompletionDate && data.targetDate && data.targetCompletionDate > data.targetDate) warns.push({ c: T.red, m: 'Target completion is AFTER term end.' });
-                  if (data.studyStartDate && data.targetCompletionDate && data.studyStartDate >= data.targetCompletionDate) warns.push({ c: T.red, m: `Start date on or after completion ${'\u2014'} no study days.` });
-                  if (!feasible) warns.push({ c: T.red, m: `Aggressive timeline ${'\u2014'} ${minHrsPerDay}h/day needed. Consider extending your target or adjusting availability.` });
+                  if (hrsPerDay < 2 && totalEstHours > 0) warns.push({ c: T.orange, m: `Low study time: ~${Math.round(hrsPerDay * 10) / 10}h/day based on your schedule. Most students need 3-6h/day to stay on track. Try adding more study windows to your weekly schedule above.` });
+                  if (hrsPerDay > 12) warns.push({ c: T.orange, m: `Very heavy schedule: ${Math.round(hrsPerDay * 10) / 10}h/day of study. This pace is hard to sustain and increases burnout risk. Consider extending your target date or reducing the number of courses this term.` });
+                  if (data.targetCompletionDate && data.targetDate && data.targetCompletionDate > data.targetDate) warns.push({ c: T.red, m: `Date conflict: Your target completion date (${new Date(data.targetCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}) is after your term end date (${new Date(data.targetDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}). This means you${'\u2019'}re planning to finish after your term ends. Adjust one of these dates.` });
+                  if (data.studyStartDate && data.targetCompletionDate && data.studyStartDate >= data.targetCompletionDate) warns.push({ c: T.red, m: `Invalid dates: Your start date is on or after your target completion date, leaving zero study days. Check both dates above.` });
+                  if (!feasible) warns.push({ c: T.red, m: `Not enough time: Finishing by your target requires ${minHrsPerDay}h/day of study, which is more than most people can sustain. You can fix this by: (1) pushing your target date later, (2) adding more study time to your weekly schedule, or (3) reducing courses this term.` });
                   if (warns.length === 0) return null;
-                  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>{warns.map((w, i) => <div key={i} style={{ padding: '6px 12px', borderRadius: 7, background: `${w.c}11`, border: `1px solid ${w.c}33`, fontSize: fs(10), color: w.c }}>{w.m}</div>)}</div>;
+                  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>{warns.map((w, i) => <div key={i} style={{ padding: '8px 12px', borderRadius: 8, background: `${w.c}11`, border: `1px solid ${w.c}33`, fontSize: fs(11), color: w.c, lineHeight: 1.5 }}>{w.m}</div>)}</div>;
                 })()}
               </div>
             </div>
@@ -1210,13 +1207,13 @@ ${fsrsReviewPrompt}${userCtx}`;
           {activeCourses.length > 0 && hasSettings && (showAdvanced || hasPlan) && (
             <div>
               <div style={{ padding: '8px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, fontSize: fs(11), color: feasibilityColor, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: fs(14) }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
+                <span style={{ fontSize: fs(14), flexShrink: 0 }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
                 <span>
                   {feasibilityLevel === 'green'
-                    ? `On track ${'\u2014'} ${totalEstHours}h across ${activeCourses.length} course${activeCourses.length !== 1 ? 's' : ''}${finishVsGoal != null && finishVsGoal > 0 ? `, finishing ${finishVsGoal}d early` : ''}${bufferDays != null && bufferDays > 0 ? ` with ${bufferDays}d extra time` : ''}.`
+                    ? `Your schedule looks good! ${totalEstHours}h across ${activeCourses.length} course${activeCourses.length !== 1 ? 's' : ''}, ~${Math.round(hrsPerDay * 10) / 10}h/day.${finishVsGoal != null && finishVsGoal > 0 ? ` Finishing ~${finishVsGoal}d early.` : ''}${bufferDays != null && bufferDays > 0 ? ` ${bufferDays}d buffer for interruptions.` : ''}`
                     : feasibilityLevel === 'yellow'
-                      ? `Tight schedule ${'\u2014'} ${minHrsPerDay}h/day needed${utilizationPct != null ? ` (${utilizationPct}% of your time)` : ''}. Consider extending your target or adjusting availability.`
-                      : `Won${'\u2019'}t fit ${'\u2014'} ${minHrsPerDay != null ? `${minHrsPerDay}h/day needed` : 'no study days available'}. Extend your target date or adjust availability.`
+                      ? `Tight but possible. Need ~${minHrsPerDay}h/day${utilizationPct != null ? ` (${utilizationPct}% of your time)` : ''}. Consider extending your target or adding study windows.`
+                      : `Not enough time. ${minHrsPerDay != null ? `Need ${minHrsPerDay}h/day, which isn${'\u2019'}t sustainable.` : 'No study days available.'} Extend your target date or add more study time.`
                   }
                 </span>
               </div>

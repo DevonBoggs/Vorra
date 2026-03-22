@@ -135,3 +135,39 @@ export function isLikelyVisionCapable(profile) {
   // Unknown model — assume capable (API layer will retry without image on 400)
   return true;
 }
+
+// Model-level tool-calling capability check.
+// Returns false for providers/models known to lack tool calling support.
+export function isLikelyToolCapable(profile) {
+  const quirks = getProviderQuirks(profile);
+  if (quirks.noToolSupport) return false;
+
+  const provider = (profile?.provider || '').toLowerCase();
+  const model = (profile?.model || '').toLowerCase();
+  if (!model) return true; // no model set — assume capable
+
+  // Local providers: only specific models support tools
+  if (['ollama', 'lmstudio', 'vllm', 'kobold', 'textgen', 'tabby', 'jan'].includes(provider)) {
+    const toolCapableLocal = [
+      'llama-3.1', 'llama-3.2', 'llama-3.3', 'llama3.1', 'llama3.2', 'llama3.3',
+      'mistral-nemo', 'mistral-small', 'mistral-large',
+      'qwen2.5', 'qwen-2.5', 'qwen3',
+      'hermes', 'firefunction', 'functionary',
+      'command-r', 'command-a',
+      'nemotron',
+    ];
+    return toolCapableLocal.some(p => model.includes(p));
+  }
+
+  // Known non-tool-capable models on any provider
+  const noToolModels = [
+    'llama-2', 'llama2', 'llama-3.0', 'llama3.0',
+    'phi-2', 'phi2', 'phi-1',
+    'falcon', 'mpt-', 'dolly',
+    'stablelm', 'starcoder', 'codellama',
+    'tinyllama', 'orca-mini',
+  ];
+  if (noToolModels.some(p => model.includes(p))) return false;
+
+  return true;
+}

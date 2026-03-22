@@ -666,6 +666,12 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
     if (getBgState().abortCtrl?.signal?.aborted) { logs.push({type:"error",content:"⛔ Cancelled"}); break; }
     if (resp.text) { logs.push({type:"text",content:resp.text}); finalText += (finalText?" ":"") + resp.text; bgStream(""); }
     if (resp.toolCalls.length > 0) {
+      // Guard: if response was truncated, tool call data may be incomplete — skip execution
+      if (resp.stopReason === 'length') {
+        dlog('warn', 'api', 'Skipping tool execution — response was truncated (finish_reason=length). Data may be incomplete.');
+        logs.push({ type: 'warn', content: '\u26A0\uFE0F Response was truncated — skipping tool execution to prevent saving incomplete data. Try a model with a larger output limit.' });
+        break;
+      }
       for (const tc of resp.toolCalls) logs.push({type:"tool_call",content:`🔧 ${tc.name}(${JSON.stringify(tc.input).slice(0,300)})`});
       if (typeof executeTools !== 'function') {
         logs.push({type:"error",content:"Bug: executeTools not provided to runAILoop — tool calls cannot be processed. This is a coding error."});

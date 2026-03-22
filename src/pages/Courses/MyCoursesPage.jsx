@@ -3,7 +3,7 @@ import { useTheme, fs } from '../../styles/tokens.js';
 import Ic from '../../components/icons/index.jsx';
 import { todayStr, uid, fileToBase64 } from '../../utils/helpers.js';
 import { getSTATUS_C, STATUS_L } from '../../constants/categories.js';
-import { EMPTY_DEEP, TOOLS, getProviderQuirks, isLikelyVisionCapable } from '../../constants/tools.js';
+import { EMPTY_DEEP, TOOLS, getProviderQuirks, isLikelyVisionCapable, isLikelyToolCapable } from '../../constants/tools.js';
 import { useBreakpoint } from '../../systems/breakpoint.js';
 import { dlog } from '../../systems/debug.js';
 import { toast } from '../../systems/toast.js';
@@ -65,6 +65,30 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
 
   // Fix 3: robust isEnriching check — no string matching
   const isEnriching = bg.loading && bg.regenId !== null;
+
+  // Keep a ref to fresh data so async loops can read current state (not stale closure)
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; });
+
+  // Shared tool-restricted wrapper — only allows enrich_course_context during enrichment
+  const enrichOnlyTools = (calls, d, sd) => {
+    const filtered = calls.filter(c => c.name === 'enrich_course_context');
+    if (filtered.length < calls.length) {
+      const rejected = calls.filter(c => c.name !== 'enrich_course_context').map(c => c.name);
+      dlog('warn', 'tool', `Rejected non-enrichment tools: ${rejected.join(', ')}`);
+    }
+    return filtered.length > 0 ? executeTools(filtered, d, sd) : [{ id: 'skip', result: 'No enrichment tool called' }];
+  };
+
+  // Pre-enrichment check — warns about tool-call support
+  const checkToolSupport = () => {
+    if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return false; }
+    if (!isLikelyToolCapable(profile)) {
+      toast(`${profile.name}${profile.model ? ` (${profile.model})` : ''} may not support tool calling. Enrichment requires a model with function calling support (e.g., GPT-4o, Claude Sonnet, Llama 3.1+).`, 'error');
+      return false;
+    }
+    return true;
+  };
 
   // Celebration modal state
   const [celebration, setCelebration] = useState(null);
@@ -287,18 +311,18 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
 
   // AI enrichment — full course
   const regenCourse = async (course) => {
-    if (!profile) return;
+    if (!checkToolSupport()) return;
     bgSet({ loading: true, regenId: course.id, logs: [{ type: 'user', content: `\uD83D\uDD04 Enriching: ${course.name}` }], label: `Enriching ${course.name}...` });
     dlog('info', 'api', `Regen: ${course.name}`);
-    const sys = buildSystemPrompt(data, `Regenerate deep context for "${course.name}" using enrich_course_context. Include ALL fields.`);
-    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context.` }], data, setData, executeTools);
+    const sys = buildSystemPrompt(dataRef.current, `Regenerate deep context for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}". Include ALL fields.`);
+    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context.` }], dataRef.current, setData, enrichOnlyTools);
     for (const l of logs) bgLog(l);
     bgSet({ loading: false, regenId: null, label: '' });
   };
 
   // Selective section regeneration — only specific sections
   const regenSections = async (course, sectionIds) => {
-    if (!profile || !sectionIds.length) return;
+    if (!checkToolSupport() || !sectionIds.length) return;
     const sectionLabels = sectionIds.map(id => SECTIONS.find(s => s.id === id)?.label).filter(Boolean);
     const fieldsList = sectionIds.flatMap(id => SECTION_FIELDS[id] || []);
     bgSet({ loading: true, regenId: course.id, logs: [{ type: 'user', content: `\u2728 Generating ${sectionLabels.join(', ')} for ${course.name}` }], label: `Generating sections for ${course.name}...` });
@@ -309,14 +333,14 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     if (safeArr(course.examTips).length > 0) existingContext.push(`${safeArr(course.examTips).length} exam tips`);
     if (course.assessmentType) existingContext.push(`Assessment: ${course.assessmentType}`);
 
-    const sys = buildSystemPrompt(data, `Generate ONLY the following sections for "${course.name}" using enrich_course_context: ${sectionLabels.join(', ')}.\n\nDo NOT include other fields — they already exist.\n${existingContext.length > 0 ? `\nExisting context: ${existingContext.join('; ')}` : ''}`);
-    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate the following missing data for ${course.name}: ${sectionLabels.join(', ')}. Only fill in these specific fields: ${fieldsList.join(', ')}.` }], data, setData, executeTools);
+    const sys = buildSystemPrompt(dataRef.current, `Generate ONLY the following sections for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}": ${sectionLabels.join(', ')}.\n\nDo NOT include other fields \u2014 they already exist.\n${existingContext.length > 0 ? `\nExisting context: ${existingContext.join('; ')}` : ''}`);
+    const { logs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate the following missing data for ${course.name}: ${sectionLabels.join(', ')}. Only fill in these specific fields: ${fieldsList.join(', ')}.` }], dataRef.current, setData, enrichOnlyTools);
     for (const l of logs) bgLog(l);
     bgSet({ loading: false, regenId: null, label: '' });
   };
 
   const regenAll = async () => {
-    if (!profile) return;
+    if (!checkToolSupport()) return;
     const active = courses.filter(c => c.status !== 'completed');
     if (!active.length) return;
     bgNewAbort();
@@ -326,27 +350,26 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
     let wasCancelled = false;
     for (const course of active) {
       if (getBgState().abortCtrl?.signal?.aborted) { bgLog({ type: 'error', content: `Stopped after ${completed}/${active.length}` }); wasCancelled = true; break; }
-      completed++;
-      bgSet({ label: `Regenerating ${completed}/${active.length}: ${course.name}...`, regenId: course.id });
-      bgLog({ type: 'user', content: `\uD83D\uDD04 ${completed}/${active.length}: ${course.name}` });
+      bgSet({ label: `Regenerating ${completed + 1}/${active.length}: ${course.name}...`, regenId: course.id });
+      bgLog({ type: 'user', content: `\uD83D\uDD04 ${completed + 1}/${active.length}: ${course.name}` });
       try {
-        const sys = buildSystemPrompt(data, `Regenerate deep context for "${course.name}" using enrich_course_context. Include ALL fields.`);
-        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context \u2014 competencies, topics with weights, exam tips, key terms, focus areas, resources, common mistakes.` }], data, setData, executeTools);
+        const sys = buildSystemPrompt(dataRef.current, `Regenerate deep context for "${course.name}" using enrich_course_context. Use course_name_match: "${course.name}". Include ALL fields.`);
+        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Tell me everything I truly need to know to pass ${course.name}. Fill in all context \u2014 competencies, topics with weights, exam tips, key terms, focus areas, resources, common mistakes.` }], dataRef.current, setData, enrichOnlyTools);
         for (const l of cLogs) bgLog(l);
+        completed++;
       } catch (e) {
         bgLog({ type: 'error', content: `Failed: ${course.name} \u2014 ${e.message}` });
       }
     }
-    toast(wasCancelled ? `Regeneration stopped: ${completed - 1}/${active.length}` : `Regeneration complete: ${completed}/${active.length}`, wasCancelled ? 'warn' : 'success');
+    toast(wasCancelled ? `Regeneration stopped: ${completed}/${active.length}` : `Regeneration complete: ${completed}/${active.length}`, wasCancelled ? 'warn' : 'success');
     bgSet({ loading: false, regenId: null, label: '' });
   };
 
   const enrichNew = async () => {
-    if (!profile) return;
+    if (!checkToolSupport()) return;
     const toEnrich = courses.filter(c => c.status !== 'completed' && !hasCtx(c));
     if (!toEnrich.length) { toast('All courses already enriched!', 'info'); return; }
 
-    // Reset abort controller so a previous cancellation doesn't block this run
     bgNewAbort();
     bgSet({ loading: true, regenId: null, logs: [{ type: 'user', content: `\u2728 Enriching ${toEnrich.length} course${toEnrich.length > 1 ? 's' : ''} individually` }], label: `Enriching 1/${toEnrich.length}...` });
     dlog('info', 'api', `Enrich new (sequential): ${toEnrich.length} courses`);
@@ -364,25 +387,16 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
       bgLog({ type: 'user', content: `\uD83D\uDD04 ${i + 1}/${toEnrich.length}: ${course.name}` });
 
       try {
-        // Only allow enrich_course_context tool — reject others to prevent accidental data changes
-        const enrichOnly = (calls, d, sd) => {
-          const filtered = calls.filter(c => c.name === 'enrich_course_context');
-          if (filtered.length < calls.length) {
-            const rejected = calls.filter(c => c.name !== 'enrich_course_context').map(c => c.name);
-            dlog('warn', 'tool', `Rejected non-enrichment tools during enrichment: ${rejected.join(', ')}`);
-          }
-          return filtered.length > 0 ? executeTools(filtered, d, sd) : [{ id: 'skip', result: 'No enrichment tool called' }];
-        };
-        const sys = buildSystemPrompt(data, `Generate deep context for ONLY "${course.name}" (${course.courseCode || 'no code'}) using enrich_course_context. Use the EXACT course name "${course.name}" as the course_name_match value. Include ALL fields. Do NOT enrich other courses.`);
-        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours). Use course_name_match: "${course.name}"` }], data, setData, enrichOnly);
+        const sys = buildSystemPrompt(dataRef.current, `Generate deep context for ONLY "${course.name}" (${course.courseCode || 'no code'}) using enrich_course_context. Use the EXACT course name "${course.name}" as the course_name_match value. Include ALL fields. Do NOT enrich other courses.`);
+        const { logs: cLogs } = await runAILoop(profile, sys, [{ role: 'user', content: `Generate comprehensive study context for ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''}.${course.credits ? ` ${course.credits} CU.` : ''} Include everything a student needs to pass: assessment format, all competencies, topic breakdown with weights, exam tips, key terms, focus areas, resources, common mistakes, and estimated total study hours (averageStudyHours). Use course_name_match: "${course.name}"` }], dataRef.current, setData, enrichOnlyTools);
         for (const l of cLogs) bgLog(l);
-        // Verify enrichment actually happened by checking if course now has context
-        const updatedCourse = (data.courses || []).find(c => c.id === course.id);
-        if (updatedCourse && hasCtx(updatedCourse)) {
+        // Verify enrichment using fresh data ref (not stale closure)
+        const freshCourse = (dataRef.current.courses || []).find(c => c.id === course.id);
+        if (freshCourse && hasCtx(freshCourse)) {
           completed++;
           dlog('info', 'api', `Enriched ${completed}/${toEnrich.length}: ${course.name}`);
         } else {
-          bgLog({ type: 'warn', content: `${course.name}: AI responded but enrichment data may be incomplete` });
+          bgLog({ type: 'warn', content: `${course.name}: AI responded but did not call the enrichment tool. Your model may not support function calling.` });
           dlog('warn', 'api', `Enrichment may have failed for ${course.name} — hasCtx check failed`);
         }
       } catch (e) {

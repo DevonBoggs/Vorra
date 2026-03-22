@@ -48,16 +48,26 @@ const ToggleSwitch = ({ label, isOn, onClick, T }) => (
   </button>
 );
 
-// Context menu component
+// Context menu component with viewport clamping
 const CtxMenu = ({ x, y, items, onClose, T }) => {
   const ref = useRef(null);
+  const [pos, setPos] = useState({ left: x, top: y });
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
+  useEffect(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    setPos({
+      left: Math.min(x, vw - rect.width - 8),
+      top: Math.min(y, vh - rect.height - 8),
+    });
+  }, [x, y]);
   return (
-    <div ref={ref} style={{ position: 'fixed', left: x, top: y, zIndex: 50, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 4, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
+    <div ref={ref} style={{ position: 'fixed', left: pos.left, top: pos.top, zIndex: 50, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 4, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
       {items.map((item, i) => item.divider ? (
         <div key={i} style={{ height: 1, background: T.border, margin: '3px 0' }} />
       ) : (
@@ -88,24 +98,35 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const wa = plannerConfig?.weeklyAvailability || {};
   const commitments = plannerConfig?.commitments || [];
 
-  // ── Undo/Redo system ──
+  // ── Undo/Redo system (captures both wa + commitments) ──
   const undoStack = useRef([]);
   const redoStack = useRef([]);
-  const lastWaRef = useRef(null);
+  const lastSnapRef = useRef(null);
 
-  // Keep lastWaRef in sync with current state after each render
-  useEffect(() => { lastWaRef.current = JSON.stringify(wa); });
+  // Keep lastSnapRef in sync with current state after each render
+  useEffect(() => { lastSnapRef.current = JSON.stringify({ wa, cm: commitments }); });
 
-  // Wrap onUpdate to capture undo snapshots before applying changes
-  const wrappedOnUpdate = (updates) => {
-    const currentSnap = JSON.stringify(wa);
-    // Only push if state actually differs from last snapshot
-    if (currentSnap !== undoStack.current[undoStack.current.length - 1]) {
-      undoStack.current.push(currentSnap);
+  // Capture a combined snapshot of wa + commitments before changes
+  const pushUndo = () => {
+    const snap = JSON.stringify({ wa, cm: commitments });
+    const top = undoStack.current[undoStack.current.length - 1];
+    if (snap !== (top ? JSON.stringify(top) : null)) {
+      undoStack.current.push({ wa: JSON.stringify(wa), cm: JSON.stringify(commitments) });
       redoStack.current = [];
       if (undoStack.current.length > 30) undoStack.current.shift();
     }
+  };
+
+  // Wrap onUpdate to capture undo snapshots before applying changes
+  const wrappedOnUpdate = (updates) => {
+    pushUndo();
     onUpdate(updates);
+  };
+
+  // Wrap onUpdateCommitments to capture undo snapshots before applying changes
+  const wrappedOnUpdateCommitments = (updated) => {
+    pushUndo();
+    if (onUpdateCommitments) onUpdateCommitments(updated);
   };
 
   // ── Study window CRUD ──
@@ -189,16 +210,18 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     wrappedOnUpdate({ weeklyAvailability: { ...wa, [dow]: { ...day, windows } } });
   };
 
-  // Remove a commitment
+  // Remove a commitment (with undo snapshot)
   const removeCommitment = (id) => {
-    if (onUpdateCommitments) onUpdateCommitments(commitments.filter(c => c.id !== id));
+    wrappedOnUpdateCommitments(commitments.filter(c => c.id !== id));
   };
 
   // Context menu builders
   const openCtx = (e, items) => {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+    // Adjust for CSS zoom on parent — clientX/Y are in zoomed space, fixed positioning is in viewport space
+    const zoom = (parseFloat(document.querySelector('[style*="zoom"]')?.style?.zoom) || 1);
+    setCtxMenu({ x: e.clientX / zoom, y: e.clientY / zoom, items });
   };
 
   const buildEmptyCtx = (dow, clickMin) => [
@@ -266,8 +289,14 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     ];
   };
 
-  const buildCommitmentCtx = (c) => [
+  const buildCommitmentCtx = (c, dow) => [
     { label: 'Edit commitment...', action: () => { setShowCommitmentForm(true); } },
+    { label: 'Use this time for study', action: () => {
+      // Add a study window matching this commitment's time on this day
+      const day = { ...(wa[dow] || { available: true, windows: [] }) };
+      const windows = [...(day.windows || []), { start: c.start, end: c.end }].sort((a, b) => toMin(a.start) - toMin(b.start));
+      wrappedOnUpdate({ weeklyAvailability: { ...wa, [dow]: { ...day, windows, available: true } } });
+    }},
     { divider: true },
     { label: 'Delete commitment', action: () => removeCommitment(c.id), danger: true },
   ];
@@ -291,25 +320,31 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     const handleKeyDown = (e) => {
       const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
 
-      // Ctrl+Z: Undo
+      // Ctrl+Z: Undo (restores both wa + commitments)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !isInput) {
         e.preventDefault();
         if (undoStack.current.length > 0) {
-          redoStack.current.push(JSON.stringify(wa));
-          const prev = JSON.parse(undoStack.current.pop());
-          onUpdate({ weeklyAvailability: prev });
-          lastWaRef.current = JSON.stringify(prev);
+          redoStack.current.push({ wa: JSON.stringify(wa), cm: JSON.stringify(commitments) });
+          const prev = undoStack.current.pop();
+          const prevWa = JSON.parse(prev.wa);
+          const prevCm = JSON.parse(prev.cm);
+          onUpdate({ weeklyAvailability: prevWa });
+          if (onUpdateCommitments) onUpdateCommitments(prevCm);
+          lastSnapRef.current = JSON.stringify({ wa: prevWa, cm: prevCm });
         }
         return;
       }
-      // Ctrl+Y or Ctrl+Shift+Z: Redo
+      // Ctrl+Y or Ctrl+Shift+Z: Redo (restores both wa + commitments)
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !isInput) {
         e.preventDefault();
         if (redoStack.current.length > 0) {
-          undoStack.current.push(JSON.stringify(wa));
-          const next = JSON.parse(redoStack.current.pop());
-          onUpdate({ weeklyAvailability: next });
-          lastWaRef.current = JSON.stringify(next);
+          undoStack.current.push({ wa: JSON.stringify(wa), cm: JSON.stringify(commitments) });
+          const next = redoStack.current.pop();
+          const nextWa = JSON.parse(next.wa);
+          const nextCm = JSON.parse(next.cm);
+          onUpdate({ weeklyAvailability: nextWa });
+          if (onUpdateCommitments) onUpdateCommitments(nextCm);
+          lastSnapRef.current = JSON.stringify({ wa: nextWa, cm: nextCm });
         }
         return;
       }
@@ -365,7 +400,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [drag, hoveredBlock, selectedBlock, wa]);
+  }, [drag, hoveredBlock, selectedBlock, wa, commitments]);
 
   // ── Conflict detection ──
   const getConflicts = (dow) => {
@@ -591,7 +626,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                   return (
                     <div key={'c' + ci} title={`${c.label}: ${c.start}-${c.end}`}
                       onMouseDown={(e) => { e.stopPropagation(); setSelectedBlock({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id }); handleBlockMouseDown(e, dow, ci, 'move', 'commitment', c.id); }}
-                      onContextMenu={(e) => openCtx(e, buildCommitmentCtx(c))}
+                      onContextMenu={(e) => openCtx(e, buildCommitmentCtx(c, dow))}
                       onMouseEnter={e => { if (!drag) { e.currentTarget.style.filter = 'brightness(1.25)'; setHoveredBlock({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id }); } }}
                       onMouseLeave={e => { e.currentTarget.style.filter = 'none'; setHoveredBlock(null); }}
                       style={{ position: 'absolute', top: 3, bottom: 3, left: `${left}%`, width: `${Math.max(2, width)}%`, background: color + (isDragging ? '66' : isSelected ? '77' : '55'), borderRadius: 3, border: isDragging || isSelected ? `2px solid ${color}` : `1px solid ${color}88`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '0 3px', gap: 3, cursor: drag ? (drag.mode === 'move' ? 'grabbing' : 'col-resize') : 'grab', opacity: isDragging ? 0.85 : 1, zIndex: isDragging ? 10 : isSelected ? 5 : 2, userSelect: 'none', transition: isDragging ? 'none' : 'all .15s', boxShadow: isSelected ? `0 0 8px ${color}44` : 'none' }}>
@@ -676,7 +711,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
         </div>
         {showCommitmentForm && (
           <div style={{ marginTop: 8 }}>
-            <CommitmentEditor commitments={commitments} onUpdate={updated => { if (onUpdateCommitments) onUpdateCommitments(updated); setCommitmentPrefill(null); }} prefill={commitmentPrefill} />
+            <CommitmentEditor commitments={commitments} onUpdate={updated => { wrappedOnUpdateCommitments(updated); setCommitmentPrefill(null); }} prefill={commitmentPrefill} />
           </div>
         )}
       </div>

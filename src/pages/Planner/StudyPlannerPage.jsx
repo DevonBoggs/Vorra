@@ -1011,7 +1011,22 @@ ${fsrsReviewPrompt}${userCtx}`;
                 })}
               </div>
 
-              {/* Single date field */}
+              {/* Weekly availability editor — the main attraction */}
+              {pc && (
+                <div style={{ marginBottom: 14, border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 12px', background: T.input, fontSize: fs(11), fontWeight: 600, color: T.soft, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Your weekly schedule ({Math.round(weeklyHours)}h/wk)</span>
+                    <span style={{ color: T.dim }}>Drag to adjust {'\u00B7'} Right-click for options</span>
+                  </div>
+                  <div style={{ padding: '8px 10px', background: T.panel }}>
+                    <WeeklyAvailabilityEditor plannerConfig={pc} onUpdate={updates => setPc(updates)}
+                      onUpdateCommitment={(id, start, end) => { setPc({ commitments: (pc.commitments || []).map(c => c.id === id ? { ...c, start, end } : c) }); }}
+                      onUpdateCommitments={updated => setPc({ commitments: updated })} />
+                  </div>
+                </div>
+              )}
+
+              {/* Dates */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
                   <Label>When do you need to finish?</Label>

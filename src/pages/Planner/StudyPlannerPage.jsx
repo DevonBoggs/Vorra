@@ -157,7 +157,10 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
       sub: bufferDays != null && bufferDays > 0 ? `${bufferDays}d spare \u00B7 ${bufferHours}h free` : 'time fully allocated' };
   })();
 
-  const feasibilityLevel = !feasible ? 'red' : (minHrsPerDay != null && minHrsPerDay > 6) || (utilizationPct != null && utilizationPct > 85) || (finishDelta != null && finishDelta < 3) ? 'yellow' : 'green';
+  const feasibilityLevel = !feasible ? 'red'
+    : (minHrsPerDay != null && minHrsPerDay > 8) || (utilizationPct != null && utilizationPct > 95) || (finishDelta != null && finishDelta < 0) ? 'red'
+    : (minHrsPerDay != null && minHrsPerDay > 5) || (utilizationPct != null && utilizationPct > 90) || (finishDelta != null && finishDelta < 3) ? 'yellow'
+    : 'green';
   const feasibilityColor = { green: T.accent, yellow: T.orange, red: T.red }[feasibilityLevel];
 
   // Feasibility check for exception dates — use availability-aware calc when plannerConfig exists
@@ -1044,32 +1047,67 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </div>
               </div>
 
-              {/* Feasibility preview — explains what the numbers mean */}
-              <div style={{ padding: '10px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, fontSize: fs(11), color: feasibilityColor, marginBottom: 12, lineHeight: 1.6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: feasibilityLevel !== 'green' ? 6 : 0 }}>
+              {/* Schedule analysis — multi-line with context-aware notices */}
+              <div style={{ padding: '12px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, marginBottom: 12, lineHeight: 1.6 }}>
+                {/* Main status line */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: fs(14), flexShrink: 0 }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
-                  <span style={{ fontWeight: 600 }}>
-                    {feasibilityLevel === 'green'
-                      ? `Ready to go ${'\u2014'} ${Math.round(weeklyHours)}h/week, ~${Math.round(hrsPerDay * 10) / 10}h/day`
-                      : feasibilityLevel === 'yellow'
-                        ? `Tight schedule ${'\u2014'} ${Math.round(weeklyHours)}h/week, ~${Math.round(hrsPerDay * 10) / 10}h/day`
-                        : `Schedule won${'\u2019'}t fit ${'\u2014'} ${Math.round(weeklyHours)}h/week, ~${Math.round(hrsPerDay * 10) / 10}h/day`
-                    }
+                  <span style={{ fontSize: fs(12), fontWeight: 700, color: feasibilityColor }}>
+                    {feasibilityLevel === 'green' ? 'Your schedule looks good!'
+                      : feasibilityLevel === 'yellow' ? 'This schedule is doable, but tight.'
+                      : 'This schedule needs adjusting.'}
                   </span>
                 </div>
-                <div style={{ fontSize: fs(10), color: feasibilityLevel === 'green' ? T.soft : feasibilityColor, paddingLeft: 22 }}>
-                  {feasibilityLevel === 'green' ? (
-                    <>Based on your weekly schedule, you have {Math.round(weeklyHours)}h of study time per week (~{Math.round(hrsPerDay * 10) / 10}h/day average).
-                    {estCompletionDate ? ` At this pace, you should finish around ${new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.` : ''}
-                    {finishDelta != null && finishDelta > 7 ? ` That${'\u2019'}s ${finishDelta} days before your deadline ${'\u2014'} plenty of breathing room.` : finishDelta != null && finishDelta > 0 ? ` That${'\u2019'}s ${finishDelta} days before your deadline.` : ''}</>
-                  ) : feasibilityLevel === 'yellow' ? (
-                    <>Your schedule has {Math.round(weeklyHours)}h/week, but you{'\u2019'}ll need to use {utilizationPct != null ? `${utilizationPct}%` : 'most'} of it.
-                    {estCompletionDate ? ` Estimated finish: ${new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.` : ''}
-                    {' '}If you miss a few study sessions, you could fall behind. Consider adding more study windows or pushing your deadline back.</>
-                  ) : (
-                    <>{totalEstHours}h of coursework needs more time than your schedule allows ({Math.round(weeklyHours)}h/week).
-                    {minHrsPerDay != null ? ` You${'\u2019'}d need ~${minHrsPerDay}h every single day, which isn${'\u2019'}t realistic.` : ''}
-                    {' '}Fix by: adding more study time to your schedule above, moving your finish date later, or reducing courses this term.</>
+                {/* Stats grid */}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 8, paddingLeft: 22 }}>
+                  <div style={{ fontSize: fs(10), color: T.soft }}>
+                    <span style={{ fontWeight: 600, color: T.text }}>{Math.round(weeklyHours)}h</span>/week
+                  </div>
+                  <div style={{ fontSize: fs(10), color: T.soft }}>
+                    <span style={{ fontWeight: 600, color: T.text }}>~{Math.round(hrsPerDay * 10) / 10}h</span>/day avg
+                  </div>
+                  <div style={{ fontSize: fs(10), color: T.soft }}>
+                    <span style={{ fontWeight: 600, color: T.text }}>{studyDaysPerWeek}</span> study days/week
+                  </div>
+                  {estCompletionDate && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>
+                      Est. finish: <span style={{ fontWeight: 600, color: finishColor }}>{new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    </div>
+                  )}
+                  {finishDelta != null && (
+                    <div style={{ fontSize: fs(10), color: finishDelta > 7 ? T.accent : finishDelta >= 0 ? T.orange : T.red }}>
+                      {finishDelta > 0 ? `${finishDelta}d before deadline` : finishDelta === 0 ? 'Right on deadline' : `${Math.abs(finishDelta)}d past deadline`}
+                    </div>
+                  )}
+                </div>
+                {/* Contextual notices */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 22 }}>
+                  {feasibilityLevel === 'green' && finishDelta != null && finishDelta > 14 && (
+                    <div style={{ fontSize: fs(10), color: T.accent }}>{'\u2713'} Plenty of buffer time ({finishDelta} days) for sick days, breaks, or getting ahead.</div>
+                  )}
+                  {feasibilityLevel === 'green' && finishDelta != null && finishDelta > 0 && finishDelta <= 14 && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2713'} On track, but not much buffer. Try to stay consistent with your schedule.</div>
+                  )}
+                  {hrsPerDay > 3 && hrsPerDay <= 5 && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is a moderate pace. Most working students can sustain this.</div>
+                  )}
+                  {hrsPerDay > 5 && hrsPerDay <= 8 && (
+                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} ~{Math.round(hrsPerDay * 10) / 10}h/day is intensive. Make sure to schedule breaks and rest days.</div>
+                  )}
+                  {hrsPerDay > 8 && (
+                    <div style={{ fontSize: fs(10), color: T.red }}>{'\u274C'} ~{Math.round(hrsPerDay * 10) / 10}h/day risks burnout. Consider extending your deadline or reducing courses.</div>
+                  )}
+                  {weeklyHours > 0 && weeklyHours < 10 && totalEstHours > 50 && (
+                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} Less than 10h/week of study time. At this pace, {totalEstHours}h of coursework will take a while. Add more study windows if you can.</div>
+                  )}
+                  {studyDaysPerWeek <= 3 && totalEstHours > 50 && (
+                    <div style={{ fontSize: fs(10), color: T.soft }}>{'\u2139\uFE0F'} Only {studyDaysPerWeek} study days per week. Your sessions will need to be longer. Consider enabling more days.</div>
+                  )}
+                  {utilizationPct != null && utilizationPct > 90 && feasibilityLevel !== 'red' && (
+                    <div style={{ fontSize: fs(10), color: T.orange }}>{'\u26A0\uFE0F'} Using {utilizationPct}% of your available time. Little room for missed sessions. Add buffer by extending your deadline.</div>
+                  )}
+                  {feasibilityLevel === 'red' && (
+                    <div style={{ fontSize: fs(10), color: T.red }}>Fix by: (1) moving your finish date later, (2) adding more study windows above, or (3) reducing courses this term.</div>
                   )}
                 </div>
               </div>

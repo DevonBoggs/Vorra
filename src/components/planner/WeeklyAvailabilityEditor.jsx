@@ -111,13 +111,14 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
 
   // Capture a combined snapshot of wa + commitments before changes
   const pushUndo = () => {
-    const snap = JSON.stringify({ wa, cm: commitments });
+    const waSnap = JSON.stringify(wa);
+    const cmSnap = JSON.stringify(commitments);
     const top = undoStack.current[undoStack.current.length - 1];
-    if (snap !== (top ? JSON.stringify(top) : null)) {
-      undoStack.current.push({ wa: JSON.stringify(wa), cm: JSON.stringify(commitments) });
-      redoStack.current = [];
-      if (undoStack.current.length > 30) undoStack.current.shift();
-    }
+    // Skip if identical to the last snapshot (prevents duplicates)
+    if (top && top.wa === waSnap && top.cm === cmSnap) return;
+    undoStack.current.push({ wa: waSnap, cm: cmSnap });
+    redoStack.current = [];
+    if (undoStack.current.length > 30) undoStack.current.shift();
   };
 
   // Wrap onUpdate to capture undo snapshots before applying changes
@@ -486,10 +487,14 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
       // Overlaps are allowed — conflicts shown as warnings, not prevented
       if (newEnd - newStart < MIN_DURATION) return;
 
+      // Use raw onUpdate during drag — undo snapshot was already captured in mouseDown
       if (drag.blockType === 'commitment' && onUpdateCommitment) {
         onUpdateCommitment(drag.commitmentId, minToTime(newStart), minToTime(newEnd));
       } else {
-        updateWindowBoth(drag.dow, drag.winIdx, minToTime(newStart), minToTime(newEnd));
+        const day = { ...(wa[drag.dow] || { available: true, windows: [] }) };
+        const windows = [...(day.windows || [])];
+        windows[drag.winIdx] = { ...windows[drag.winIdx], start: minToTime(newStart), end: minToTime(newEnd) };
+        onUpdate({ weeklyAvailability: { ...wa, [drag.dow]: { ...day, windows } } });
       }
     };
     const handleMouseUp = () => { document.body.style.userSelect = ''; setDrag(null); };

@@ -1034,13 +1034,13 @@ ${fsrsReviewPrompt}${userCtx}`;
               {/* Dates */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
+                  <Label>Start date</Label>
+                  <BufferedInput type="date" value={data.studyStartDate || autoStart} onCommit={v => setData(d => ({ ...d, studyStartDate: v }))} />
+                </div>
+                <div>
                   <Label>When do you need to finish?</Label>
                   <BufferedInput type="date" value={data.targetCompletionDate || autoTarget} onCommit={v => setData(d => ({ ...d, targetCompletionDate: v }))} />
                   {data.universityProfile?.name && <div style={{ fontSize: fs(9), color: T.dim, marginTop: 4 }}>Auto-set from {data.universityProfile.name} term</div>}
-                </div>
-                <div>
-                  <Label>Start date</Label>
-                  <BufferedInput type="date" value={data.studyStartDate || autoStart} onCommit={v => setData(d => ({ ...d, studyStartDate: v }))} />
                 </div>
               </div>
 

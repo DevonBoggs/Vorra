@@ -97,26 +97,13 @@ export function isFullyEnriched(c) {
   return courseCompleteness(c).pct >= 50;
 }
 
-// Data completeness — count how many enrichment field groups are populated
-const ENRICHMENT_FIELDS = [
-  c => c?.assessmentType,
-  c => safeArr(c?.competencies).length > 0,
-  c => safeArr(c?.topicBreakdown).length > 0,
-  c => safeArr(c?.keyTermsAndConcepts).length > 0,
-  c => safeArr(c?.examTips).length > 0,
-  c => safeArr(c?.commonMistakes).length > 0,
-  c => safeArr(c?.officialResources).length > 0 || safeArr(c?.recommendedExternal).length > 0,
-  c => c?.studyStrategy,
-  c => safeArr(c?.studyOrder).length > 0,
-  c => safeArr(c?.knownFocusAreas).length > 0,
-  c => c?.averageStudyHours > 0,
-  c => c?.passRate,
-];
-
+// Data completeness — aligned with SECTIONS (pills) for consistent counts
 export function courseCompleteness(c) {
-  if (!c) return { filled: 0, total: ENRICHMENT_FIELDS.length, pct: 0 };
-  const filled = ENRICHMENT_FIELDS.filter(fn => fn(c)).length;
-  return { filled, total: ENRICHMENT_FIELDS.length, pct: Math.round((filled / ENRICHMENT_FIELDS.length) * 100) };
+  if (!c) return { filled: 0, total: SECTIONS.length, pct: 0, missing: SECTIONS.map(s => s.id) };
+  const has = getSectionHasData(c);
+  const filled = SECTIONS.filter(s => has[s.id]).length;
+  const missing = SECTIONS.filter(s => !has[s.id]).map(s => s.id);
+  return { filled, total: SECTIONS.length, pct: Math.round((filled / SECTIONS.length) * 100), missing };
 }
 
 // Staleness — days since last enrichment

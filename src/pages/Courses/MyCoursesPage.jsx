@@ -839,15 +839,20 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
                         <CtxBadge label="Tips" count={safeArr(c.examTips).length} color={T.yellow} />
                       </div>
                       {/* Missing sections warning */}
-                      {hasCtx(c) && comp.missing.length > 0 && c.status !== 'completed' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: fs(9), color: T.orange }}>
-                          <span>{comp.missing.length} section{comp.missing.length > 1 ? 's' : ''} missing{comp.missing.length <= 4 ? `: ${comp.missing.map(id => SECTIONS.find(s => s.id === id)?.label).filter(Boolean).join(', ')}` : ''}</span>
-                          <button onClick={e => { e.stopPropagation(); regenSections(c, comp.missing); }} disabled={!profile || bg.loading}
-                            style={{ background: 'none', border: `1px solid ${T.orange}44`, borderRadius: 5, padding: '1px 8px', color: T.orange, cursor: profile && !bg.loading ? 'pointer' : 'default', fontSize: fs(9), fontWeight: 600 }}>
-                            Fill gaps
-                          </button>
-                        </div>
-                      )}
+                      {(() => {
+                        if (!hasCtx(c) || c.status === 'completed') return null;
+                        const cc = courseCompleteness(c);
+                        if (!cc.missing.length) return null;
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: fs(9), color: T.orange }}>
+                            <span>{cc.missing.length} section{cc.missing.length > 1 ? 's' : ''} missing{cc.missing.length <= 4 ? `: ${cc.missing.map(id => SECTIONS.find(s => s.id === id)?.label).filter(Boolean).join(', ')}` : ''}</span>
+                            <button onClick={e => { e.stopPropagation(); regenSections(c, cc.missing); }} disabled={!profile || bg.loading}
+                              style={{ background: 'none', border: `1px solid ${T.orange}44`, borderRadius: 5, padding: '1px 8px', color: T.orange, cursor: profile && !bg.loading ? 'pointer' : 'default', fontSize: fs(9), fontWeight: 600 }}>
+                              Fill gaps
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: 'flex', gap: 3, flexShrink: 0, alignItems: 'center' }}>
                       <button className="sf-icon-btn" onClick={e => { e.stopPropagation(); if (i > 0) moveCourse(i, i - 1); }} disabled={i === 0} style={{ background: 'none', border: 'none', color: i > 0 ? T.soft : T.faint, cursor: i > 0 ? 'pointer' : 'default', padding: 2, fontSize: fs(16), lineHeight: 1 }}>{'\u2191'}</button>

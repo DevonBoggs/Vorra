@@ -46,7 +46,7 @@ const BulletList = ({ T, items }) => (
   </ul>
 );
 
-export const CourseDetail = ({ c, onGenerate }) => {
+export const CourseDetail = ({ c, onGenerate, disabled }) => {
   const T = useTheme();
 
   if (!c) return null;
@@ -261,15 +261,17 @@ export const CourseDetail = ({ c, onGenerate }) => {
               {onGenerate && (
                 <button
                   onClick={() => onGenerate([resolvedSection])}
+                  disabled={disabled}
                   style={{
                     padding: '8px 18px', borderRadius: 999,
                     border: `1px solid ${T.purple}44`,
-                    background: T.purpleD, color: T.purple,
+                    background: disabled ? T.input : T.purpleD, color: disabled ? T.dim : T.purple,
                     fontSize: fs(11), fontWeight: 600,
-                    cursor: 'pointer', transition: 'all .15s ease',
+                    cursor: disabled ? 'not-allowed' : 'pointer', transition: 'all .15s ease',
+                    opacity: disabled ? 0.5 : 1,
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = T.purple + '28'; e.currentTarget.style.borderColor = T.purple; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = T.purpleD; e.currentTarget.style.borderColor = T.purple + '44'; }}
+                  onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = T.purple + '28'; e.currentTarget.style.borderColor = T.purple; } }}
+                  onMouseLeave={e => { if (!disabled) { e.currentTarget.style.background = T.purpleD; e.currentTarget.style.borderColor = T.purple + '44'; } }}
                 >
                   Generate {SECTIONS.find(s => s.id === resolvedSection)?.label}
                 </button>

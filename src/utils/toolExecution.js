@@ -129,7 +129,7 @@ export function executeTools(toolCalls, data, setData) {
               // Check if course already exists (by name or code)
               const nameL = (c.name||"").toLowerCase();
               const codeL = (c.courseCode||"").toLowerCase();
-              if (!nameL && !codeL) { existing.push({...safe, id:uid(), name:c.name||"Unnamed", credits:Number(c.credits)||3, difficulty:Number(c.difficulty)||3, status:c.status||"not_started", lastUpdated:new Date().toISOString()}); added++; continue; }
+              if (!nameL && !codeL) { existing.push({...safe, id:uid(), name:c.name||"Unnamed", credits:Number(c.credits)||3, difficulty:Number(c.difficulty)||0, status:c.status||"not_started", lastUpdated:new Date().toISOString()}); added++; continue; }
               const existIdx = existing.findIndex(ex => {
                 if(!ex?.name) return false;
                 return ex.name.toLowerCase().includes(nameL) || nameL.includes(ex.name.toLowerCase()) ||
@@ -142,7 +142,7 @@ export function executeTools(toolCalls, data, setData) {
                 existing[existIdx] = deepMergeCourse(existing[existIdx], safe);
                 merged++;
               } else {
-                existing.push({...safe, id:uid(), name:c.name||"Unnamed", credits:Number(c.credits)||3, difficulty:Number(c.difficulty)||3, status:c.status||"not_started", lastUpdated:new Date().toISOString()});
+                existing.push({...safe, id:uid(), name:c.name||"Unnamed", credits:Number(c.credits)||3, difficulty:Number(c.difficulty)||0, status:c.status||"not_started", lastUpdated:new Date().toISOString()});
                 added++;
               }
             }

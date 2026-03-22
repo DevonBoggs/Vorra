@@ -77,8 +77,18 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
     return filtered.length > 0 ? executeTools(filtered, d, sd) : [{ id: 'skip', result: 'No enrichment tool called' }];
   };
 
+  // Guard: prevent concurrent AI operations
+  const checkNotBusy = () => {
+    if (getBgState().loading) {
+      toast('An AI operation is already in progress. Wait for it to finish or stop it first.', 'info');
+      return false;
+    }
+    return true;
+  };
+
   // Pre-enrichment check — warns about tool-call support
   const checkToolSupport = () => {
+    if (!checkNotBusy()) return false;
     if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return false; }
     if (!isLikelyToolCapable(profile)) {
       toast(`${profile.name}${profile.model ? ` (${profile.model})` : ''} may not support tool calling. Enrichment requires a model with function calling support (e.g., GPT-4o, Claude Sonnet, Llama 3.1+).`, 'error');
@@ -231,6 +241,7 @@ const MyCoursesPage = ({ data, setData, profile, setPage, setDate }) => {
   // Image parsing
   const parseImage = async () => {
     if (!profile || !imgFile) return;
+    if (!checkNotBusy()) return;
     if (!isLikelyVisionCapable(profile)) {
       const proceed = window.confirm(
         `${profile.name} (${profile.model || 'unknown model'}) likely does not support image parsing.\n\n` +
@@ -398,7 +409,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
 
   // Fill All Gaps — selective regen for all courses with missing sections
   const fillAllGaps = async () => {
-    if (!profile) return;
+    if (!checkToolSupport()) return;
     const coursesWithGaps = activeCourses.filter(c => hasCtx(c) && missingSections(c).length > 0);
     if (!coursesWithGaps.length) { toast('All sections populated!', 'info'); return; }
 
@@ -832,7 +843,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: fs(11), color: T.dim, flexWrap: 'wrap' }}>
                         <span>{c.credits || 0} CU</span>
-                        <span>{'\u2605'.repeat(c.difficulty || 0)}{'\u2606'.repeat(5 - (c.difficulty || 0))}</span>
+                        {c.difficulty > 0 ? <span>{'\u2605'.repeat(c.difficulty)}{'\u2606'.repeat(5 - c.difficulty)}</span> : <span style={{ color: T.faint }}>Not rated</span>}
                         {c.averageStudyHours > 0 && <span>~{c.averageStudyHours}h</span>}
                         <CtxBadge label="Topics" count={safeArr(c.topicBreakdown).length} color={T.purple} />
                         <CtxBadge label="Terms" count={safeArr(c.keyTermsAndConcepts).length} color={T.blue} />
@@ -872,7 +883,7 @@ Call add_courses with ALL courses you can see. Do NOT return an empty array.`;
                   </div>
                   {expanded[c.id] && (
                     <ErrorBoundary key={c.id + 'detail'}>
-                      <CourseDetail c={c} onGenerate={(sectionIds) => regenSections(c, sectionIds)} />
+                      <CourseDetail c={c} onGenerate={(sectionIds) => regenSections(c, sectionIds)} disabled={bg.loading || !profile} />
                     </ErrorBoundary>
                   )}
                 </div>

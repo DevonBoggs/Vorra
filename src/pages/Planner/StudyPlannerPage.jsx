@@ -230,23 +230,38 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     toast(`Applied: ${tpl.label}`, 'success');
   };
 
-  // ── AI Activity ──
-  const AIActivity = () => (bg.loading || bg.logs.length > 0) ? (
-    <div style={{ background: T.panel, border: `1px solid ${T.purple}33`, borderRadius: 10, padding: 14, marginTop: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: bg.streamText || bg.logs.length > 0 ? 8 : 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {bg.loading && <Ic.Spin s={14} />}
-          <span style={{ fontSize: fs(12), fontWeight: 700, color: bg.loading ? T.purple : T.soft }}>{bg.loading ? (bg.label || 'AI working...') : 'AI Activity'}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {bg.loading && getBgState().abortCtrl && <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }}>Cancel</Btn>}
-          {!bg.loading && bg.logs.length > 0 && <Btn small v="ghost" onClick={() => bgSet({ logs: [] })}>Clear</Btn>}
-        </div>
+  // ── AI Activity (filtered: only show plan-related content on this page) ──
+  const AIActivity = () => {
+    // Filter: only show logs related to plan generation, not enrichment
+    const isPlanActivity = isGenerating || bg.logs.some(l => (l.content || '').includes('Week') || (l.content || '').includes('plan') || (l.content || '').includes('generate_study'));
+    const isEnrichmentOnly = bg.loading && !isGenerating && (bg.label || '').toLowerCase().includes('enrich');
+    // Show a minimal enrichment-in-progress badge if enrichment is running elsewhere
+    if (isEnrichmentOnly) return (
+      <div style={{ padding: '8px 12px', borderRadius: 8, background: T.purpleD, border: `1px solid ${T.purple}22`, fontSize: fs(10), color: T.purple, marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Ic.Spin s={12} />
+        <span>Course enrichment in progress...</span>
+        <button onClick={() => setPage('courses')} style={{ background: 'none', border: 'none', color: T.purple, cursor: 'pointer', fontSize: fs(10), textDecoration: 'underline', padding: 0 }}>View</button>
       </div>
-      {bg.streamText && <div style={{ padding: '6px 10px', borderRadius: 7, background: T.purpleD, border: `1px solid ${T.purple}33`, fontSize: fs(11), color: T.purple, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', marginBottom: 4 }}>{bg.streamText}</div>}
-      {bg.logs.length > 0 && <div style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>{bg.logs.map((l, i) => <LogLine key={i} l={l} />)}</div>}
-    </div>
-  ) : null;
+    );
+    if (!isPlanActivity && !bg.loading) return null;
+    if (!bg.loading && bg.logs.length === 0) return null;
+    return (
+      <div style={{ background: T.panel, border: `1px solid ${T.purple}33`, borderRadius: 10, padding: 14, marginTop: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: bg.streamText || bg.logs.length > 0 ? 8 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {bg.loading && <Ic.Spin s={14} />}
+            <span style={{ fontSize: fs(12), fontWeight: 700, color: bg.loading ? T.purple : T.soft }}>{bg.loading ? (bg.label || 'Generating...') : 'Plan Generation'}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {bg.loading && getBgState().abortCtrl && <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }}>Cancel</Btn>}
+            {!bg.loading && bg.logs.length > 0 && <Btn small v="ghost" onClick={() => bgSet({ logs: [] })}>Clear</Btn>}
+          </div>
+        </div>
+        {bg.streamText && <div style={{ padding: '6px 10px', borderRadius: 7, background: T.purpleD, border: `1px solid ${T.purple}33`, fontSize: fs(11), color: T.purple, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', marginBottom: 4 }}>{bg.streamText}</div>}
+        {bg.logs.length > 0 && <div style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>{bg.logs.map((l, i) => <LogLine key={i} l={l} />)}</div>}
+      </div>
+    );
+  };
 
   // ── Generate plan ──
   const genPlan = async () => {
@@ -1015,6 +1030,12 @@ ${fsrsReviewPrompt}${userCtx}`;
                 <span>{Math.round(weeklyHours)}h/week {'\u00B7'} ~{Math.round(hrsPerDay * 10) / 10}h/day {'\u00B7'} Est. finish: {estCompletionDate ? new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'set dates'}</span>
               </div>
 
+              {/* Additional context — collapsible */}
+              <details style={{ marginBottom: 12 }}>
+                <summary style={{ fontSize: fs(11), color: T.soft, cursor: 'pointer', marginBottom: 6 }}>Add notes (work trips, vacations, focus areas...)</summary>
+                <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30" or "Focus on networking courses first"'} style={{ minHeight: 40, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
+              </details>
+
               {/* Generate + Advanced toggle */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <Btn v="ai" style={{ flex: 1, justifyContent: 'center', padding: '14px 24px', fontSize: fs(14) }} onClick={() => {
@@ -1027,12 +1048,15 @@ ${fsrsReviewPrompt}${userCtx}`;
                   });
                   requestAnimationFrame(() => requestAnimationFrame(() => genPlan()));
                 }} disabled={bg.loading || !profile || activeCourses.length === 0}>
-                  Generate Study Plan
+                  {isGenerating ? <><Ic.Spin s={14} /> Generating...</> : 'Generate Study Plan'}
                 </Btn>
                 <button onClick={() => setShowAdvanced(true)} style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(11), textDecoration: 'underline', padding: '8px 4px', whiteSpace: 'nowrap' }}>
-                  Advanced settings
+                  Customize schedule
                 </button>
               </div>
+
+              {/* Inline AI Activity — only during plan generation */}
+              {isGenerating && <AIActivity />}
             </div>
           )}
 
@@ -1199,8 +1223,8 @@ ${fsrsReviewPrompt}${userCtx}`;
             </div>
           )}
 
-          {/* ── Generate / Review divider ── */}
-          {(hasSettings || isFirstRun) && (
+          {/* ── Generate / Review divider — only for advanced/returning users ── */}
+          {(hasSettings || isFirstRun) && (showAdvanced || hasPlan || pendingPlan || isGenerating) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '0 4px' }}>
               <div style={{ flex: 1, height: 1, background: T.border }} />
               <span style={{ fontSize: fs(10), fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: 1 }}>{pendingPlan ? 'Review Plan' : 'Generate'}</span>
@@ -1208,8 +1232,8 @@ ${fsrsReviewPrompt}${userCtx}`;
             </div>
           )}
 
-          {/* ═══ GENERATE + PLAN PREVIEW ═══ */}
-          {(hasSettings || isFirstRun) && (
+          {/* ═══ GENERATE + PLAN PREVIEW — only for advanced/returning/generating/reviewing ═══ */}
+          {(hasSettings || isFirstRun) && (showAdvanced || hasPlan || pendingPlan || isGenerating) && (
             <div style={{ background: T.card, border: `1px solid ${pendingPlan ? T.purple + '44' : T.accent + '33'}`, borderRadius: 12, padding: '16px 18px', marginBottom: 16, boxShadow: `0 0 0 1px ${pendingPlan ? T.purple + '11' : T.accent + '11'}` }}>
               <div style={{ fontSize: fs(14), fontWeight: 700, color: pendingPlan ? T.purple : T.text, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {pendingPlan ? 'Review Generated Plan' : hasPlan ? 'Regenerate Study Plan' : 'Generate Study Plan'}

@@ -1,5 +1,6 @@
 // WeeklyAvailabilityEditor — interactive timeline with drag/resize for all blocks
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme, fs } from '../../styles/tokens.js';
 import { Btn } from '../ui/Btn.jsx';
 import { uid } from '../../utils/helpers.js';
@@ -48,7 +49,7 @@ const ToggleSwitch = ({ label, isOn, onClick, T }) => (
   </button>
 );
 
-// Context menu component with viewport clamping
+// Context menu component — rendered via portal to bypass CSS zoom
 const CtxMenu = ({ x, y, items, onClose, T }) => {
   const ref = useRef(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -62,12 +63,12 @@ const CtxMenu = ({ x, y, items, onClose, T }) => {
     const rect = ref.current.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight;
     setPos({
-      left: Math.min(x, vw - rect.width - 8),
-      top: Math.min(y, vh - rect.height - 8),
+      left: Math.min(x, Math.max(8, vw - rect.width - 8)),
+      top: Math.min(y, Math.max(8, vh - rect.height - 8)),
     });
   }, [x, y]);
-  return (
-    <div ref={ref} style={{ position: 'fixed', left: pos.left, top: pos.top, zIndex: 50, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 4, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
+  return createPortal(
+    <div ref={ref} style={{ position: 'fixed', left: pos.left, top: pos.top, zIndex: 9999, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 4, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
       {items.map((item, i) => item.divider ? (
         <div key={i} style={{ height: 1, background: T.border, margin: '3px 0' }} />
       ) : (
@@ -78,7 +79,8 @@ const CtxMenu = ({ x, y, items, onClose, T }) => {
           {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -219,9 +221,8 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const openCtx = (e, items) => {
     e.preventDefault();
     e.stopPropagation();
-    // Adjust for CSS zoom on parent — clientX/Y are in zoomed space, fixed positioning is in viewport space
-    const zoom = (parseFloat(document.querySelector('[style*="zoom"]')?.style?.zoom) || 1);
-    setCtxMenu({ x: e.clientX / zoom, y: e.clientY / zoom, items });
+    // CtxMenu renders via portal at document.body (outside CSS zoom), so clientX/Y is correct
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
   };
 
   const buildEmptyCtx = (dow, clickMin) => [
@@ -289,17 +290,30 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     ];
   };
 
-  const buildCommitmentCtx = (c, dow) => [
-    { label: 'Edit commitment...', action: () => { setShowCommitmentForm(true); } },
-    { label: 'Use this time for study', action: () => {
-      // Add a study window matching this commitment's time on this day
-      const day = { ...(wa[dow] || { available: true, windows: [] }) };
-      const windows = [...(day.windows || []), { start: c.start, end: c.end }].sort((a, b) => toMin(a.start) - toMin(b.start));
-      wrappedOnUpdate({ weeklyAvailability: { ...wa, [dow]: { ...day, windows, available: true } } });
-    }},
-    { divider: true },
-    { label: 'Delete commitment', action: () => removeCommitment(c.id), danger: true },
-  ];
+  const buildCommitmentCtx = (c, dow) => {
+    const dayName = DAY_NAMES[dow];
+    const isOnThisDay = (c.days || []).includes(dow);
+    const isMultiDay = (c.days || []).length > 1;
+    return [
+      { label: 'Edit commitment...', action: () => { setShowCommitmentForm(true); } },
+      // Remove this commitment from just this day (keep it on other days)
+      ...(isMultiDay && isOnThisDay ? [{
+        label: `Remove from ${dayName} only`,
+        action: () => {
+          const updated = commitments.map(cm => cm.id === c.id ? { ...cm, days: cm.days.filter(d => d !== dow) } : cm);
+          wrappedOnUpdateCommitments(updated);
+        }
+      }] : []),
+      // Add a study window during this commitment's time on this day
+      { label: `Add study block (${c.start}\u2013${c.end})`, action: () => {
+        const day = { ...(wa[dow] || { available: true, windows: [] }) };
+        const windows = [...(day.windows || []), { start: c.start, end: c.end }].sort((a, b) => toMin(a.start) - toMin(b.start));
+        wrappedOnUpdate({ weeklyAvailability: { ...wa, [dow]: { ...day, windows, available: true } } });
+      }},
+      { divider: true },
+      { label: 'Delete commitment', action: () => removeCommitment(c.id), danger: true },
+    ];
+  };
 
   const buildDayCtx = (dow) => [
     { label: (wa[dow]?.available !== false) ? 'Turn day off' : 'Turn day on', action: () => setDayAvailable(dow, !(wa[dow]?.available !== false)) },
@@ -320,31 +334,24 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     const handleKeyDown = (e) => {
       const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
 
-      // Ctrl+Z: Undo (restores both wa + commitments)
+      // Ctrl+Z: Undo (restores both wa + commitments in a SINGLE update)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !isInput) {
         e.preventDefault();
         if (undoStack.current.length > 0) {
           redoStack.current.push({ wa: JSON.stringify(wa), cm: JSON.stringify(commitments) });
           const prev = undoStack.current.pop();
-          const prevWa = JSON.parse(prev.wa);
-          const prevCm = JSON.parse(prev.cm);
-          onUpdate({ weeklyAvailability: prevWa });
-          if (onUpdateCommitments) onUpdateCommitments(prevCm);
-          lastSnapRef.current = JSON.stringify({ wa: prevWa, cm: prevCm });
+          // Single combined update to avoid race condition between two setPc calls
+          onUpdate({ weeklyAvailability: JSON.parse(prev.wa), commitments: JSON.parse(prev.cm) });
         }
         return;
       }
-      // Ctrl+Y or Ctrl+Shift+Z: Redo (restores both wa + commitments)
+      // Ctrl+Y or Ctrl+Shift+Z: Redo
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !isInput) {
         e.preventDefault();
         if (redoStack.current.length > 0) {
           undoStack.current.push({ wa: JSON.stringify(wa), cm: JSON.stringify(commitments) });
           const next = redoStack.current.pop();
-          const nextWa = JSON.parse(next.wa);
-          const nextCm = JSON.parse(next.cm);
-          onUpdate({ weeklyAvailability: nextWa });
-          if (onUpdateCommitments) onUpdateCommitments(nextCm);
-          lastSnapRef.current = JSON.stringify({ wa: nextWa, cm: nextCm });
+          onUpdate({ weeklyAvailability: JSON.parse(next.wa), commitments: JSON.parse(next.cm) });
         }
         return;
       }

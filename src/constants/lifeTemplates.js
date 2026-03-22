@@ -17,8 +17,10 @@ export const LIFE_TEMPLATES = {
       6: { available: true,  windows: [{ start: '09:00', end: '12:00' }, { start: '14:00', end: '18:00' }] },
     },
     commitments: [
+      { id: 'morning', label: 'Morning routine', days: [1, 2, 3, 4, 5], start: '06:30', end: '08:00', category: 'other' },
+      { id: 'commute-am', label: 'Commute (AM)', days: [1, 2, 3, 4, 5], start: '08:00', end: '08:45', category: 'commute' },
       { id: 'work', label: 'Day job', days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00', category: 'work' },
-      { id: 'commute', label: 'Commute', days: [1, 2, 3, 4, 5], start: '17:00', end: '17:45', category: 'commute' },
+      { id: 'commute-pm', label: 'Commute (PM)', days: [1, 2, 3, 4, 5], start: '17:00', end: '17:45', category: 'commute' },
       { id: 'dinner', label: 'Dinner & wind down', days: [1, 2, 3, 4, 5], start: '17:45', end: '19:30', category: 'family' },
     ],
   },
@@ -38,6 +40,8 @@ export const LIFE_TEMPLATES = {
     commitments: [
       { id: 'work', label: 'Night shift', days: [1, 2, 3, 4, 5], start: '22:00', end: '06:00', category: 'work' },
       { id: 'sleep', label: 'Sleep', days: [1, 2, 3, 4, 5], start: '06:00', end: '14:00', category: 'other' },
+      { id: 'meal', label: 'Meal prep & eat', days: [1, 2, 3, 4, 5], start: '18:00', end: '19:00', category: 'other' },
+      { id: 'pre-shift', label: 'Pre-shift prep', days: [1, 2, 3, 4, 5], start: '21:00', end: '22:00', category: 'other' },
     ],
   },
   'parent': {
@@ -54,10 +58,13 @@ export const LIFE_TEMPLATES = {
       6: { available: true,  windows: [{ start: '12:00', end: '14:00' }, { start: '20:30', end: '23:00' }] },
     },
     commitments: [
-      { id: 'morning', label: 'Morning routine', days: [1, 2, 3, 4, 5], start: '06:30', end: '09:00', category: 'family' },
-      { id: 'kids-wd', label: 'Kids (weekday)', days: [1, 2, 3, 4, 5], start: '14:30', end: '20:30', category: 'family' },
-      { id: 'kids-we', label: 'Kids (weekend)', days: [0, 6], start: '07:00', end: '12:00', category: 'family' },
-      { id: 'kids-we-pm', label: 'Kids afternoon', days: [0, 6], start: '14:00', end: '18:00', category: 'family' },
+      { id: 'morning', label: 'Morning routine & school drop-off', days: [1, 2, 3, 4, 5], start: '06:30', end: '09:00', category: 'family' },
+      { id: 'pickup', label: 'School pickup', days: [1, 2, 3, 4, 5], start: '14:30', end: '15:15', category: 'family' },
+      { id: 'kids-wd', label: 'Kids activities & homework', days: [1, 2, 3, 4, 5], start: '15:15', end: '18:30', category: 'family' },
+      { id: 'dinner', label: 'Dinner & bedtime routine', days: [1, 2, 3, 4, 5], start: '18:30', end: '20:30', category: 'family' },
+      { id: 'kids-we', label: 'Family time (morning)', days: [0, 6], start: '07:00', end: '12:00', category: 'family' },
+      { id: 'kids-we-pm', label: 'Family time (afternoon)', days: [0, 6], start: '14:00', end: '18:00', category: 'family' },
+      { id: 'dinner-we', label: 'Weekend dinner', days: [0, 6], start: '18:00', end: '20:30', category: 'family' },
     ],
   },
   'full-time-student': {

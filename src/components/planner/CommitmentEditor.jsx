@@ -57,10 +57,20 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null })
     setShowAdd(true);
   };
 
+  // Live update: when editing an existing commitment, push changes immediately
+  const updateForm = (updates) => {
+    const next = { ...form, ...updates };
+    setForm(next);
+    // If editing an existing commitment, apply changes live
+    if (editId && next.label.trim() && next.days.length > 0) {
+      onUpdate(commitments.map(c => c.id === editId ? { ...c, ...next } : c));
+    }
+  };
+
   const save = () => {
     if (!form.label.trim() || form.days.length === 0) return;
     if (editId) {
-      onUpdate(commitments.map(c => c.id === editId ? { ...c, ...form } : c));
+      // Already applied live — just close the form
     } else {
       onUpdate([...commitments, { ...form, id: uid() }]);
     }
@@ -77,10 +87,8 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null })
   };
 
   const toggleDay = (d) => {
-    setForm(f => ({
-      ...f,
-      days: f.days.includes(d) ? f.days.filter(x => x !== d) : [...f.days, d].sort((a, b) => a - b),
-    }));
+    const newDays = form.days.includes(d) ? form.days.filter(x => x !== d) : [...form.days, d].sort((a, b) => a - b);
+    updateForm({ days: newDays });
   };
 
   const getCategoryInfo = (cat) => CATEGORIES.find(c => c.value === cat) || CATEGORIES[4];
@@ -150,7 +158,7 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null })
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginBottom: 10 }}>
             <div>
               <Label>Name</Label>
-              <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+              <input value={form.label} onChange={e => updateForm({ label: e.target.value })}
                 placeholder="e.g. Day job, Gym, Kids pickup..."
                 style={{ width: '100%', padding: '6px 10px', fontSize: fs(11) }} />
             </div>
@@ -158,7 +166,7 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null })
               <Label>Category</Label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {CATEGORIES.map(cat => (
-                  <button key={cat.value} onClick={() => setForm(f => ({ ...f, category: cat.value }))}
+                  <button key={cat.value} onClick={() => updateForm({ category: cat.value })}
                     title={cat.label}
                     style={{
                       width: 28, height: 28, borderRadius: 6, border: `1.5px solid ${form.category === cat.value ? cat.color : T.border}`,
@@ -174,12 +182,12 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null })
           <div style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-end' }}>
             <div>
               <Label>Start Time</Label>
-              <input type="time" value={form.start} onChange={e => setForm(f => ({ ...f, start: e.target.value }))}
+              <input type="time" value={form.start} onChange={e => updateForm({ start: e.target.value })}
                 style={{ padding: '6px 8px', fontSize: fs(11) }} />
             </div>
             <div>
               <Label>End Time</Label>
-              <input type="time" value={form.end} onChange={e => setForm(f => ({ ...f, end: e.target.value }))}
+              <input type="time" value={form.end} onChange={e => updateForm({ end: e.target.value })}
                 style={{ padding: '6px 8px', fontSize: fs(11) }} />
             </div>
           </div>
@@ -198,20 +206,20 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null })
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-              <button onClick={() => setForm(f => ({ ...f, days: [1, 2, 3, 4, 5] }))}
+              <button onClick={() => updateForm({ days: [1, 2, 3, 4, 5] })}
                 style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(9), textDecoration: 'underline' }}>Weekdays</button>
-              <button onClick={() => setForm(f => ({ ...f, days: [0, 6] }))}
+              <button onClick={() => updateForm({ days: [0, 6] })}
                 style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(9), textDecoration: 'underline' }}>Weekends</button>
-              <button onClick={() => setForm(f => ({ ...f, days: [0, 1, 2, 3, 4, 5, 6] }))}
+              <button onClick={() => updateForm({ days: [0, 1, 2, 3, 4, 5, 6] })}
                 style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(9), textDecoration: 'underline' }}>Every day</button>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn small v="ghost" onClick={() => { setShowAdd(false); setEditId(null); }}>Cancel</Btn>
-            <Btn small onClick={save} disabled={!form.label.trim() || form.days.length === 0}>
-              {editId ? 'Update' : 'Add'}
-            </Btn>
+            <Btn small v="ghost" onClick={() => { setShowAdd(false); setEditId(null); }}>{editId ? 'Done' : 'Cancel'}</Btn>
+            {!editId && <Btn small onClick={save} disabled={!form.label.trim() || form.days.length === 0}>
+              Add
+            </Btn>}
           </div>
         </div>
       ) : (

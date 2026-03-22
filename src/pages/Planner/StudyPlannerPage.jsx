@@ -1044,10 +1044,34 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </div>
               </div>
 
-              {/* Feasibility preview */}
-              <div style={{ padding: '8px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, fontSize: fs(11), color: feasibilityColor, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: fs(14) }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
-                <span>{Math.round(weeklyHours)}h/week {'\u00B7'} ~{Math.round(hrsPerDay * 10) / 10}h/day {'\u00B7'} Est. finish: {estCompletionDate ? new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'set dates'}</span>
+              {/* Feasibility preview — explains what the numbers mean */}
+              <div style={{ padding: '10px 14px', borderRadius: 10, background: `${feasibilityColor}11`, border: `1px solid ${feasibilityColor}33`, fontSize: fs(11), color: feasibilityColor, marginBottom: 12, lineHeight: 1.6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: feasibilityLevel !== 'green' ? 6 : 0 }}>
+                  <span style={{ fontSize: fs(14), flexShrink: 0 }}>{feasibilityLevel === 'green' ? '\u2705' : feasibilityLevel === 'yellow' ? '\u26A0\uFE0F' : '\u274C'}</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {feasibilityLevel === 'green'
+                      ? `Ready to go ${'\u2014'} ${Math.round(weeklyHours)}h/week, ~${Math.round(hrsPerDay * 10) / 10}h/day`
+                      : feasibilityLevel === 'yellow'
+                        ? `Tight schedule ${'\u2014'} ${Math.round(weeklyHours)}h/week, ~${Math.round(hrsPerDay * 10) / 10}h/day`
+                        : `Schedule won${'\u2019'}t fit ${'\u2014'} ${Math.round(weeklyHours)}h/week, ~${Math.round(hrsPerDay * 10) / 10}h/day`
+                    }
+                  </span>
+                </div>
+                <div style={{ fontSize: fs(10), color: feasibilityLevel === 'green' ? T.soft : feasibilityColor, paddingLeft: 22 }}>
+                  {feasibilityLevel === 'green' ? (
+                    <>Based on your weekly schedule, you have {Math.round(weeklyHours)}h of study time per week (~{Math.round(hrsPerDay * 10) / 10}h/day average).
+                    {estCompletionDate ? ` At this pace, you should finish around ${new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.` : ''}
+                    {finishDelta != null && finishDelta > 7 ? ` That${'\u2019'}s ${finishDelta} days before your deadline ${'\u2014'} plenty of breathing room.` : finishDelta != null && finishDelta > 0 ? ` That${'\u2019'}s ${finishDelta} days before your deadline.` : ''}</>
+                  ) : feasibilityLevel === 'yellow' ? (
+                    <>Your schedule has {Math.round(weeklyHours)}h/week, but you{'\u2019'}ll need to use {utilizationPct != null ? `${utilizationPct}%` : 'most'} of it.
+                    {estCompletionDate ? ` Estimated finish: ${new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.` : ''}
+                    {' '}If you miss a few study sessions, you could fall behind. Consider adding more study windows or pushing your deadline back.</>
+                  ) : (
+                    <>{totalEstHours}h of coursework needs more time than your schedule allows ({Math.round(weeklyHours)}h/week).
+                    {minHrsPerDay != null ? ` You${'\u2019'}d need ~${minHrsPerDay}h every single day, which isn${'\u2019'}t realistic.` : ''}
+                    {' '}Fix by: adding more study time to your schedule above, moving your finish date later, or reducing courses this term.</>
+                  )}
+                </div>
               </div>
 
               {/* Additional context — collapsible */}

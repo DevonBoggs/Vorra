@@ -96,10 +96,16 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const [editingTimes, setEditingTimes] = useState(null); // { dow, winIdx, start, end }
   const [hoveredBlock, setHoveredBlock] = useState(null); // { dow, winIdx, type: 'study'|'commitment', commitmentId? }
   const [selectedBlock, setSelectedBlock] = useState(null); // { dow, winIdx, type: 'study'|'commitment', commitmentId? }
+  const [selectedBlocks, setSelectedBlocks] = useState([]);
+  const [selectionBox, setSelectionBox] = useState(null); // { dow, startMin, currentMin }
   const barRefs = useRef({});
 
   const wa = plannerConfig?.weeklyAvailability || {};
   const commitments = plannerConfig?.commitments || [];
+
+  const isMultiSelected = (dow, winIdx, type, commitmentId) =>
+    selectedBlocks.some(b => b.dow === dow && b.winIdx === winIdx && b.type === type &&
+      (type !== 'commitment' || b.commitmentId === commitmentId));
 
   // ── Undo/Redo system (captures both wa + commitments) ──
   const undoStack = useRef([]);
@@ -327,6 +333,122 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     { label: 'Clear all windows', action: () => clearDayWindows(dow), danger: true },
   ];
 
+  const buildMultiSelectCtx = () => {
+    const n = selectedBlocks.length;
+    const studyBlks = selectedBlocks.filter(b => b.type === 'study');
+    const commitmentBlks = selectedBlocks.filter(b => b.type === 'commitment');
+
+    return [
+      { label: `Delete ${n} selected block${n > 1 ? 's' : ''}`, action: () => {
+        pushUndo();
+        let newWa = { ...wa };
+        const byDay = {};
+        studyBlks.forEach(b => { if (!byDay[b.dow]) byDay[b.dow] = []; byDay[b.dow].push(b.winIdx); });
+        for (const [d, indices] of Object.entries(byDay)) {
+          const day = { ...(newWa[d] || { available: true, windows: [] }) };
+          const sorted = [...indices].sort((a, b) => b - a);
+          const windows = [...(day.windows || [])];
+          for (const idx of sorted) windows.splice(idx, 1);
+          newWa[d] = { ...day, windows, available: windows.length > 0 };
+        }
+        onUpdate({ weeklyAvailability: newWa });
+        if (commitmentBlks.length > 0) {
+          const idsToRemove = new Set(commitmentBlks.map(b => b.commitmentId));
+          if (onUpdateCommitments) onUpdateCommitments(commitments.filter(c => !idsToRemove.has(c.id)));
+        }
+        setSelectedBlocks([]);
+        setSelectedBlock(null);
+      }, danger: true },
+      { divider: true },
+      ...(studyBlks.length >= 2 ? [
+        { label: 'Align start times', action: () => {
+          pushUndo();
+          const starts = studyBlks.map(b => toMin((wa[b.dow]?.windows || [])[b.winIdx]?.start)).filter(v => !isNaN(v));
+          const earliest = Math.min(...starts);
+          const newWa = { ...wa };
+          studyBlks.forEach(b => {
+            const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+            const windows = [...(day.windows || [])];
+            const w = windows[b.winIdx];
+            if (w) {
+              const dur = toMin(w.end) - toMin(w.start);
+              windows[b.winIdx] = { start: minToTime(earliest), end: minToTime(earliest + dur) };
+            }
+            newWa[b.dow] = { ...day, windows };
+          });
+          onUpdate({ weeklyAvailability: newWa });
+        }},
+        { label: 'Align end times', action: () => {
+          pushUndo();
+          const ends = studyBlks.map(b => toMin((wa[b.dow]?.windows || [])[b.winIdx]?.end)).filter(v => !isNaN(v));
+          const latest = Math.max(...ends);
+          const newWa = { ...wa };
+          studyBlks.forEach(b => {
+            const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+            const windows = [...(day.windows || [])];
+            const w = windows[b.winIdx];
+            if (w) {
+              const dur = toMin(w.end) - toMin(w.start);
+              windows[b.winIdx] = { start: minToTime(latest - dur), end: minToTime(latest) };
+            }
+            newWa[b.dow] = { ...day, windows };
+          });
+          onUpdate({ weeklyAvailability: newWa });
+        }},
+        { label: 'Make same duration', action: () => {
+          pushUndo();
+          const durations = studyBlks.map(b => {
+            const w = (wa[b.dow]?.windows || [])[b.winIdx];
+            return w ? toMin(w.end) - toMin(w.start) : 0;
+          });
+          const maxDur = Math.max(...durations);
+          const newWa = { ...wa };
+          studyBlks.forEach(b => {
+            const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+            const windows = [...(day.windows || [])];
+            const w = windows[b.winIdx];
+            if (w) windows[b.winIdx] = { start: w.start, end: minToTime(Math.min(toMin(w.start) + maxDur, 1440)) };
+            newWa[b.dow] = { ...day, windows };
+          });
+          onUpdate({ weeklyAvailability: newWa });
+        }},
+      ] : []),
+      { divider: true },
+      { label: 'Shift all +15min', action: () => {
+        pushUndo();
+        const newWa = { ...wa };
+        studyBlks.forEach(b => {
+          const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+          const windows = [...(day.windows || [])];
+          const w = windows[b.winIdx];
+          if (w) {
+            const ns = Math.min(toMin(w.start) + 15, 1440 - 30);
+            const ne = Math.min(toMin(w.end) + 15, 1440);
+            windows[b.winIdx] = { start: minToTime(ns), end: minToTime(ne) };
+          }
+          newWa[b.dow] = { ...day, windows };
+        });
+        onUpdate({ weeklyAvailability: newWa });
+      }},
+      { label: 'Shift all -15min', action: () => {
+        pushUndo();
+        const newWa = { ...wa };
+        studyBlks.forEach(b => {
+          const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+          const windows = [...(day.windows || [])];
+          const w = windows[b.winIdx];
+          if (w) {
+            const ns = Math.max(toMin(w.start) - 15, 0);
+            const ne = Math.max(toMin(w.end) - 15, 30);
+            windows[b.winIdx] = { start: minToTime(ns), end: minToTime(ne) };
+          }
+          newWa[b.dow] = { ...day, windows };
+        });
+        onUpdate({ weeklyAvailability: newWa });
+      }},
+    ];
+  };
+
   const allOn = DAY_ORDER.every(d => (wa[d] || { available: true }).available);
   const weekdaysOn = [1,2,3,4,5].every(d => (wa[d] || { available: true }).available);
   const weekendsOn = [0,6].every(d => (wa[d] || { available: true }).available);
@@ -359,12 +481,36 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
       }
 
       // Escape: deselect
-      if (e.key === 'Escape') { setSelectedBlock(null); setEditingTimes(null); setCtxMenu(null); return; }
+      if (e.key === 'Escape') { setSelectedBlock(null); setSelectedBlocks([]); setEditingTimes(null); setCtxMenu(null); return; }
 
       if (isInput) return;
 
-      // Delete/Backspace: remove block
+      // Delete/Backspace: remove block(s)
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedBlocks.length > 0) {
+          e.preventDefault();
+          pushUndo();
+          let newWa = { ...wa };
+          const mStudy = selectedBlocks.filter(b => b.type === 'study');
+          const mComm = selectedBlocks.filter(b => b.type === 'commitment');
+          const byDay = {};
+          mStudy.forEach(b => { if (!byDay[b.dow]) byDay[b.dow] = []; byDay[b.dow].push(b.winIdx); });
+          for (const [d, indices] of Object.entries(byDay)) {
+            const day = { ...(newWa[d] || { available: true, windows: [] }) };
+            const sorted = [...indices].sort((a, b) => b - a);
+            const windows = [...(day.windows || [])];
+            for (const idx of sorted) windows.splice(idx, 1);
+            newWa[d] = { ...day, windows, available: windows.length > 0 };
+          }
+          onUpdate({ weeklyAvailability: newWa });
+          if (mComm.length > 0 && onUpdateCommitments) {
+            const idsToRemove = new Set(mComm.map(b => b.commitmentId));
+            onUpdateCommitments(commitments.filter(c => !idsToRemove.has(c.id)));
+          }
+          setSelectedBlocks([]);
+          setSelectedBlock(null);
+          return;
+        }
         const target = drag || selectedBlock || hoveredBlock;
         if (!target) return;
         e.preventDefault();
@@ -379,7 +525,26 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
         return;
       }
 
-      // Arrow keys: nudge selected or hovered study block by 15 min
+      // Arrow keys: nudge selected blocks (multi or single)
+      if (selectedBlocks.length > 0 && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        pushUndo();
+        const delta = e.key === 'ArrowLeft' ? -15 : 15;
+        const newWa = { ...wa };
+        selectedBlocks.filter(b => b.type === 'study').forEach(b => {
+          const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+          const windows = [...(day.windows || [])];
+          const w = windows[b.winIdx];
+          if (w) {
+            const ns = clampMin(toMin(w.start) + delta);
+            const ne = clampMin(toMin(w.end) + delta);
+            if (ne - ns >= MIN_DURATION) windows[b.winIdx] = { start: minToTime(ns), end: minToTime(ne) };
+          }
+          newWa[b.dow] = { ...day, windows };
+        });
+        onUpdate({ weeklyAvailability: newWa });
+        return;
+      }
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         const target = selectedBlock || hoveredBlock;
         if (!target || target.type !== 'study') return;
@@ -409,7 +574,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [drag, hoveredBlock, selectedBlock, wa, commitments]);
+  }, [drag, hoveredBlock, selectedBlock, selectedBlocks, wa, commitments]);
 
   // ── Conflict detection ──
   const getConflicts = (dow) => {
@@ -503,6 +668,43 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [drag]);
 
+  // ── Selection box drag ──
+  useEffect(() => {
+    if (!selectionBox) return;
+    const handleMouseMove = (e) => {
+      const barEl = barRefs.current[selectionBox.dow];
+      if (!barEl) return;
+      const rect = barEl.getBoundingClientRect();
+      const currentMin = snapMin(Math.max(0, Math.min(1440, ((e.clientX - rect.left) / rect.width) * 1440)));
+      setSelectionBox(prev => prev ? { ...prev, currentMin } : null);
+    };
+    const handleMouseUp = () => {
+      if (selectionBox) {
+        const minStart = Math.min(selectionBox.startMin, selectionBox.currentMin);
+        const maxEnd = Math.max(selectionBox.startMin, selectionBox.currentMin);
+        if (maxEnd - minStart >= 15) {
+          const dow = selectionBox.dow;
+          const day = wa[dow] || { available: true, windows: [] };
+          const dayComm = commitments.filter(c => c.days?.includes(dow));
+          const selected = [];
+          (day.windows || []).forEach((w, wi) => {
+            const ws = toMin(w.start), we = toMin(w.end);
+            if (ws < maxEnd && we > minStart) selected.push({ dow, winIdx: wi, type: 'study' });
+          });
+          dayComm.forEach((c, ci) => {
+            const cs = toMin(c.start), ce = toMin(c.end);
+            if (cs < maxEnd && ce > minStart) selected.push({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id });
+          });
+          setSelectedBlocks(selected);
+        }
+      }
+      setSelectionBox(null);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [selectionBox]);
+
   // ── Double-click to add a new study window ──
   const handleBarDoubleClick = (e, dow) => {
     const day = wa[dow] || { available: true, windows: [] };
@@ -591,9 +793,19 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
               {/* Timeline bar — height grows with block density */}
               <div ref={el => { if (el) barRefs.current[dow] = el; }}
                 style={{ flex: 1, height: Math.max(32, ((day.windows || []).length + dayCommitments.length) > 3 ? 44 : (day.windows || []).length + dayCommitments.length > 1 ? 36 : 32), background: T.bg2, borderRadius: 5, overflow: 'hidden', position: 'relative', cursor: 'default', transition: 'height .2s ease' }}
-                onClick={(e) => { if (e.target === barRefs.current[dow]) setSelectedBlock(null); }}
+                onClick={(e) => { if (e.target === barRefs.current[dow]) { setSelectedBlock(null); setSelectedBlocks([]); } }}
+                onMouseDown={(e) => {
+                  if (e.target !== barRefs.current[dow]) return;
+                  if (e.detail >= 2) return;
+                  const barEl = barRefs.current[dow];
+                  const rect = barEl.getBoundingClientRect();
+                  const clickMin = snapMin(((e.clientX - rect.left) / rect.width) * 1440);
+                  setSelectionBox({ dow, startMin: clickMin, currentMin: clickMin });
+                  setSelectedBlocks([]);
+                }}
                 onDoubleClick={(e) => handleBarDoubleClick(e, dow)}
                 onContextMenu={(e) => {
+                  if (selectedBlocks.length > 1) { openCtx(e, buildMultiSelectCtx()); return; }
                   const barEl = barRefs.current[dow]; if (!barEl) return;
                   const rect = barEl.getBoundingClientRect();
                   const clickMin = snapMin(((e.clientX - rect.left) / rect.width) * 1440);
@@ -621,11 +833,27 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                   const pxW = (eMin - sMin) / 1440 * barW;
                   const timeStr = `${fmtTime(sMin)}-${fmtTime(eMin)}`;
                   const isDragging = drag?.blockType === 'study' && drag?.dow === dow && drag?.winIdx === wi;
-                  const isSelected = selectedBlock?.type === 'study' && selectedBlock?.dow === dow && selectedBlock?.winIdx === wi;
+                  const isSelected = (selectedBlock?.type === 'study' && selectedBlock?.dow === dow && selectedBlock?.winIdx === wi) || isMultiSelected(dow, wi, 'study');
                   return (
                     <div key={wi} title={`Study: ${w.start} - ${w.end}`}
-                      onMouseDown={(e) => { e.stopPropagation(); setSelectedBlock({ dow, winIdx: wi, type: 'study' }); handleBlockMouseDown(e, dow, wi, 'move', 'study'); }}
-                      onContextMenu={(e) => openCtx(e, buildStudyCtx(dow, wi, w))}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        const blockRef = { dow, winIdx: wi, type: 'study' };
+                        if (e.shiftKey) {
+                          setSelectedBlocks(prev => {
+                            const exists = prev.some(b => b.dow === dow && b.winIdx === wi && b.type === 'study');
+                            return exists ? prev.filter(b => !(b.dow === dow && b.winIdx === wi && b.type === 'study')) : [...prev, blockRef];
+                          });
+                        } else {
+                          setSelectedBlock(blockRef);
+                          setSelectedBlocks([blockRef]);
+                          handleBlockMouseDown(e, dow, wi, 'move', 'study');
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if (selectedBlocks.length > 1 && isMultiSelected(dow, wi, 'study')) { openCtx(e, buildMultiSelectCtx()); return; }
+                        openCtx(e, buildStudyCtx(dow, wi, w));
+                      }}
                       onMouseEnter={e => { if (!drag) { e.currentTarget.style.filter = 'brightness(1.3)'; setHoveredBlock({ dow, winIdx: wi, type: 'study' }); } }}
                       onMouseLeave={e => { e.currentTarget.style.filter = 'none'; setHoveredBlock(null); }}
                       style={{ position: 'absolute', top: 3, bottom: 3, left: `${left}%`, width: `${Math.max(2, width)}%`, background: T.accent + (isDragging ? '55' : isSelected ? '66' : '44'), borderRadius: 3, border: isDragging || isSelected ? `2px solid ${T.accent}` : `1px solid ${T.accent}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', padding: '0 3px', cursor: drag ? (drag.mode === 'move' ? 'grabbing' : 'col-resize') : 'grab', opacity: isDragging ? 0.85 : 1, zIndex: isDragging ? 10 : isSelected ? 5 : 1, userSelect: 'none', transition: isDragging ? 'none' : 'all .15s', boxShadow: isSelected ? `0 0 8px ${T.accent}44` : 'none' }}>
@@ -644,12 +872,28 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                   const color = CATEGORY_COLORS[c.category] || CATEGORY_COLORS.other;
                   const timeStr = `${fmtTime(sMin)}-${fmtTime(eMin)}`;
                   const isDragging = drag?.blockType === 'commitment' && drag?.commitmentId === c.id && drag?.dow === dow;
-                  const isSelected = selectedBlock?.type === 'commitment' && selectedBlock?.commitmentId === c.id;
+                  const isSelected = (selectedBlock?.type === 'commitment' && selectedBlock?.commitmentId === c.id) || isMultiSelected(dow, ci, 'commitment', c.id);
                   const showBoth = pxW >= 100, showTime = pxW >= 56, showLabel = pxW >= 36;
                   return (
                     <div key={'c' + ci} title={`${c.label}: ${c.start}-${c.end}`}
-                      onMouseDown={(e) => { e.stopPropagation(); setSelectedBlock({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id }); handleBlockMouseDown(e, dow, ci, 'move', 'commitment', c.id); }}
-                      onContextMenu={(e) => openCtx(e, buildCommitmentCtx(c, dow))}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        const blockRef = { dow, winIdx: ci, type: 'commitment', commitmentId: c.id };
+                        if (e.shiftKey) {
+                          setSelectedBlocks(prev => {
+                            const exists = prev.some(b => b.dow === dow && b.winIdx === ci && b.type === 'commitment' && b.commitmentId === c.id);
+                            return exists ? prev.filter(b => !(b.dow === dow && b.winIdx === ci && b.type === 'commitment' && b.commitmentId === c.id)) : [...prev, blockRef];
+                          });
+                        } else {
+                          setSelectedBlock(blockRef);
+                          setSelectedBlocks([blockRef]);
+                          handleBlockMouseDown(e, dow, ci, 'move', 'commitment', c.id);
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if (selectedBlocks.length > 1 && isMultiSelected(dow, ci, 'commitment', c.id)) { openCtx(e, buildMultiSelectCtx()); return; }
+                        openCtx(e, buildCommitmentCtx(c, dow));
+                      }}
                       onMouseEnter={e => { if (!drag) { e.currentTarget.style.filter = 'brightness(1.25)'; setHoveredBlock({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id }); } }}
                       onMouseLeave={e => { e.currentTarget.style.filter = 'none'; setHoveredBlock(null); }}
                       style={{ position: 'absolute', top: 3, bottom: 3, left: `${left}%`, width: `${Math.max(2, width)}%`, background: color + (isDragging ? '66' : isSelected ? '77' : '55'), borderRadius: 3, border: isDragging || isSelected ? `2px solid ${color}` : `1px solid ${color}88`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '0 3px', gap: 3, cursor: drag ? (drag.mode === 'move' ? 'grabbing' : 'col-resize') : 'grab', opacity: isDragging ? 0.85 : 1, zIndex: isDragging ? 10 : isSelected ? 5 : 2, userSelect: 'none', transition: isDragging ? 'none' : 'all .15s', boxShadow: isSelected ? `0 0 8px ${color}44` : 'none' }}>
@@ -662,6 +906,12 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                     </div>
                   );
                 })}
+                {/* Selection box overlay */}
+                {selectionBox && selectionBox.dow === dow && (() => {
+                  const left = (Math.min(selectionBox.startMin, selectionBox.currentMin) / 1440) * 100;
+                  const width = (Math.abs(selectionBox.currentMin - selectionBox.startMin) / 1440) * 100;
+                  return <div style={{ position: 'absolute', left: `${left}%`, width: `${width}%`, top: 0, bottom: 0, background: T.accent + '15', border: `1px dashed ${T.accent}55`, borderRadius: 3, pointerEvents: 'none', zIndex: 8 }} />;
+                })()}
                 {/* Conflict overlay */}
                 {conflicts.filter(c => c.type === 'overlap').length > 0 && dayCommitments.length >= 2 && (() => {
                   const overlaps = [];

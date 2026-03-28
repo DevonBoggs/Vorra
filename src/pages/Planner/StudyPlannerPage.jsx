@@ -294,7 +294,10 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
   };
 
   // ── Generate plan ──
+  const [genLock, setGenLock] = useState(false); // Fix #4: double-click guard
   const genPlan = async () => {
+    // Fix #4: prevent concurrent generation
+    if (genLock || getBgState().loading) { toast('Generation already in progress', 'info'); return; }
     if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return; }
     const active = courses.filter(c => c.status !== 'completed');
     if (!active.length) { toast('No active courses to plan', 'warn'); return; }
@@ -305,34 +308,45 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
       const derived = deriveTargetDate(data.universityProfile);
       setData(d => ({ ...d, targetCompletionDate: derived }));
     }
-
-    // Auto-create plannerConfig if missing
     if (!data.plannerConfig) {
       setData(d => ({ ...d, plannerConfig: migrateToPlannerConfig(d) }));
     }
 
-    // Pre-flight validation — warn but allow
     if (!feasible) toast('Heads up: this is a very tight schedule. The plan will be generated, but you may want to extend your deadline afterward.', 'warn');
     if (estCompletionDate && data.targetDate && estCompletionDate > data.targetDate) toast('Note: your estimated finish date is past your term end. The plan will still be generated.', 'warn');
     if (hrsPerDay < 0.5) { toast('Add study time to your weekly schedule first — no study windows are configured', 'warn'); return; }
 
     const planId = `plan_${Date.now()}`;
-    bgNewAbort(); // Fresh abort controller for this generation run
-    bgSet({ loading: true, logs: [{ type: 'user', content: 'Generating study plan in weekly chunks...' }], label: 'Generating study plan...' });
+    // Fix #5: create abort controller ONCE here, don't let runAILoop replace it
+    const abortCtrl = new AbortController();
+    setGenLock(true);
+    bgSet({ loading: true, logs: [{ type: 'user', content: 'Generating study plan in weekly chunks...' }], label: 'Generating study plan...', abortCtrl });
+
+    // Fix #7: try/finally ensures loading is always reset
+    try {
 
     const capturedTasks = [];
+    const seenTaskIds = new Set(); // Fix #6: dedup guard
     const previewSetData = (fn) => {
       setData(d => {
         const next = typeof fn === 'function' ? fn(d) : fn;
         if (next.tasks) {
+          // Fix #6: deep copy task arrays to avoid mutating shared references
+          const safeTasks = {};
+          for (const [dt, dayTasks] of Object.entries(next.tasks)) {
+            safeTasks[dt] = safeArr(dayTasks).map(t => ({ ...t }));
+          }
+          next.tasks = safeTasks;
           for (const [dt, dayTasks] of Object.entries(next.tasks)) {
             const oldTasks = d.tasks?.[dt] || [];
-            const newOnes = safeArr(dayTasks).filter(t => !oldTasks.some(o => o.id === t.id));
-            // Stamp planId on task objects immutably
+            const newOnes = dayTasks.filter(t => !oldTasks.some(o => o.id === t.id));
             for (const t of newOnes) {
-              const idx = safeArr(next.tasks[dt]).findIndex(x => x.id === t.id);
-              if (idx >= 0) next.tasks[dt][idx] = { ...next.tasks[dt][idx], planId };
-              capturedTasks.push({ ...t, planId, date: dt });
+              const idx = dayTasks.findIndex(x => x.id === t.id);
+              if (idx >= 0) dayTasks[idx] = { ...dayTasks[idx], planId };
+              if (!seenTaskIds.has(t.id)) {
+                seenTaskIds.add(t.id);
+                capturedTasks.push({ ...t, planId, date: dt });
+              }
             }
           }
         }
@@ -424,7 +438,8 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     })();
 
     for (let week = 0; week < totalWeeks; week++) {
-      if (getBgState().abortCtrl?.signal?.aborted) { bgLog({ type: 'error', content: `Stopped after week ${week}` }); break; }
+      // Fix #5: check OUR abort controller, not bgState's (which runAILoop may replace)
+      if (abortCtrl.signal.aborted) { bgLog({ type: 'error', content: `Stopped after week ${week}` }); break; }
 
       const weekStart = new Date(startDt + 'T12:00:00');
       weekStart.setDate(weekStart.getDate() + week * 7);
@@ -469,67 +484,26 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
 
       const sys = buildSystemPrompt(data, `Use generate_study_plan to create tasks for ONLY ${ws} through ${we} (7 days). Do NOT use add_tasks. Do NOT plan outside this date range.`);
 
-      const weekMsg = `Generate study tasks for WEEK ${week + 1} ONLY: ${ws} to ${we}.
+      const weekMsg = `Generate study tasks for WEEK ${week + 1}: ${ws} to ${we}. Use generate_study_plan tool.
 
-COURSES (PRIORITY ORDER):
-${courseDetails}
-
-PROGRESS: ${Math.round(hoursAssigned)}h of ${totalEstHours}h assigned. ${Math.round(hoursRemaining)}h remaining.
-${weekExDts.length > 0 ? `Exception dates this week (no study): ${weekExDts.join(', ')}` : 'No days off this week'}
-${week === 0 ? `First day starts at ${derivedStart}` : ''}
-
-${modePrompt}
-
-${pacingPrompt}
-
-${blockPrompt}
-
-${availPrompt}${weekAvailStr}
-
-CRITICAL SCHEDULING RULES:
-- Do NOT create tasks for days marked "OFF" — no study on those days.
-- Do NOT schedule study during blocked commitment times (work, family, etc.).
-- Windows like "22:00-06:00" span midnight — schedule across the day boundary.
-- Only schedule within the available time windows shown above.
-
+PROGRESS: ${Math.round(hoursAssigned)}h of ${totalEstHours}h assigned. ~${Math.round(hoursRemaining)}h remaining. Target ~${Math.min(Math.round(weeklyHours), Math.round(hoursRemaining))}h this week.
+${weekExDts.length > 0 ? `Days off this week: ${weekExDts.join(', ')}` : ''}
+${week === 0 ? `First day starts at ${derivedStart}.` : ''}
 ${weekContinuity || 'This is the first week — start with course #1.'}
 
-CATEGORY TAGS (use these exactly):
-- "study" = Learning new material, reading, watching lectures
-- "review" = Revisiting/revising previously learned material
-- "exam-prep" = Practice exams, mock tests, focused test preparation
-- "exam-day" = The ACTUAL assessment day (OA exam or PA submission)
-- "project" = Performance Assessment (PA) writing, research, drafting
-- "class" = Live cohort sessions, instructor webinars
-- "break" = Short rest between study blocks, meals
+${modePrompt}
+${pacingPrompt}
+${blockPrompt}
 
-TASK STRUCTURE RULES:
-- ONLY create tasks between ${ws} and ${we}. No dates outside this range.
-- Title format: "CourseCode \u2014 Specific Topic" (e.g., "D415 \u2014 SDN Architecture: Three Layers").
-- For PA courses, schedule "project" category tasks for writing/research.
-- Each task needs date (YYYY-MM-DD), time, endTime (24h format).
-- ~${Math.min(Math.round(weeklyHours), Math.round(hoursRemaining))}h this week.
+${weekAvailStr || availPrompt}
 
-PRE-ASSESSMENT FOCUS:
-If a course has pre-assessment scores and weak areas listed, allocate 60-70% of that course's study hours to the weak areas. For topics the student already passed, schedule only brief review (30-60 min) rather than full study sessions.
-
-EXAM PREP RAMP (apply to EVERY course):
-- At ~80% of estimated hours: transition from "study" to "review" category. Focus on retrieval practice.
-- At ~90% of estimated hours: switch to "exam-prep" category. Schedule 1-2 practice exam simulations.
-- Day BEFORE the exam: schedule only 1-2 hours of LIGHT review. Title: "CourseCode \u2014 Pre-Exam Light Review". Rest of the day should be free.
-- Exam day: schedule the "exam-day" task. Title: "CourseCode \u2014 \uD83C\uDFAF OA Exam" or "CourseCode \u2014 \uD83C\uDFAF Submit PA".
-- MINIMUM 2 study days between finishing new material and the exam day.
-
-POST-EXAM RECOVERY:
-After an "exam-day" task, the NEXT calendar day should be a light day (1-2h max). Schedule orientation/preview for the next course only. Do NOT schedule full study load the day after an exam.
-
-ENERGY-AWARE BLOCK ORDER (cognitive load optimization):
-- MORNING sessions (before 12:00): Schedule the HARDEST new material first. Cognitive resources are highest early. Start with a 15-min warm-up review, then tackle difficult topics.
-- AFTERNOON sessions (12:00-17:00): Schedule moderate-difficulty material. Good for practice problems, structured exercises, and project work.
-- EVENING sessions (after 17:00): Schedule EASIER material — light review, practice problems, or preview of tomorrow's topic. Working adults studying after a full workday have reduced cognitive capacity; respect this by assigning lighter material.
-- WEEKEND sessions: Can follow the morning pattern (hard first) since energy is typically higher without a preceding workday.
-- FIRST block of ANY session: always start with a brief warm-up (10-15 min review of previous material).
-- LAST block of ANY session: end with easier material or a brief preview of the next topic.
+RULES:
+- ONLY dates ${ws} to ${we}. Each task: date, time, endTime (24h), title ("CourseCode \u2014 Topic"), category.
+- Categories: study, review, exam-prep, exam-day, project, class, break.
+- Do NOT schedule on OFF days or during commitment blocks.
+- Morning: hardest material. Evening: lighter review. Start each session with 10-15 min warm-up.
+- At ~80% course hours: switch to "review". At ~90%: "exam-prep". Day before exam: light review only. Day after exam: light day (1-2h).
+- If pre-assessment weak areas exist, allocate 60-70% of hours to them.
 
 STUDY TECHNIQUE GUIDANCE (include in task notes field):
 - For "study" tasks: include a note like "Active study: After reading, close materials and summarize from memory."
@@ -587,9 +561,7 @@ ${fsrsReviewPrompt}${userCtx}`;
       }
     }
 
-    bgSet({ loading: false, regenId: null, label: '' });
     if (capturedTasks.length > 0) {
-      // Save plan record
       setData(d => ({
         ...d,
         planHistory: [...(d.planHistory || []), {
@@ -604,6 +576,12 @@ ${fsrsReviewPrompt}${userCtx}`;
       toast(`Plan generated \u2014 review ${capturedTasks.length} tasks before confirming`, 'info');
     } else {
       toast('No tasks were generated \u2014 try adjusting your prompt or checking your AI connection', 'warn');
+    }
+
+    // Fix #7: finally block — always reset loading state
+    } finally {
+      bgSet({ loading: false, regenId: null, label: '', abortCtrl: null });
+      setGenLock(false);
     }
   };
 

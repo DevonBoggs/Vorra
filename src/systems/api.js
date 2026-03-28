@@ -221,7 +221,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
 export async function callAIStream(profile, systemPrompt, messages, imageData = null, onChunk = null, toolOverride = null, maxTokens = 16384) {
   const quirks = getProviderQuirks(profile);
   if (quirks.disableStreamingWithTools) {
-    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
+    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride, maxTokens);
   }
 
   const isAnth = isAnthProvider(profile);
@@ -249,14 +249,13 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
 
   let body;
   if (quirks.noToolSupport) {
-    // Provider does not support tool calling — omit tools entirely
     body = isAnth
-      ? { model:profile.model, max_tokens:16384, stream:true, system:systemPrompt, messages:processedMessages }
-      : { model:profile.model, max_tokens:16384, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages] };
+      ? { model:profile.model, max_tokens:maxTokens, stream:true, system:systemPrompt, messages:processedMessages }
+      : { model:profile.model, max_tokens:maxTokens, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages] };
   } else if (isAnth) {
-    body = { model:profile.model, max_tokens:16384, stream:true, system:systemPrompt, messages:processedMessages, tools:toolSet };
+    body = { model:profile.model, max_tokens:maxTokens, stream:true, system:systemPrompt, messages:processedMessages, tools:toolSet };
   } else {
-    body = { model:profile.model, max_tokens:16384, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages], tools:toolSetOAI };
+    body = { model:profile.model, max_tokens:maxTokens, stream:true, messages:[{role:"system",content:systemPrompt}, ...processedMessages], tools:toolSetOAI };
     if (quirks.requireToolChoice) body.tool_choice = "auto";
   }
 
@@ -274,7 +273,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   if (!res.ok) {
     // If streaming fails (some endpoints don't support it), fall back to non-streaming
     dlog('warn','api',`Stream not supported (HTTP ${res.status}), falling back`);
-    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
+    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride, maxTokens);
   }
 
   // Parse SSE stream
@@ -369,7 +368,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
     const totalAccum = Object.values(toolCallMap).reduce((s,t) => s + t.arguments.length, 0);
     if (e.message.includes('Stream read timeout') && totalAccum < 100 && fullText.length < 100) {
       dlog('warn','api',`Stream timed out with minimal data (${totalAccum} tool chars, ${fullText.length} text chars) — falling back to non-streaming`);
-      return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
+      return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride, maxTokens);
     }
   }
 
@@ -391,7 +390,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
 }
 
 // Continue conversation after tool execution (send tool results back)
-export async function continueAfterTools(profile, systemPrompt, messages, toolCalls, toolResults) {
+export async function continueAfterTools(profile, systemPrompt, messages, toolCalls, toolResults, maxTokens = 16384) {
   const isAnth = isAnthProvider(profile);
   const headers = getAuthHeaders(profile);
 
@@ -615,7 +614,7 @@ DEGREE STATS:
   })()}
 
 IMPORTANT RULES:
-- The course list ORDER reflects the user's chosen priority. Course #1 should be studied first. COMPLETE one course fully before starting the next. Do NOT mix courses on the same day (except transition days).
+- The course list ORDER reflects the user's chosen priority. Course #1 should be studied first. Follow the study mode instructions in each weekly prompt (sequential, parallel, or hybrid).
 - When generating tasks with generate_study_plan, skip exception dates. Start from the study start date at ${derivedStartTime}.
 - CATEGORY TAGS: "study" (new material), "review" (revision), "exam-prep" (practice tests), "exam-day" (actual assessment day), "project" (project/paper writing), "class" (live sessions), "break" (rest). Always schedule an "exam-day" task when a course ends.
 - When enriching courses, include ALL fields: assessment type/details, competencies with weights, topic breakdown with weights, key terms, common mistakes, official+community resources, assessment tips, known focus areas, avg study hours, cert alignment, prerequisites. ALSO include study strategy fields: studyStrategy (recommended approach), quickWins (easy topics first), hardestConcepts (need extra focus), mnemonics (memory aids as {concept,mnemonic}), weeklyMilestones ({week,goals}), studyOrder (topic sequence), timeAllocation ({topic,percentage}), practiceTestNotes, instructorTips, communityInsights.

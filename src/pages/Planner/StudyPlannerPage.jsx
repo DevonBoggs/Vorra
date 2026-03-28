@@ -1186,8 +1186,26 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </Btn>
               </div>
 
-              {/* Inline AI Activity — only during plan generation */}
-              {isGenerating && <AIActivity />}
+              {/* Generation progress — always visible when generating */}
+              {bg.loading && (
+                <div style={{ marginTop: 12, padding: '14px 16px', borderRadius: 10, background: `linear-gradient(135deg, ${T.purpleD}, ${T.accentD})`, border: `1px solid ${T.purple}44` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Ic.Spin s={16} />
+                      <span style={{ fontSize: fs(13), fontWeight: 700, color: T.purple }}>{bg.label || 'Working...'}</span>
+                    </div>
+                    {getBgState().abortCtrl && <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }} style={{ color: T.red, borderColor: T.red }}>Stop</Btn>}
+                  </div>
+                  {bg.streamText && (
+                    <div style={{ padding: '6px 10px', borderRadius: 7, background: T.purpleD, border: `1px solid ${T.purple}33`, fontSize: fs(11), color: T.purple, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', marginBottom: 6 }}>{bg.streamText}</div>
+                  )}
+                  {bg.logs.length > 0 && (
+                    <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {bg.logs.slice(-8).map((l, i) => <LogLine key={i} l={l} />)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

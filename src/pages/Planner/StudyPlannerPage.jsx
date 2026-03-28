@@ -45,19 +45,19 @@ import {
 } from '../../utils/availabilityCalc.js';
 
 const STUDY_MODES = [
-  { value: 'sequential', label: 'One at a time', icon: '\u27A1' },
-  { value: 'parallel', label: 'Multiple at once', icon: '\u2194' },
-  { value: 'hybrid', label: 'Mix of both', icon: '\u21C4' },
+  { value: 'sequential', label: 'One at a time', icon: '\u27A1', title: 'Finish all hours for one course before starting the next. Best for WGU and competency-based programs.' },
+  { value: 'parallel', label: 'Multiple at once', icon: '\u2194', title: 'Study 2-3 courses each day, splitting hours proportionally. Best for SNHU, ASU, and term-based programs.' },
+  { value: 'hybrid', label: 'Mix of both', icon: '\u21C4', title: '65% on your main course, 25% previewing the next, 10% reviewing past material.' },
 ];
 const PACING_STYLES = [
-  { value: 'steady', label: 'Same every day' },
-  { value: 'wave', label: 'Heavy/light days' },
-  { value: 'sprint-rest', label: 'Intense + rest' },
+  { value: 'steady', label: 'Same every day', title: 'Consistent study hours every day. Simple and predictable.' },
+  { value: 'wave', label: 'Heavy/light days', title: 'Alternate between full study days and lighter review days. Good for avoiding burnout.' },
+  { value: 'sprint-rest', label: 'Intense + rest', title: '4 intense study days followed by 1 light review day. High productivity with built-in recovery.' },
 ];
 const BLOCK_STYLES = [
-  { value: 'standard', label: 'Standard (60-90m)' },
-  { value: 'pomodoro', label: 'Pomodoro (25m)' },
-  { value: 'sprint', label: 'Deep focus (50m)' },
+  { value: 'standard', label: 'Standard (60-90m)', title: '60-90 minute study blocks with 10-15 minute breaks. Good all-around approach.' },
+  { value: 'pomodoro', label: 'Pomodoro (25m)', title: '25 minutes of focused study, then a 5 minute break. 4 cycles = 1 session with a longer break.' },
+  { value: 'sprint', label: 'Deep focus (50m)', title: '50 minute deep focus sessions with 10 minute breaks. Fewer interruptions, longer concentration.' },
 ];
 
 const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
@@ -232,6 +232,11 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
   const applyTemplate = (templateId) => {
     const tpl = LIFE_TEMPLATES[templateId];
     if (!tpl) return;
+    // Confirm before replacing existing schedule
+    const hasExisting = pc?.weeklyAvailability && Object.values(pc.weeklyAvailability).some(d => d.windows?.length > 0);
+    if (hasExisting && pc?.lifeTemplate !== templateId) {
+      if (!confirm(`Replace your current schedule with "${tpl.label}"? This will overwrite your study windows and commitments.`)) return;
+    }
     setData(d => ({
       ...d,
       plannerConfig: {
@@ -1359,7 +1364,7 @@ ${fsrsReviewPrompt}${userCtx}`;
 
               {/* Pending plan preview */}
               {pendingPlan && (
-                <div style={{ marginTop: 12 }}>
+                <div style={{ marginTop: 12 }} ref={el => { if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); }}>
                   <div style={{ fontSize: fs(10), color: T.dim, padding: '6px 12px', background: T.input, borderRadius: 8, marginBottom: 8, lineHeight: 1.4 }}>
                     Study hours and topic estimates are AI-generated. Adjust based on your actual pace and your instructor{'\u2019'}s guidance.
                   </div>

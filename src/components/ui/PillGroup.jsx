@@ -11,6 +11,7 @@ export const PillGroup = ({ options, value, onChange, disabled, small }) => {
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
+            title={opt.title || ''}
             style={{
               padding: small ? '5px 12px' : '8px 16px',
               background: isActive ? T.accentD : T.input,

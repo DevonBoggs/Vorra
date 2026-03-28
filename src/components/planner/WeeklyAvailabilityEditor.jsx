@@ -1080,7 +1080,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
           </button>
         </div>
         {showCommitmentForm && (
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 8 }} ref={el => { if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }}>
             <CommitmentEditor commitments={commitments} onUpdate={updated => { wrappedOnUpdateCommitments(updated); setCommitmentPrefill(null); }} prefill={commitmentPrefill} autoEditId={editingCommitmentId} onAutoEditDone={() => setEditingCommitmentId(null)} />
           </div>
         )}

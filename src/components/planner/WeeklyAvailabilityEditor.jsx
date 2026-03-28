@@ -682,8 +682,28 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
       newStart = clampMin(newStart); newEnd = clampMin(newEnd);
       if (newEnd - newStart < MIN_DURATION) return;
 
-      if (drag.blockType === 'commitment' && onUpdateCommitment) {
-        onUpdateCommitment(drag.commitmentId, minToTime(newStart), minToTime(newEnd));
+      if (drag.blockType === 'commitment' && onUpdateCommitments) {
+        // Per-day commitment drag: if commitment spans multiple days, split it
+        // so only the dragged day gets the new time
+        const c = commitments.find(cm => cm.id === drag.commitmentId);
+        if (c && c.days?.length > 1) {
+          // First drag frame: split the commitment
+          if (!drag._commitmentSplit) {
+            const otherDays = c.days.filter(d => d !== drag.dow);
+            const newId = uid();
+            const updated = commitments.map(cm => cm.id === c.id ? { ...cm, days: otherDays } : cm);
+            updated.push({ ...c, id: newId, days: [drag.dow], start: minToTime(newStart), end: minToTime(newEnd) });
+            onUpdateCommitments(updated);
+            drag._commitmentSplit = true;
+            drag.commitmentId = newId;
+          } else {
+            // Subsequent frames: update the split single-day commitment
+            onUpdateCommitments(commitments.map(cm => cm.id === drag.commitmentId ? { ...cm, start: minToTime(newStart), end: minToTime(newEnd) } : cm));
+          }
+        } else {
+          // Single-day commitment — just move it
+          onUpdateCommitments(commitments.map(cm => cm.id === drag.commitmentId ? { ...cm, start: minToTime(newStart), end: minToTime(newEnd) } : cm));
+        }
       } else {
         const day = { ...(wa[drag.dow] || { available: true, windows: [] }) };
         const windows = [...(day.windows || [])];
@@ -905,7 +925,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         const blockRef = { dow, winIdx: wi, type: 'study' };
-                        if (e.shiftKey) {
+                        if (e.ctrlKey || e.metaKey) {
                           setSelectedBlocks(prev => {
                             const exists = prev.some(b => b.dow === dow && b.winIdx === wi && b.type === 'study');
                             return exists ? prev.filter(b => !(b.dow === dow && b.winIdx === wi && b.type === 'study')) : [...prev, blockRef];
@@ -945,7 +965,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         const blockRef = { dow, winIdx: ci, type: 'commitment', commitmentId: c.id };
-                        if (e.shiftKey) {
+                        if (e.ctrlKey || e.metaKey) {
                           setSelectedBlocks(prev => {
                             const exists = prev.some(b => b.dow === dow && b.winIdx === ci && b.type === 'commitment' && b.commitmentId === c.id);
                             return exists ? prev.filter(b => !(b.dow === dow && b.winIdx === ci && b.type === 'commitment' && b.commitmentId === c.id)) : [...prev, blockRef];

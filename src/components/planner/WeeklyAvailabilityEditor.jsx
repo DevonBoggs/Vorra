@@ -409,12 +409,31 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
           });
           onUpdate({ weeklyAvailability: newWa });
         }},
-        { label: 'Make same duration', action: () => {
+        { label: (() => {
+          const durations = studyBlks.map(b => { const w = (wa[b.dow]?.windows || [])[b.winIdx]; return w ? toMin(w.end) - toMin(w.start) : 0; }).filter(d => d > 0);
+          const shortest = Math.min(...durations);
+          return `Match shortest (${Math.floor(shortest / 60)}h${shortest % 60 ? ` ${shortest % 60}m` : ''})`;
+        })(), action: () => {
           pushUndo();
-          const durations = studyBlks.map(b => {
-            const w = (wa[b.dow]?.windows || [])[b.winIdx];
-            return w ? toMin(w.end) - toMin(w.start) : 0;
+          const durations = studyBlks.map(b => { const w = (wa[b.dow]?.windows || [])[b.winIdx]; return w ? toMin(w.end) - toMin(w.start) : 0; }).filter(d => d > 0);
+          const minDur = Math.max(MIN_DURATION, Math.min(...durations));
+          const newWa = { ...wa };
+          studyBlks.forEach(b => {
+            const day = { ...(newWa[b.dow] || { available: true, windows: [] }) };
+            const windows = [...(day.windows || [])];
+            const w = windows[b.winIdx];
+            if (w) windows[b.winIdx] = { start: w.start, end: minToTime(Math.min(toMin(w.start) + minDur, 1440)) };
+            newWa[b.dow] = { ...day, windows };
           });
+          onUpdate({ weeklyAvailability: newWa });
+        }},
+        { label: (() => {
+          const durations = studyBlks.map(b => { const w = (wa[b.dow]?.windows || [])[b.winIdx]; return w ? toMin(w.end) - toMin(w.start) : 0; }).filter(d => d > 0);
+          const longest = Math.max(...durations);
+          return `Match longest (${Math.floor(longest / 60)}h${longest % 60 ? ` ${longest % 60}m` : ''})`;
+        })(), action: () => {
+          pushUndo();
+          const durations = studyBlks.map(b => { const w = (wa[b.dow]?.windows || [])[b.winIdx]; return w ? toMin(w.end) - toMin(w.start) : 0; }).filter(d => d > 0);
           const maxDur = Math.max(...durations);
           const newWa = { ...wa };
           studyBlks.forEach(b => {
@@ -656,21 +675,31 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     const handleMouseMove = (e) => {
       const deltaMin = snapMin(((e.clientX - drag.startX) / drag.barWidth) * 1440);
 
-      // If this block is part of a multi-selection and we're in move mode, move ALL selected blocks
-      const isPartOfMultiSelect = selectedBlocks.length > 1 && drag.mode === 'move' &&
+      // If this block is part of a multi-selection, apply action to ALL selected blocks
+      const isPartOfMultiSelect = selectedBlocks.length > 1 &&
         selectedBlocks.some(b => b.dow === drag.dow && b.winIdx === drag.winIdx && b.type === drag.blockType);
 
       if (isPartOfMultiSelect && drag.multiOriginals?.length > 0) {
-        // Move all selected study blocks by the same absolute delta from their original positions
         const newWa = { ...wa };
         for (const orig of drag.multiOriginals) {
           const day = { ...(newWa[orig.dow] || { available: true, windows: [] }) };
           const windows = [...(day.windows || [])];
-          const dur = orig.origEnd - orig.origStart;
-          let ns = clampMin(snapMin(orig.origStart + deltaMin));
-          let ne = ns + dur;
-          if (ne > 1440) { ne = 1440; ns = ne - dur; }
-          if (ns < 0) { ns = 0; ne = dur; }
+          let ns, ne;
+          if (drag.mode === 'move') {
+            const dur = orig.origEnd - orig.origStart;
+            ns = clampMin(snapMin(orig.origStart + deltaMin));
+            ne = ns + dur;
+            if (ne > 1440) { ne = 1440; ns = ne - dur; }
+            if (ns < 0) { ns = 0; ne = dur; }
+          } else if (drag.mode === 'resize-start') {
+            ns = clampMin(snapMin(orig.origStart + deltaMin));
+            ne = orig.origEnd;
+            if (ne - ns < MIN_DURATION) ns = ne - MIN_DURATION;
+          } else {
+            ns = orig.origStart;
+            ne = clampMin(snapMin(orig.origEnd + deltaMin));
+            if (ne - ns < MIN_DURATION) ne = ns + MIN_DURATION;
+          }
           windows[orig.winIdx] = { ...windows[orig.winIdx], start: minToTime(ns), end: minToTime(ne) };
           newWa[orig.dow] = { ...day, windows };
         }

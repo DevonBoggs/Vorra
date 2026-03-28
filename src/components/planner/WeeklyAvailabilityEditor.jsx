@@ -816,7 +816,26 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
       </div>
 
       {/* Day rows wrapper — unified selection overlay renders here */}
-      <div ref={wrapperRef} style={{ position: 'relative' }}>
+      <div ref={wrapperRef} style={{ position: 'relative', userSelect: 'none' }}
+        onMouseDown={(e) => {
+          // Allow selection drag from ANY empty space in the wrapper (between rows, margins, etc.)
+          // Only if the click target is the wrapper itself or a non-interactive child
+          const tag = e.target.tagName;
+          if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT') return;
+          // Don't interfere if clicking inside a bar (bars have their own handler)
+          const isInsideBar = Object.values(barRefs.current).some(bar => bar && bar.contains(e.target));
+          if (isInsideBar) return;
+          const wrapRect = wrapperRef.current?.getBoundingClientRect();
+          if (!wrapRect) return;
+          setSelectionBox({
+            startX: e.clientX - wrapRect.left, startY: e.clientY - wrapRect.top,
+            currentX: e.clientX - wrapRect.left, currentY: e.clientY - wrapRect.top,
+            startDow: null, startMin: 0,
+          });
+          setSelectedBlocks([]);
+          document.body.style.userSelect = 'none';
+          e.preventDefault();
+        }}>
       {/* Unified selection rectangle */}
       {selectionBox && (() => {
         const left = Math.min(selectionBox.startX, selectionBox.currentX);
@@ -906,11 +925,17 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                         e.stopPropagation();
                         const blockRef = { dow, winIdx: wi, type: 'study' };
                         if (e.ctrlKey || e.metaKey) {
+                          // Ctrl+click: toggle in/out of multi-selection
                           setSelectedBlocks(prev => {
                             const exists = prev.some(b => b.dow === dow && b.winIdx === wi && b.type === 'study');
                             return exists ? prev.filter(b => !(b.dow === dow && b.winIdx === wi && b.type === 'study')) : [...prev, blockRef];
                           });
+                        } else if (isMultiSelected(dow, wi, 'study')) {
+                          // Clicked a block that's part of multi-selection: drag all without clearing
+                          setSelectedBlock(blockRef);
+                          handleBlockMouseDown(e, dow, wi, 'move', 'study');
                         } else {
+                          // Regular click: single-select + drag
                           setSelectedBlock(blockRef);
                           setSelectedBlocks([blockRef]);
                           handleBlockMouseDown(e, dow, wi, 'move', 'study');
@@ -950,6 +975,9 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                             const exists = prev.some(b => b.dow === dow && b.winIdx === ci && b.type === 'commitment' && b.commitmentId === c.id);
                             return exists ? prev.filter(b => !(b.dow === dow && b.winIdx === ci && b.type === 'commitment' && b.commitmentId === c.id)) : [...prev, blockRef];
                           });
+                        } else if (isMultiSelected(dow, ci, 'commitment', c.id)) {
+                          setSelectedBlock(blockRef);
+                          handleBlockMouseDown(e, dow, ci, 'move', 'commitment', c.id);
                         } else {
                           setSelectedBlock(blockRef);
                           setSelectedBlocks([blockRef]);
@@ -1027,20 +1055,27 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
       </div>
 
       {/* Inline commitment chips + editor */}
-      <div style={{ marginTop: 10, padding: '8px 10px', background: T.input, borderRadius: 8 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: fs(10), color: T.dim, fontWeight: 600 }}>Commitments:</span>
+      <div style={{ marginTop: 10, padding: '10px 12px', background: T.input, borderRadius: 10 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: fs(11), color: T.dim, fontWeight: 600 }}>Commitments:</span>
           {commitments.map(c => {
             const color = CATEGORY_COLORS[c.category] || CATEGORY_COLORS.other;
             return (
-              <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 16, border: `1px solid ${color}44`, background: color + '18', fontSize: fs(10) }}>
+              <button key={c.id} onClick={() => { setShowCommitmentForm(true); setEditingCommitmentId(c.id); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, border: `1.5px solid ${color}44`, background: color + '18', fontSize: fs(11), cursor: 'pointer', transition: 'all .15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.background = color + '28'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = color + '44'; e.currentTarget.style.background = color + '18'; }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
                 <span style={{ fontWeight: 600, color }}>{c.label}</span>
-                <span style={{ color: T.dim, fontFamily: "'JetBrains Mono',monospace", fontSize: fs(9) }}>{fmtTime(toMin(c.start))}-{fmtTime(toMin(c.end))}</span>
-              </span>
+                <span style={{ color: T.dim, fontFamily: "'JetBrains Mono',monospace", fontSize: fs(10) }}>{fmtTime(toMin(c.start))}-{fmtTime(toMin(c.end))}</span>
+                <span style={{ fontSize: fs(9), color: T.dim }}>{c.days?.map(d => DAY_NAMES[d]?.charAt(0)).join('')}</span>
+              </button>
             );
           })}
-          <button onClick={() => setShowCommitmentForm(!showCommitmentForm)}
-            style={{ padding: '3px 10px', borderRadius: 16, border: `1px dashed ${T.border}`, background: 'transparent', color: T.dim, fontSize: fs(10), cursor: 'pointer', fontWeight: 600 }}>
+          <button onClick={() => { setShowCommitmentForm(!showCommitmentForm); setEditingCommitmentId(null); }}
+            style={{ padding: '6px 14px', borderRadius: 20, border: `1.5px dashed ${T.border}`, background: 'transparent', color: T.soft, fontSize: fs(11), cursor: 'pointer', fontWeight: 600, transition: 'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.soft; }}>
             {showCommitmentForm ? 'Close' : '+ Add'}
           </button>
         </div>

@@ -97,7 +97,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const [hoveredBlock, setHoveredBlock] = useState(null); // { dow, winIdx, type: 'study'|'commitment', commitmentId? }
   const [selectedBlock, setSelectedBlock] = useState(null); // { dow, winIdx, type: 'study'|'commitment', commitmentId? }
   const [selectedBlocks, setSelectedBlocks] = useState([]);
-  const [selectionBox, setSelectionBox] = useState(null); // { dow, startMin, currentMin }
+  const [selectionBox, setSelectionBox] = useState(null); // { startDow, startMin, currentDow, currentMin }
   const barRefs = useRef({});
 
   const wa = plannerConfig?.weeklyAvailability || {};
@@ -668,33 +668,50 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [drag]);
 
-  // ── Selection box drag ──
+  // ── Selection box drag (supports cross-day selection) ──
   useEffect(() => {
     if (!selectionBox) return;
     const handleMouseMove = (e) => {
-      const barEl = barRefs.current[selectionBox.dow];
+      // Determine which day the mouse is over by checking bar positions
+      let currentDow = selectionBox.startDow;
+      for (const d of DAY_ORDER) {
+        const barEl = barRefs.current[d];
+        if (!barEl) continue;
+        const rect = barEl.getBoundingClientRect();
+        if (e.clientY >= rect.top && e.clientY <= rect.bottom) { currentDow = d; break; }
+      }
+      // Get time position from whichever bar the mouse is over
+      const barEl = barRefs.current[currentDow] || barRefs.current[selectionBox.startDow];
       if (!barEl) return;
       const rect = barEl.getBoundingClientRect();
       const currentMin = snapMin(Math.max(0, Math.min(1440, ((e.clientX - rect.left) / rect.width) * 1440)));
-      setSelectionBox(prev => prev ? { ...prev, currentMin } : null);
+      setSelectionBox(prev => prev ? { ...prev, currentDow, currentMin } : null);
     };
     const handleMouseUp = () => {
       if (selectionBox) {
         const minStart = Math.min(selectionBox.startMin, selectionBox.currentMin);
         const maxEnd = Math.max(selectionBox.startMin, selectionBox.currentMin);
-        if (maxEnd - minStart >= 15) {
-          const dow = selectionBox.dow;
-          const day = wa[dow] || { available: true, windows: [] };
-          const dayComm = commitments.filter(c => c.days?.includes(dow));
+        // Determine the range of days covered (using DAY_ORDER indices)
+        const startIdx = DAY_ORDER.indexOf(selectionBox.startDow);
+        const endIdx = DAY_ORDER.indexOf(selectionBox.currentDow);
+        const fromIdx = Math.min(startIdx, endIdx);
+        const toIdx = Math.max(startIdx, endIdx);
+        const daysInRange = DAY_ORDER.slice(fromIdx, toIdx + 1);
+        const hasDrag = maxEnd - minStart >= 15 || daysInRange.length > 1;
+        if (hasDrag) {
           const selected = [];
-          (day.windows || []).forEach((w, wi) => {
-            const ws = toMin(w.start), we = toMin(w.end);
-            if (ws < maxEnd && we > minStart) selected.push({ dow, winIdx: wi, type: 'study' });
-          });
-          dayComm.forEach((c, ci) => {
-            const cs = toMin(c.start), ce = toMin(c.end);
-            if (cs < maxEnd && ce > minStart) selected.push({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id });
-          });
+          for (const dow of daysInRange) {
+            const day = wa[dow] || { available: true, windows: [] };
+            const dayComm = commitments.filter(c => c.days?.includes(dow));
+            (day.windows || []).forEach((w, wi) => {
+              const ws = toMin(w.start), we = toMin(w.end);
+              if (ws < maxEnd && we > minStart) selected.push({ dow, winIdx: wi, type: 'study' });
+            });
+            dayComm.forEach((c, ci) => {
+              const cs = toMin(c.start), ce = toMin(c.end);
+              if (cs < maxEnd && ce > minStart) selected.push({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id });
+            });
+          }
           setSelectedBlocks(selected);
         }
       }
@@ -800,7 +817,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                   const barEl = barRefs.current[dow];
                   const rect = barEl.getBoundingClientRect();
                   const clickMin = snapMin(((e.clientX - rect.left) / rect.width) * 1440);
-                  setSelectionBox({ dow, startMin: clickMin, currentMin: clickMin });
+                  setSelectionBox({ startDow: dow, startMin: clickMin, currentDow: dow, currentMin: clickMin });
                   setSelectedBlocks([]);
                 }}
                 onDoubleClick={(e) => handleBarDoubleClick(e, dow)}
@@ -906,8 +923,14 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                     </div>
                   );
                 })}
-                {/* Selection box overlay */}
-                {selectionBox && selectionBox.dow === dow && (() => {
+                {/* Selection box overlay — spans across days */}
+                {selectionBox && (() => {
+                  const startIdx = DAY_ORDER.indexOf(selectionBox.startDow);
+                  const endIdx = DAY_ORDER.indexOf(selectionBox.currentDow);
+                  const fromIdx = Math.min(startIdx, endIdx);
+                  const toIdx = Math.max(startIdx, endIdx);
+                  const dowIdx = DAY_ORDER.indexOf(dow);
+                  if (dowIdx < fromIdx || dowIdx > toIdx) return null;
                   const left = (Math.min(selectionBox.startMin, selectionBox.currentMin) / 1440) * 100;
                   const width = (Math.abs(selectionBox.currentMin - selectionBox.startMin) / 1440) * 100;
                   return <div style={{ position: 'absolute', left: `${left}%`, width: `${width}%`, top: 0, bottom: 0, background: T.accent + '15', border: `1px dashed ${T.accent}55`, borderRadius: 3, pointerEvents: 'none', zIndex: 8 }} />;

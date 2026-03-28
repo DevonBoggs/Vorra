@@ -933,7 +933,13 @@ ${fsrsReviewPrompt}${userCtx}`;
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
               <Btn small v="secondary" onClick={missedToday}>{'\u23E9'} I missed today</Btn>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Btn small v="secondary" onClick={shiftRemainingTasks}>{'\u21B7'} Shift remaining +{shiftDays}d</Btn>
+                <Btn small v="secondary" onClick={() => {
+                  const futureCount = Object.entries(data.tasks || {}).reduce((s, [dt, ts]) => dt > todayStr() ? s + ts.length : s, 0);
+                  setConfirmDialog({
+                    message: `Shift ${futureCount} future tasks forward by ${shiftDays} day${shiftDays > 1 ? 's' : ''}?`,
+                    onConfirm: () => { setConfirmDialog(null); shiftRemainingTasks(); },
+                  });
+                }}>{'\u21B7'} Shift remaining +{shiftDays}d</Btn>
                 <select value={shiftDays} onChange={e => setShiftDays(Number(e.target.value))} style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: fs(10) }}>
                   {[1, 2, 3, 5, 7].map(d => <option key={d} value={d}>{d}d</option>)}
                 </select>
@@ -1141,6 +1147,21 @@ ${fsrsReviewPrompt}${userCtx}`;
                     <div style={{ fontSize: fs(10), color: T.red }}>Fix by: (1) moving your finish date later, (2) adding more study windows above, or (3) reducing courses this term.</div>
                   )}
                 </div>
+                {/* Mini stat cards */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <div style={{ flex: 1, padding: '6px 10px', background: T.input, borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ fontSize: fs(14), fontWeight: 700, color: T.blue || T.accent }}>{Math.round(weeklyHours)}h</div>
+                    <div style={{ fontSize: fs(9), color: T.dim }}>weekly pace</div>
+                  </div>
+                  <div style={{ flex: 1, padding: '6px 10px', background: T.input, borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ fontSize: fs(14), fontWeight: 700, color: finishColor }}>{estCompletionDate ? new Date(estCompletionDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '\u2014'}</div>
+                    <div style={{ fontSize: fs(9), color: T.dim }}>est. finish</div>
+                  </div>
+                  <div style={{ flex: 1, padding: '6px 10px', background: T.input, borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ fontSize: fs(14), fontWeight: 700, color: !feasible ? T.red : minHrsPerDay > 6 ? T.orange : T.accent }}>{minHrsPerDay != null ? `${minHrsPerDay}h` : '\u2014'}</div>
+                    <div style={{ fontSize: fs(9), color: T.dim }}>daily need</div>
+                  </div>
+                </div>
               </div>
 
               {/* Additional context */}
@@ -1148,6 +1169,10 @@ ${fsrsReviewPrompt}${userCtx}`;
                 <Label>Notes for your plan</Label>
                 <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30" or "Focus on networking courses first"'} style={{ minHeight: 50, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
               </div>
+
+              <button onClick={() => setShowAdvanced(true)} style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(10), textDecoration: 'underline', padding: '4px 0', marginBottom: 8 }}>
+                Advanced options (study mode, pacing, days off)
+              </button>
 
               {/* Generate + Advanced toggle */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

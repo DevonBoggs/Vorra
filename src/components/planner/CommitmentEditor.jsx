@@ -11,6 +11,7 @@ const CATEGORIES = [
   { value: 'family', label: 'Family', icon: '\uD83D\uDC68\u200D\uD83D\uDC67', color: '#e88bb3' },
   { value: 'health', label: 'Health/Gym', icon: '\uD83C\uDFCB', color: '#4ecdc4' },
   { value: 'commute', label: 'Commute', icon: '\uD83D\uDE97', color: '#f7b731' },
+  { value: 'sleep', label: 'Sleep', icon: '\uD83C\uDF19', color: '#7c6fea' },
   { value: 'other', label: 'Other', icon: '\uD83D\uDCCC', color: '#a0a0a0' },
 ];
 
@@ -142,24 +143,27 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null, a
       )}
 
       {/* Quick presets */}
-      {commitments.length === 0 && !showAdd && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: fs(10), color: T.dim, marginBottom: 6 }}>Quick add:</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {PRESETS.map((p, i) => (
-              <button key={i} onClick={() => addPreset(p.commitment)}
-                style={{
-                  padding: '5px 12px', borderRadius: 7, border: `1px solid ${T.border}`,
-                  background: T.input, color: T.soft, fontSize: fs(10), fontWeight: 500,
-                  cursor: 'pointer', transition: 'all .15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent + '66'; e.currentTarget.style.color = T.text; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.soft; }}
-              >{p.label}</button>
-            ))}
+      {!showAdd && (() => {
+        const available = PRESETS.filter(p => !commitments.some(c => c.label.toLowerCase() === p.commitment.label.toLowerCase()));
+        return available.length > 0 ? (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: fs(10), color: T.dim, marginBottom: 6 }}>Quick add:</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {available.map((p, i) => (
+                <button key={i} onClick={() => addPreset(p.commitment)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 7, border: `1px solid ${T.border}`,
+                    background: T.input, color: T.soft, fontSize: fs(10), fontWeight: 500,
+                    cursor: 'pointer', transition: 'all .15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent + '66'; e.currentTarget.style.color = T.text; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.soft; }}
+                >{p.label}</button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        ) : null;
+      })()}
 
       {/* Add/Edit form */}
       {showAdd ? (
@@ -196,12 +200,12 @@ export const CommitmentEditor = ({ commitments = [], onUpdate, prefill = null, a
             <div>
               <Label>Start Time</Label>
               <input type="time" value={form.start} onChange={e => updateForm({ start: e.target.value })}
-                style={{ padding: '6px 8px', fontSize: fs(11) }} />
+                aria-label="Start time" style={{ padding: '6px 8px', fontSize: fs(11) }} />
             </div>
             <div>
               <Label>End Time</Label>
               <input type="time" value={form.end} onChange={e => updateForm({ end: e.target.value })}
-                style={{ padding: '6px 8px', fontSize: fs(11) }} />
+                aria-label="End time" style={{ padding: '6px 8px', fontSize: fs(11) }} />
             </div>
           </div>
 

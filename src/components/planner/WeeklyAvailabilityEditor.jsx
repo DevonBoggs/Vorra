@@ -10,8 +10,10 @@ import { CommitmentEditor } from './CommitmentEditor.jsx';
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 const CATEGORY_COLORS = {
-  work: '#4ea8de', family: '#e88bb3', health: '#4ecdc4', commute: '#f7b731', other: '#a0a0a0',
+  work: '#4ea8de', family: '#e88bb3', health: '#4ecdc4', commute: '#f7b731', sleep: '#7c6fea', other: '#a0a0a0',
 };
+
+const CATEGORY_ICONS = { work: '\uD83D\uDCBC', family: '\uD83D\uDC68\u200D\uD83D\uDC67', health: '\uD83C\uDFCB', commute: '\uD83D\uDE97', sleep: '\uD83C\uDF19', other: '\uD83D\uDCCC' };
 
 const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
 const minToTime = (m) => { const h = Math.floor(m / 60); const min = m % 60; return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`; };
@@ -814,6 +816,11 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   // ── Weekly totals ──
   let weeklyHours = 0, studyDays = 0;
   for (let d = 0; d < 7; d++) { const hrs = getEffectiveHours(plannerConfig, d); if (hrs > 0) { weeklyHours += hrs; studyDays++; } }
+  let commitmentHours = 0;
+  for (const c of commitments) {
+    const dur = (toMin(c.end) - toMin(c.start)) / 60;
+    commitmentHours += dur * (c.days?.length || 0);
+  }
 
   return (
     <div>
@@ -854,7 +861,11 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
           })}
         </div>
         <div style={{ width: 8 }} /><div style={{ width: 36, flexShrink: 0 }} />
-        <div style={{ width: 8 }} /><div style={{ width: 20, flexShrink: 0 }} />
+      </div>
+
+      {/* Info note about study windows */}
+      <div style={{ padding: '6px 12px', borderRadius: 8, background: T.blueD || (T.blue + '11'), border: `1px solid ${T.blue || T.accent}22`, fontSize: fs(10), color: T.blue || T.accent, marginBottom: 8, lineHeight: 1.5 }}>
+        {'\u2139\uFE0F'} The green study blocks are what matter most — they tell the AI when you're available to study. Commitments (work, family, etc.) are just visual helpers to plan around. The AI only schedules tasks during your study windows.
       </div>
 
       {/* Day rows wrapper — unified selection overlay renders here */}
@@ -899,6 +910,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px' }}>
               {/* Day toggle */}
               <button onClick={() => setDayAvailable(dow, !day.available)}
+                aria-label={`Toggle ${DAY_NAMES[dow]} ${day.available ? 'off' : 'on'}`} aria-pressed={day.available}
                 style={{ width: 18, height: 18, borderRadius: 4, border: `1.5px solid ${day.available ? T.accent : T.border}`, background: day.available ? T.accent + '22' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(10), color: T.accent, flexShrink: 0 }}>
                 {day.available ? '\u2713' : ''}
               </button>
@@ -963,6 +975,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                   const isSelected = (selectedBlock?.type === 'study' && selectedBlock?.dow === dow && selectedBlock?.winIdx === wi) || isMultiSelected(dow, wi, 'study');
                   return (
                     <div key={wi} title={`Study: ${w.start} - ${w.end}`}
+                      role="button" aria-label={`Study window, ${DAY_NAMES[dow]} ${fmtTime(sMin)} to ${fmtTime(eMin)}`}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         const blockRef = { dow, winIdx: wi, type: 'study' };
@@ -993,6 +1006,11 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                       <div onMouseDown={(e) => handleBlockMouseDown(e, dow, wi, 'resize-start', 'study')} style={{ position: 'absolute', left: -2, top: 0, bottom: 0, width: 6, cursor: 'col-resize', zIndex: 2 }} />
                       <div onMouseDown={(e) => handleBlockMouseDown(e, dow, wi, 'resize-end', 'study')} style={{ position: 'absolute', right: -2, top: 0, bottom: 0, width: 6, cursor: 'col-resize', zIndex: 2 }} />
                       {pxW >= 48 && <span style={{ fontSize: fs(8), color: T.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap', opacity: 0.85, textShadow: '0 1px 2px rgba(0,0,0,0.6)', pointerEvents: 'none' }}>{timeStr}</span>}
+                      {isDragging && (
+                        <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 4, padding: '2px 8px', borderRadius: 4, background: T.text, color: T.bg, fontSize: fs(9), fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 20 }}>
+                          {fmtTime(sMin)}{'\u2013'}{fmtTime(eMin)}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1009,6 +1027,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                   const showBoth = pxW >= 100, showTime = pxW >= 56, showLabel = pxW >= 36;
                   return (
                     <div key={'c' + ci} title={`${c.label}: ${c.start}-${c.end}`}
+                      role="button" aria-label={`${c.label}, ${DAY_NAMES[dow]} ${fmtTime(sMin)} to ${fmtTime(eMin)}`}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         const blockRef = { dow, winIdx: ci, type: 'commitment', commitmentId: c.id };
@@ -1035,10 +1054,15 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                       style={{ position: 'absolute', top: 3, bottom: 3, left: `${left}%`, width: `${Math.max(2, width)}%`, background: color + (isDragging ? '66' : isSelected ? '77' : '55'), borderRadius: 3, border: isDragging || isSelected ? `2px solid ${color}` : `1px solid ${color}88`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '0 3px', gap: 3, cursor: drag ? (drag.mode === 'move' ? 'grabbing' : 'col-resize') : 'grab', opacity: isDragging ? 0.85 : 1, zIndex: isDragging ? 10 : isSelected ? 5 : 2, userSelect: 'none', transition: isDragging ? 'none' : 'all .15s', boxShadow: isSelected ? `0 0 8px ${color}44` : 'none' }}>
                       <div onMouseDown={(e) => handleBlockMouseDown(e, dow, ci, 'resize-start', 'commitment', c.id)} style={{ position: 'absolute', left: -2, top: 0, bottom: 0, width: 6, cursor: 'col-resize', zIndex: 3 }} />
                       <div onMouseDown={(e) => handleBlockMouseDown(e, dow, ci, 'resize-end', 'commitment', c.id)} style={{ position: 'absolute', right: -2, top: 0, bottom: 0, width: 6, cursor: 'col-resize', zIndex: 3 }} />
-                      {showBoth ? <span style={{ fontSize: fs(9), color, fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.5)', pointerEvents: 'none' }}>{c.label} {timeStr}</span>
+                      {showBoth ? <span style={{ fontSize: fs(9), color, fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.5)', pointerEvents: 'none' }}>{CATEGORY_ICONS[c.category] || ''} {c.label} {timeStr}</span>
                         : showTime ? <span style={{ fontSize: fs(8), color, fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.5)', fontFamily: "'JetBrains Mono', monospace", pointerEvents: 'none' }}>{timeStr}</span>
-                        : showLabel ? <span style={{ fontSize: fs(9), color, fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.5)', pointerEvents: 'none' }}>{c.label}</span>
+                        : showLabel ? <span style={{ fontSize: fs(9), color, fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.5)', pointerEvents: 'none' }}>{CATEGORY_ICONS[c.category] || ''} {c.label}</span>
                         : null}
+                      {isDragging && (
+                        <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 4, padding: '2px 8px', borderRadius: 4, background: T.text, color: T.bg, fontSize: fs(9), fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 20 }}>
+                          {fmtTime(sMin)}{'\u2013'}{fmtTime(eMin)}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1061,21 +1085,6 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                 {isOff ? '\u2014' : `${hrs}h`}
               </span>
 
-              {/* Overflow menu */}
-              <div style={{ position: 'relative', flexShrink: 0, width: 20 }}>
-                <button onClick={() => setContextDay(contextDay === dow ? null : dow)}
-                  style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', padding: '2px 4px', fontSize: fs(13) }}>{'\u22EF'}</button>
-                {contextDay === dow && (
-                  <div style={{ position: 'absolute', right: 0, top: '100%', zIndex: 20, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 4, minWidth: 140, boxShadow: '0 4px 12px rgba(0,0,0,.3)' }}>
-                    <button onClick={() => { copyDayToAll(dow); setContextDay(null); }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 'none', color: T.text, fontSize: fs(11), cursor: 'pointer', borderRadius: 4 }}
-                      onMouseEnter={e => e.currentTarget.style.background = T.input} onMouseLeave={e => e.currentTarget.style.background = 'none'}>Copy to all days</button>
-                    <button onClick={() => { clearDayWindows(dow); setContextDay(null); }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 'none', color: T.red, fontSize: fs(11), cursor: 'pointer', borderRadius: 4 }}
-                      onMouseEnter={e => e.currentTarget.style.background = T.input} onMouseLeave={e => e.currentTarget.style.background = 'none'}>Clear all windows</button>
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Conflict warning */}
@@ -1092,7 +1101,7 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
 
       {/* Weekly summary */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, padding: '6px 10px', background: T.input, borderRadius: 8 }}>
-        <span style={{ fontSize: fs(11), color: T.soft }}>{Math.round(weeklyHours * 10) / 10}h/week across {studyDays} day{studyDays !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize: fs(11), color: T.soft }}>{Math.round(weeklyHours * 10) / 10}h study/week across {studyDays} day{studyDays !== 1 ? 's' : ''}{commitmentHours > 0 ? ` \u00B7 ${Math.round(commitmentHours * 10) / 10}h commitments` : ''}</span>
         <span style={{ fontSize: fs(11), color: T.text, fontWeight: 600 }}>Avg {studyDays > 0 ? Math.round((weeklyHours / studyDays) * 10) / 10 : 0}h/study day</span>
       </div>
 

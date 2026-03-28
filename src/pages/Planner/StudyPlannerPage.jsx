@@ -312,6 +312,7 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     if (hrsPerDay < 0.5) { toast('Not enough study hours configured', 'warn'); return; }
 
     const planId = `plan_${Date.now()}`;
+    bgNewAbort(); // Fresh abort controller for this generation run
     bgSet({ loading: true, logs: [{ type: 'user', content: 'Generating study plan in weekly chunks...' }], label: 'Generating study plan...' });
 
     const capturedTasks = [];

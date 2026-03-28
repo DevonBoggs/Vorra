@@ -9,6 +9,8 @@ import { INIT, load, save, flushSave } from "./systems/storage.js";
 import { useTheme, fs, setTheme as setThemeGlobal, setFontScale, getThemeName } from "./styles/tokens.js";
 import { toast, useToasts } from "./systems/toast.js";
 import { useBreakpoint } from "./systems/breakpoint.js";
+import { useBgTask, bgSet, getBgState } from "./systems/background.js";
+import { LogLine } from "./components/ui/LogLine.jsx";
 import { useTimer, timerStop, timerPause, fmtElapsed } from "./systems/timer.js";
 import { useFocus, focusPulseYes } from "./systems/focus.js";
 import { useApiStatus, APP_VERSION } from "./systems/api.js";
@@ -205,6 +207,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const { page, setPage } = usePageNav();
   const [profilePicker, setProfilePicker] = useState(false);
+  const [bgMinimized, setBgMinimized] = useState(false);
+  const bg = useBgTask();
   const [cmdOpen, setCmdOpen] = useState(false);
   const [recentPages, setRecentPages] = useState([]);
   const apiStatus = useApiStatus();
@@ -338,6 +342,37 @@ export default function App() {
     <ErrorBoundary>
       <div style={{ display: "flex", height: "100vh", background: T.bg, color: T.text, fontFamily: "'Outfit','Inter',sans-serif", zoom: (data.uiZoom || 100) / 100 }}>
         <ToastContainer />
+
+        {/* Persistent AI activity overlay — visible across all pages */}
+        {bg.loading && (
+          <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 998, width: bgMinimized ? 'auto' : 360, maxWidth: '90vw', transition: 'all .2s ease' }}>
+            {bgMinimized ? (
+              <button onClick={() => setBgMinimized(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 12, background: T.card, border: `1.5px solid ${T.purple}44`, boxShadow: `0 4px 20px rgba(0,0,0,.4), 0 0 12px ${T.purple}22`, cursor: 'pointer', color: T.purple, fontSize: fs(11), fontWeight: 600 }}>
+                <Ic.Spin s={14} />
+                <span>{bg.label || 'AI working...'}</span>
+              </button>
+            ) : (
+              <div style={{ background: T.card, border: `1.5px solid ${T.purple}44`, borderRadius: 14, boxShadow: `0 8px 32px rgba(0,0,0,.5), 0 0 16px ${T.purple}22`, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${T.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Ic.Spin s={14} />
+                    <span style={{ fontSize: fs(12), fontWeight: 700, color: T.purple }}>{bg.label || 'AI working...'}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => setBgMinimized(true)} title="Minimize" style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', padding: 4, fontSize: fs(12) }}>{'\u2013'}</button>
+                    {getBgState().abortCtrl && <button onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }} title="Cancel" style={{ background: 'none', border: 'none', color: T.red, cursor: 'pointer', padding: 4, fontSize: fs(12) }}>{'\u2716'}</button>}
+                  </div>
+                </div>
+                <div style={{ padding: '8px 14px', maxHeight: 150, overflowY: 'auto' }}>
+                  {bg.streamText && <div style={{ padding: '4px 8px', borderRadius: 6, background: T.purpleD, border: `1px solid ${T.purple}22`, fontSize: fs(10), color: T.purple, whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'auto', marginBottom: 4 }}>{bg.streamText}</div>}
+                  {bg.logs.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{bg.logs.slice(-6).map((l, i) => <LogLine key={i} l={l} />)}</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {showOnboarding && (
           <OnboardingWizard
             data={data}

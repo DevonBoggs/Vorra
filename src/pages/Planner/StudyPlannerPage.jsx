@@ -1143,11 +1143,11 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </div>
               </div>
 
-              {/* Additional context — collapsible */}
-              <details style={{ marginBottom: 12 }}>
-                <summary style={{ fontSize: fs(11), color: T.soft, cursor: 'pointer', marginBottom: 6 }}>Add notes (work trips, vacations, focus areas...)</summary>
-                <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30" or "Focus on networking courses first"'} style={{ minHeight: 40, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
-              </details>
+              {/* Additional context */}
+              <div style={{ marginBottom: 12 }}>
+                <Label>Notes for your plan</Label>
+                <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30" or "Focus on networking courses first"'} style={{ minHeight: 50, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
+              </div>
 
               {/* Generate + Advanced toggle */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

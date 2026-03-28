@@ -49,6 +49,19 @@ const ToggleSwitch = ({ label, isOn, onClick, T }) => (
   </button>
 );
 
+// Scroll-once wrapper — scrolls into view only on initial mount, not on re-renders
+const CommitmentFormScroller = ({ children }) => {
+  const ref = useRef(null);
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (ref.current && !scrolled.current) {
+      scrolled.current = true;
+      setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    }
+  }, []);
+  return <div ref={ref} style={{ marginTop: 8 }}>{children}</div>;
+};
+
 // Context menu component — rendered via portal to bypass CSS zoom
 const CtxMenu = ({ x, y, items, onClose, T }) => {
   const ref = useRef(null);
@@ -1080,9 +1093,9 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
           </button>
         </div>
         {showCommitmentForm && (
-          <div style={{ marginTop: 8 }} ref={el => { if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }}>
+          <CommitmentFormScroller>
             <CommitmentEditor commitments={commitments} onUpdate={updated => { wrappedOnUpdateCommitments(updated); setCommitmentPrefill(null); }} prefill={commitmentPrefill} autoEditId={editingCommitmentId} onAutoEditDone={() => setEditingCommitmentId(null)} />
-          </div>
+          </CommitmentFormScroller>
         )}
       </div>
 

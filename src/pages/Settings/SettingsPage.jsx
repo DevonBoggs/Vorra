@@ -125,6 +125,38 @@ const SettingsPage = ({ data, setData, setPage }) => {
     setAddCategory(p.cat);
     setShowAdd(true);
   };
+  // Auto-fetch models for a profile (used on edit open + duplicate)
+  const fetchModelsForProfile = async (prof) => {
+    const isAnth = isAnthProvider(prof);
+    if (isAnth) {
+      setModels(['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001']);
+      return;
+    }
+    if (!prof.baseUrl) return;
+    const mUrl = guessModelsUrl(prof.baseUrl);
+    if (!mUrl) return;
+    setModelsLoading(true);
+    try {
+      const headers = getAuthHeaders(prof);
+      const res = await fetch(mUrl, { headers });
+      if (res.ok) {
+        const mData = await res.json();
+        let ids = [];
+        if (Array.isArray(mData.data)) ids = mData.data.map(m => m.id).sort();
+        else if (Array.isArray(mData)) ids = mData.map(m => typeof m === 'string' ? m : (m.id || m.name || '')).filter(Boolean).sort();
+        if (ids.length > 0) setModels(ids);
+        dlog('info', 'profile', `Auto-fetched ${ids.length} models for ${prof.name}`);
+      } else {
+        dlog('warn', 'profile', `Auto-fetch models failed: HTTP ${res.status}`);
+        setTestResult({ ok: false, msg: `Could not refresh model list (HTTP ${res.status}). The saved model is still selected.` });
+      }
+    } catch (e) {
+      dlog('warn', 'profile', `Auto-fetch models error: ${e.message}`);
+      setTestResult({ ok: false, msg: `Could not reach ${new URL(prof.baseUrl).hostname} to refresh models. Check your connection.` });
+    }
+    setModelsLoading(false);
+  };
+
   const openEdit = (prof) => {
     dlog('debug', 'profile', `Editing: ${prof.name}`);
     setForm({ provider:prof.provider||"custom", name:prof.name, apiKey:prof.apiKey, baseUrl:prof.baseUrl, model:prof.model });
@@ -132,6 +164,8 @@ const SettingsPage = ({ data, setData, setPage }) => {
     setVerified(true); setShowAdvancedUrl(false);
     setAddCategory(null);
     setShowAdd(true);
+    // Auto-fetch fresh model list in background
+    fetchModelsForProfile(prof);
   };
   const duplicateProfile = (prof) => {
     dlog('info', 'profile', `Duplicating: ${prof.name}`);
@@ -141,6 +175,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
     setVerified(true); setShowAdvancedUrl(false);
     setAddCategory(prov?.cat || null);
     setShowAdd(true);
+    fetchModelsForProfile(prof);
   };
   const saveProfile = () => {
     const isLocalProv = PROVIDERS[form.provider]?.cat === "local";
@@ -917,15 +952,15 @@ const SettingsPage = ({ data, setData, setPage }) => {
 
               {/* Model dropdown — locked until verified */}
               <div className={verified ? "fade" : ""}>
-                <Label>Model</Label>
+                <Label>Model {modelsLoading && <span style={{ fontWeight: 400, color: T.dim, fontSize: fs(9) }}>(refreshing...)</span>}</Label>
                 {!verified ? (
                   <div style={{padding:"10px 14px",borderRadius:8,background:T.input,border:`1px solid ${T.border}`,color:T.dim,fontSize:fs(11),opacity:0.6}}>
                     Verify connection to select model
                   </div>
                 ) : models.length > 0 ? (
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    <select value={form.model} onChange={e=>setForm({...form,model:e.target.value})}>
-                      <option value="">Select a model...</option>
+                    <select value={form.model} onChange={e=>setForm({...form,model:e.target.value})} disabled={modelsLoading}>
+                      <option value="">{modelsLoading ? 'Loading models...' : 'Select a model...'}</option>
                       {models.map(m=><option key={m} value={m}>{m}</option>)}
                     </select>
                     <input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder="Or type a custom model name..." style={{fontSize:fs(11)}}/>

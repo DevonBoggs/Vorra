@@ -13,7 +13,12 @@ Built with React, Electron, and Vite. Runs entirely offline with localStorage â€
 
 ### AI Study Planning
 - Multi-step AI workflow: set target date, study hours, exception days â€” AI generates an optimized task schedule
-- Supports 25+ AI providers: Anthropic, OpenAI, Google Gemini, DeepSeek, Groq, Ollama, LM Studio, and more
+- Week-by-week generation with intelligent chunking for thinking models (GLM-5.1, DeepSeek-R1)
+- Plan review dashboard: course breakdown, weekly load chart, quality checks, conflict detection
+- Collapsible week cards with per-week accept/reject, inline task editing, course filter pills
+- Study preferences: exam day strategy, material difficulty timing, weekend intensity, per-course exam dates
+- Supports 25+ AI providers: Anthropic, OpenAI, Google Gemini, DeepSeek, Groq, Ollama, LM Studio, ClewdR, and more
+- JSON-text fallback for providers without tool calling support
 - Multiple AI profiles with custom endpoints for proxies and local models
 
 ### Practice Exams

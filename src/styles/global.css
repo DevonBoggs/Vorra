@@ -157,3 +157,20 @@ select { color-scheme: dark; }
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Plan review task hover ──────────────────────────────────────── */
+.plan-task-row:hover .plan-task-delete { opacity: 1 !important; }
+.plan-task-row:hover { background: var(--hover, rgba(255,255,255,.04)) !important; }
+
+/* ── Staggered plan reveal ──────────────────────────────────────── */
+.plan-reveal { animation: planFadeIn .3s ease both; }
+.plan-reveal:nth-child(1) { animation-delay: 0ms; }
+.plan-reveal:nth-child(2) { animation-delay: 80ms; }
+.plan-reveal:nth-child(3) { animation-delay: 160ms; }
+.plan-reveal:nth-child(4) { animation-delay: 240ms; }
+.plan-reveal:nth-child(5) { animation-delay: 320ms; }
+.plan-reveal:nth-child(n+6) { animation-delay: 400ms; }
+@keyframes planFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

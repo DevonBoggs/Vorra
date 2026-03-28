@@ -9,7 +9,7 @@ import { INIT, load, save, flushSave } from "./systems/storage.js";
 import { useTheme, fs, setTheme as setThemeGlobal, setFontScale, getThemeName } from "./styles/tokens.js";
 import { toast, useToasts } from "./systems/toast.js";
 import { useBreakpoint } from "./systems/breakpoint.js";
-import { useBgTask, bgSet, getBgState } from "./systems/background.js";
+import { useBgTask, bgSet, getBgState, bgAbort } from "./systems/background.js";
 import { LogLine } from "./components/ui/LogLine.jsx";
 import { useTimer, timerStop, timerPause, fmtElapsed } from "./systems/timer.js";
 import { useFocus, focusPulseYes } from "./systems/focus.js";
@@ -361,7 +361,7 @@ export default function App() {
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={() => setBgMinimized(true)} title="Minimize" style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', padding: 4, fontSize: fs(12) }}>{'\u2013'}</button>
-                    {getBgState().abortCtrl && <button onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }} title="Cancel" style={{ background: 'none', border: 'none', color: T.red, cursor: 'pointer', padding: 4, fontSize: fs(12) }}>{'\u2716'}</button>}
+                    <button onClick={() => bgAbort()} title="Cancel" style={{ background: 'none', border: 'none', color: T.red, cursor: 'pointer', padding: 4, fontSize: fs(12) }}>{'\u2716'}</button>
                   </div>
                 </div>
                 <div style={{ padding: '8px 14px', maxHeight: 150, overflowY: 'auto' }}>

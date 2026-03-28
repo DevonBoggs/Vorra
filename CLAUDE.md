@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **7.3.0**.
+Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **7.4.0**.
 
 ## Tech Stack
 
@@ -123,7 +123,13 @@ start.bat                # Smart launcher: detects changes, rebuilds, runs Elect
 - **Pacing Styles**: Steady, Wave, Sprint/Rest
 - **Block Styles**: Standard (60-90m), Pomodoro (25m), Sprint (50m)
 - **Feasibility Dashboard**: 5 stat cards (Total Hours, Weekly Pace, Est. Finish, Daily Need, Buffer/Acceleration/Weekly Slack), school-model-aware
-- **AI Prompt Enhancements**: pre-assessment focus, exam prep ramp-down, post-exam recovery, daily difficulty ramping, study technique guidance, spaced review
+- **AI Prompt Enhancements**: pre-assessment focus, exam prep ramp-down, post-exam recovery, session-relative difficulty scheduling, study technique guidance, spaced review, fatigue management
+- **Study Preferences**: exam day strategy (light review/no study/normal/intensive), hard material timing (first/middle/last window), weekend intensity, per-course exam dates with date-based prep ramps
+- **Generation Pipeline**: week-by-week with thinking-model chunking (3-day chunks), per-week timeout (3/5/8 min by model type), stall detection, catch-up hours, JSON-text fallback for no-tool providers (ClewdR)
+- **Plan Review Dashboard**: course breakdown bars, weekly load chart, quality checks (overloaded days, utilization), conflict detection with existing calendar, motivational finish-line projection
+- **Collapsible Week Cards**: expand/collapse with animation, per-week accept/reject toggles, mini day-load indicators, course color borders, staggered fade-in
+- **Task Editing**: hover-reveal delete, inline time/title editing (click to edit), course filter pills to isolate by course
+- **Safety**: discard confirmation dialog, undo after confirm (15-second window), partial week confirmation
 - **Plan Progress Tracker**: overall bar, this-week/today metrics, catch-up nudge system
 - **Daily Page Banner**: inline plan progress visible during study sessions
 

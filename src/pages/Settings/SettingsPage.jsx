@@ -52,6 +52,7 @@ const PROVIDERS = {
   gpt4all:   { cat:"local", name:"GPT4All",       icon:"ProvGPT4All",  url:"http://localhost:4891/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#60a5fa" },
   localai:   { cat:"local", name:"LocalAI",       icon:"ProvLocalAI",  url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#34d399" },
   llamacpp:  { cat:"local", name:"llama.cpp",     icon:"ProvLlamaCpp", url:"http://localhost:8080/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#e2e8f0" },
+  clewdr:    { cat:"local", name:"ClewdR",         icon:"ProvClewdR",   url:"http://localhost:8484/v1/chat/completions", models:["claude-sonnet-4-20250514","claude-sonnet-4-5-20250514"], default:"claude-sonnet-4-20250514", keyHint:"(none needed)", color:"#c084fc", note:"Claude reverse proxy. Manage cookies at http://localhost:8484. Supports streaming and tool calling via OpenAI-compatible API." },
   koboldcpp: { cat:"local", name:"Kobold.cpp",    icon:"ProvKoboldCpp",url:"http://localhost:5001/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#f472b6" },
   oobabooga: { cat:"local", name:"text-gen-webui",icon:"ProvOobabooga",url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#facc15" },
   tabbyapi:  { cat:"local", name:"TabbyAPI",      icon:"ProvTabbyAPI", url:"http://localhost:5000/v1/chat/completions", models:[], default:"", keyHint:"(none needed)", color:"#c084fc" },

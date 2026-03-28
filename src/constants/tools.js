@@ -22,6 +22,7 @@ export const EMPTY_DEEP = {
   practiceTestNotes:"", // Pre-assessment and practice test guidance
   instructorTips:[], // Course instructor tips
   communityInsights:[], // Reddit/Discord tips from other students
+  examDate:"", // YYYY-MM-DD — when the exam/assessment is scheduled
 };
 
 export const CS = {
@@ -53,6 +54,7 @@ export const CS = {
   timeAllocation:{type:"array",items:{type:"object",properties:{topic:{type:"string"},percentage:{type:"number"}}},description:"How to split study time, e.g. topic:Networking, percentage:40"},
   practiceTestNotes:{type:"string",description:"Pre-assessment strategy and practice test guidance"},
   instructorTips:{type:"array",items:{type:"string"},description:"Tips from course instructors or CIs"},
+  examDate:{type:"string",description:"YYYY-MM-DD when exam/assessment is scheduled (if known)"},
   communityInsights:{type:"array",items:{type:"string"},description:"Tips from Reddit, Discord, or university community forums"},
 };
 
@@ -65,8 +67,8 @@ export const TOOLS = [
     input_schema:{type:"object",properties:{updates:{type:"array",items:{type:"object",properties:{course_name_match:{type:"string",description:"Substring match (case insensitive)"},...CS},required:["course_name_match"]}}},required:["updates"]}},
   { name:"enrich_course_context", description:"Generate/regenerate deep context for courses. Provide the MOST CURRENT assessment intelligence — courses update frequently. Include specific competency/objective codes, exact topic names with weights, concrete study hours per topic, current assessment format, and actionable community tips. When user asks 'what do I need to know to pass', go as deep as possible.",
     input_schema:{type:"object",properties:{enrichments:{type:"array",items:{type:"object",properties:{course_name_match:{type:"string"},...CS},required:["course_name_match"]}}},required:["enrichments"]}},
-  { name:"generate_study_plan", description:"Generate multi-day study plan with tasks inserted into calendar. Uses course context and topic weights.",
-    input_schema:{type:"object",properties:{summary:{type:"string"},weekly_schedule:{type:"array",items:{type:"object",properties:{course:{type:"string"},hours_per_week:{type:"number"},weeks_estimate:{type:"number"},order:{type:"number"},focus_areas:{type:"array",items:{type:"string"}}},required:["course","hours_per_week","weeks_estimate","order"]}},daily_tasks:{type:"array",items:{type:"object",properties:{date:{type:"string"},time:{type:"string"},endTime:{type:"string"},title:{type:"string"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"},courseId:{type:"string",description:"ID of the associated course"}},required:["date","time","endTime","title","category","priority"]}}},required:["summary","weekly_schedule","daily_tasks"]}},
+  { name:"generate_study_plan", description:"Generate multi-day study plan with tasks inserted into calendar. Uses course context and topic weights. Focus output tokens on daily_tasks — weekly_schedule is optional.",
+    input_schema:{type:"object",properties:{summary:{type:"string",description:"Brief 1-sentence plan summary"},weekly_schedule:{type:"array",description:"Optional high-level course allocation (can be omitted to save tokens)",items:{type:"object",properties:{course:{type:"string"},hours_per_week:{type:"number"},weeks_estimate:{type:"number"},order:{type:"number"},focus_areas:{type:"array",items:{type:"string"}}}}},daily_tasks:{type:"array",items:{type:"object",properties:{date:{type:"string",description:"YYYY-MM-DD format"},time:{type:"string",description:"HH:MM 24-hour format"},endTime:{type:"string",description:"HH:MM 24-hour format"},title:{type:"string",description:"Format: CourseCode - Topic description"},category:{type:"string",enum:["study","review","exam-prep","exam-day","project","class","break","health","work","personal","other"]},priority:{type:"string",enum:["high","medium","low"]},notes:{type:"string"},courseId:{type:"string",description:"Course code or name for linking"}},required:["date","time","endTime","title","category","priority"]}}},required:["summary","daily_tasks"]}},
 ];
 
 export const TOOLS_OPENAI = TOOLS.map(t=>({type:"function",function:{name:t.name,description:t.description,parameters:t.input_schema}}));
@@ -85,6 +87,7 @@ export const PROVIDER_QUIRKS = {
   sambanova:  { maxToolLoops: 3, noVision: true },
   chutes:     { maxToolLoops: 2, noVision: true },
   // Local
+  clewdr:     { noToolSupport: true },
   ollama:     { singleToolCallPreferred: true, disableStreamingWithTools: true, noVision: true },
   lmstudio:   { disableStreamingWithTools: true, noVision: true },
   vllm:       { disableStreamingWithTools: true, noVision: true },

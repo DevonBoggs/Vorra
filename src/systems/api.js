@@ -10,7 +10,7 @@ import { repairTruncatedJSON } from "../utils/jsonRepair.js";
 import { deriveStartTime as deriveStartTimeFromAvailability, getEffectiveHours as getEffectiveHoursFromConfig } from "../utils/availabilityCalc.js";
 
 // ── Constants ────────────────────────────────────────────────────────
-export const APP_VERSION = "7.3.0";
+export const APP_VERSION = "7.4.0";
 
 // Strip API keys from error messages to prevent accidental leakage
 function sanitizeErrorText(text) {
@@ -390,9 +390,14 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
 }
 
 // Continue conversation after tool execution (send tool results back)
-export async function continueAfterTools(profile, systemPrompt, messages, toolCalls, toolResults, maxTokens = 16384) {
+export async function continueAfterTools(profile, systemPrompt, messages, toolCalls, toolResults, maxTokens = 16384, toolOverride = null) {
   const isAnth = isAnthProvider(profile);
   const headers = getAuthHeaders(profile);
+
+  const toolSet = toolOverride || TOOLS;
+  const toolSetOAI = toolOverride
+    ? toolOverride.map(t => ({type:"function", function:{name:t.name, description:t.description, parameters:t.input_schema}}))
+    : TOOLS_OPENAI;
 
   let extendedMessages;
   if (isAnth) {
@@ -411,8 +416,8 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
   }
 
   const body = isAnth
-    ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: extendedMessages, tools: TOOLS }
-    : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...extendedMessages], tools: TOOLS_OPENAI };
+    ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: extendedMessages, tools: toolSet }
+    : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...extendedMessages], tools: toolSetOAI };
 
   dlog('api','api','Continuing after tool results');
   const res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
@@ -463,6 +468,7 @@ export function fmtCtx(c, idx, creditLabel = 'credits') {
   if (safeArr(c.quickWins).length>0) s += `\n     Quick wins: ${safeArr(c.quickWins).join('; ')}`;
   if (safeArr(c.hardestConcepts).length>0) s += `\n     Hardest: ${safeArr(c.hardestConcepts).join('; ')}`;
   if (safeArr(c.studyOrder).length>0) s += `\n     Study order: ${safeArr(c.studyOrder).join(' → ')}`;
+  if (c.examDate) s += `\n     Exam date: ${c.examDate}`;
   if (c.topics) s += `\n     Topics: ${c.topics}`;
   if (c.notes) s += `\n     Notes: ${c.notes}`;
   return s;
@@ -643,10 +649,11 @@ ${ctx ? `\nCONTEXT:\n${ctx}` : ""}`;
 // ----------------------------------------------------------------------
 // AI LOOP HELPER
 // ----------------------------------------------------------------------
-export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true, maxLoops = 0, maxTokens = 16384) {
+export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true, maxLoops = 0, maxTokens = 16384, toolOverride = null) {
   if (typeof executeTools !== 'function') {
     dlog('error','api','runAILoop called without executeTools function — tool calls will not be processed');
   }
+  const loopStart = Date.now();
   dlog('info','api',`AI loop start (stream=${useStream})`);
   bgNewAbort(); // Create new AbortController for this operation
   const logs = [];
@@ -654,14 +661,16 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
   const onChunk = useStream ? (text) => bgStream(text) : null;
   try {
     resp = useStream
-      ? await callAIStream(profile, sys, msgs, img, onChunk, null, maxTokens)
-      : await callAIWithTools(profile, sys, msgs, img, null, maxTokens);
+      ? await callAIStream(profile, sys, msgs, img, onChunk, toolOverride, maxTokens)
+      : await callAIWithTools(profile, sys, msgs, img, toolOverride, maxTokens);
   }
   catch (e) {
     if (e.message === 'Cancelled') return {logs:[{type:"error",content:"⛔ Cancelled"}],finalText:""};
     dlog('error','api','Initial call failed',e.message);
     return {logs:[{type:"error",content:e.message}],finalText:""};
   }
+  const callMs = Date.now() - loopStart;
+  dlog('info','api',`AI response received in ${callMs}ms, stopReason=${resp.stopReason}, toolCalls=${resp.toolCalls.length}, text=${resp.text?.length || 0} chars`);
   const quirks = getProviderQuirks(profile);
   let loops = maxLoops > 0 ? maxLoops : (quirks.maxToolLoops || 5), finalText = "";
   while (loops-- > 0) {
@@ -674,16 +683,25 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
         logs.push({ type: 'warn', content: '\u26A0\uFE0F Response was truncated — skipping tool execution to prevent saving incomplete data. Try a model with a larger output limit.' });
         break;
       }
-      for (const tc of resp.toolCalls) logs.push({type:"tool_call",content:`🔧 ${tc.name}(${JSON.stringify(tc.input).slice(0,300)})`});
+      for (const tc of resp.toolCalls) {
+        const argSize = JSON.stringify(tc.input).length;
+        logs.push({type:"tool_call",content:`\uD83D\uDD27 ${tc.name} (${Math.round(argSize / 1024 * 10) / 10}KB)`});
+      }
       if (typeof executeTools !== 'function') {
         logs.push({type:"error",content:"Bug: executeTools not provided to runAILoop — tool calls cannot be processed. This is a coding error."});
         break;
       }
+      const execStart = Date.now();
       const results = executeTools(resp.toolCalls, data, setData);
-      for (const r of results) logs.push({type:"tool_result",content:`✅ ${r.result}`});
+      dlog('info','api',`Tool execution took ${Date.now() - execStart}ms`);
+      for (const r of results) logs.push({type:"tool_result",content:`\u2705 ${r.result}`});
       // Skip continuation if this was the last allowed loop — don't waste time waiting for a response we won't use
       if (loops <= 0) { dlog('info', 'api', 'Max tool loops reached — skipping continuation'); break; }
-      try { resp = await continueAfterTools(profile, sys, msgs, resp.toolCalls, results); }
+      try {
+        dlog('info','api','Sending continuation after tool results...');
+        resp = await continueAfterTools(profile, sys, msgs, resp.toolCalls, results, maxTokens, toolOverride);
+        dlog('info','api',`Continuation received in ${Date.now() - loopStart}ms total`);
+      }
       catch (e) {
         if (e.message === 'Cancelled') { logs.push({type:"error",content:"⛔ Cancelled"}); break; }
         logs.push({type:"error",content:e.message}); break;

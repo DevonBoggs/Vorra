@@ -9,8 +9,8 @@ import { useBreakpoint } from '../../systems/breakpoint.js';
 import { dlog } from '../../systems/debug.js';
 import { toast } from '../../systems/toast.js';
 import { buildSystemPrompt, runAILoop } from '../../systems/api.js';
-import { useBgTask, bgSet, bgLog, bgNewAbort, getBgState } from '../../systems/background.js';
-import { executeTools, safeArr } from '../../utils/toolExecution.js';
+import { useBgTask, bgSet, bgLog, bgNewAbort, getBgState, bgAbort } from '../../systems/background.js';
+import { executeTools, safeArr, matchTaskToCourse } from '../../utils/toolExecution.js';
 import { Badge } from '../../components/ui/Badge.jsx';
 import { Label } from '../../components/ui/Label.jsx';
 import { BufferedInput } from '../../components/ui/BufferedInput.jsx';
@@ -20,6 +20,7 @@ import { PillGroup } from '../../components/ui/PillGroup.jsx';
 import { WeeklyAvailabilityEditor } from '../../components/planner/WeeklyAvailabilityEditor.jsx';
 import { hasCtx } from '../../utils/courseHelpers.js';
 import { LIFE_TEMPLATES, LIFE_TEMPLATE_IDS } from '../../constants/lifeTemplates.js';
+import { TOOLS, getProviderQuirks } from '../../constants/tools.js';
 import {
   MAX_STUDY_HRS,
   calcTotalEstHours,
@@ -60,6 +61,18 @@ const BLOCK_STYLES = [
   { value: 'sprint', label: 'Deep focus (50m)', title: '50 minute deep focus sessions with 10 minute breaks. Fewer interruptions, longer concentration.' },
 ];
 
+// Live elapsed timer for generation progress
+const ElapsedTimer = () => {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const m = Math.floor(elapsed / 60), s = elapsed % 60;
+  return <span>{m > 0 ? `${m}m ${s}s` : `${s}s`}</span>;
+};
+
 const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
   const T = useTheme();
   const STATUS_C = getSTATUS_C(T);
@@ -76,8 +89,26 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [shiftDays, setShiftDays] = useState(1);
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
-
   const bg = useBgTask();
+
+  // Unified cancel function — aborts both the planner loop and the current runAILoop call
+  const cancelGeneration = () => {
+    bgAbort(); // aborts outerAbortCtrl + abortCtrl, resets loading state
+    // Clear any partial pending plan so the user can regenerate immediately
+    if (pendingPlan) {
+      // Remove partial tasks that were inserted during generation
+      setData(d => {
+        const tasks = { ...d.tasks };
+        for (const t of (pendingPlan.tasks || [])) {
+          if (tasks[t.date]) {
+            tasks[t.date] = tasks[t.date].filter(x => x.id !== t.id);
+            if (tasks[t.date].length === 0) delete tasks[t.date];
+          }
+        }
+        return { ...d, tasks, pendingPlan: null };
+      });
+    }
+  };
 
   // ── Planner config (new) with legacy fallback ──
   const pc = data.plannerConfig;
@@ -283,7 +314,7 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
             <span style={{ fontSize: fs(12), fontWeight: 700, color: bg.loading ? T.purple : T.soft }}>{bg.loading ? (bg.label || 'Generating...') : 'Plan Generation'}</span>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            {bg.loading && getBgState().abortCtrl && <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }}>Cancel</Btn>}
+            {bg.loading && <Btn small v="ghost" onClick={cancelGeneration}>Cancel</Btn>}
             {!bg.loading && bg.logs.length > 0 && <Btn small v="ghost" onClick={() => bgSet({ logs: [] })}>Clear</Btn>}
           </div>
         </div>
@@ -294,10 +325,11 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
   };
 
   // ── Generate plan ──
-  const [genLock, setGenLock] = useState(false); // Fix #4: double-click guard
+  // genLock derived from bgState.loading — no separate state that can desync
+  const genLock = bg.loading && (bg.label || '').toLowerCase().includes('plan');
   const genPlan = async () => {
     // Fix #4: prevent concurrent generation
-    if (genLock || getBgState().loading) { toast('Generation already in progress', 'info'); return; }
+    if (getBgState().loading) { toast('Generation already in progress', 'info'); return; }
     if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return; }
     const active = courses.filter(c => c.status !== 'completed');
     if (!active.length) { toast('No active courses to plan', 'warn'); return; }
@@ -317,10 +349,14 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     if (hrsPerDay < 0.5) { toast('Add study time to your weekly schedule first — no study windows are configured', 'warn'); return; }
 
     const planId = `plan_${Date.now()}`;
+    const quirks = getProviderQuirks(profile);
+    const noTools = !!quirks.noToolSupport;
     // Fix #5: create abort controller ONCE here, don't let runAILoop replace it
     const abortCtrl = new AbortController();
-    setGenLock(true);
-    bgSet({ loading: true, logs: [{ type: 'user', content: 'Generating study plan in weekly chunks...' }], label: 'Generating study plan...', abortCtrl });
+    bgSet({ loading: true, outerAbortCtrl: abortCtrl, label: 'Generating study plan...', logs: [
+      { type: 'user', content: 'Generating study plan in weekly chunks...' },
+      ...(noTools ? [{ type: 'text', content: `\u2139\uFE0F ${profile.name} does not support tool calling \u2014 using JSON-text fallback mode.` }] : []),
+    ], label: 'Generating study plan...', abortCtrl });
 
     // Fix #7: try/finally ensures loading is always reset
     try {
@@ -354,9 +390,20 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
       });
     };
 
+    // Compact course listing for weekly message — rich data is already in the system prompt via fmtCtx()
+    // Only add enrichment details for the courses being actively studied this week (top 3 by priority)
     const courseDetails = active.map((c, i) => {
       const hrs = c.averageStudyHours > 0 ? c.averageStudyHours : ([0, 20, 35, 50, 70, 100][c.difficulty || 3] || 50);
-      return `${i + 1}. ${c.name}${c.courseCode ? ` (${c.courseCode})` : ''} \u2014 ${hrs}h est, ${c.credits || '?'}CU, ${c.assessmentType || '?'}, diff ${c.difficulty || 3}/5`;
+      let line = `${i + 1}. ${c.name}${c.courseCode ? ` (${c.courseCode})` : ''} \u2014 ${hrs}h est, ${c.credits || '?'}CU, ${c.assessmentType || '?'}, diff ${c.difficulty || 3}/5`;
+      if (c.examDate) line += ` [EXAM: ${c.examDate}]`;
+      // Only include enrichment detail for the first few active courses to keep prompt concise
+      if (i < 3) {
+        const topics = safeArr(c.topicBreakdown);
+        if (topics.length > 0) line += `\n   Topics: ${topics.slice(0, 8).map(t => `${t.topic} [${t.weight || '?'}]`).join(', ')}${topics.length > 8 ? ` (+${topics.length - 8} more)` : ''}`;
+        if (safeArr(c.quickWins).length > 0) line += `\n   Quick wins: ${safeArr(c.quickWins).slice(0, 3).join(', ')}`;
+        if (safeArr(c.preAssessmentWeakAreas).length > 0) line += `\n   Weak areas: ${safeArr(c.preAssessmentWeakAreas).join(', ')}`;
+      }
+      return line;
     }).join('\n');
 
     const startDt = data.studyStartDate || todayStr();
@@ -365,7 +412,7 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     const userCtx = planPrompt.trim() ? `\nStudent preferences: ${planPrompt.trim()}` : '';
 
     const endDt = targetDt;
-    const totalDays = endDt ? diffDays(startDt, endDt) : (Math.ceil(totalEstHours / hrsPerDay) + 7);
+    const totalDays = endDt ? diffDays(startDt, endDt) + 1 : (Math.ceil(totalEstHours / hrsPerDay) + 7);
     const totalWeeks = Math.max(1, Math.ceil(totalDays / 7));
 
     // Build study mode prompt
@@ -373,7 +420,7 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
       ? `PARALLEL MODE: The student takes multiple courses simultaneously. Distribute study blocks across ${pc?.parallelCourseLimit || 2}-3 active courses per day. Balance hours proportional to each course's difficulty and remaining hours. Each day can have multiple courses.`
       : effectiveStudyMode === 'hybrid'
       ? `HYBRID INTERLEAVING MODE:\n- Allocate 65% of daily hours to the PRIMARY course (course #1 that isn't complete).\n- Allocate 25% to a SECONDARY course (course #2 \u2014 preview upcoming material).\n- Allocate 10% to REVIEW of previously completed material.\n- When the primary course is within 2 days of its exam, switch to 100% focus.`
-      : `SEQUENTIAL RULE (CRITICAL):\n- Study ONE course at a time. Do NOT mix courses on the same day.\n- Fully schedule all hours for course #1 first. Only move to course #2 after course #1's hours are exhausted.\n- Exception: the transition day where course #1 finishes can have course #2 start after.`;
+      : `SEQUENTIAL RULE (CRITICAL):\n- Study ONE course at a time. Do NOT mix courses on the same day.\n- Fully schedule all hours for course #1 first. Only move to course #2 after course #1's hours are exhausted.\n- Exception: the transition day where course #1 finishes can have course #2 start after.\n- Exception: spaced review sessions of PREVIOUSLY COMPLETED courses are allowed alongside the current course. These count toward the 10% review allocation, not the current course's hours.`;
 
     // Build pacing prompt
     const pacingPrompt = effectivePacing === 'wave'
@@ -393,8 +440,46 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     const derivedStart = pc ? deriveStartTime(pc) : (data.studyStartTime || '08:00');
     const availPrompt = pc ? buildAvailabilityPrompt(pc) : `Uniform schedule: ${hrsPerDay}h/day, start at ${derivedStart}.`;
 
+    // Build study preferences prompt
+    const prefsPrompt = (() => {
+      const lines = [];
+      const examStrategy = pc?.examDayStrategy || 'light-review';
+      if (examStrategy === 'light-review') lines.push('EXAM PREP: Day before an exam = light review only (1-2h max, no new material). Exam day = exam block only.');
+      else if (examStrategy === 'no-study') lines.push('EXAM PREP: Day before an exam = complete rest day (no study). Exam day = exam block only.');
+      else if (examStrategy === 'intensive-review') lines.push('EXAM PREP: Day before an exam = intensive review (full study hours on exam topics). Exam day = exam block only.');
+      // 'normal' = no special instruction
+
+      const hardTiming = pc?.hardMaterialTiming || 'first-session';
+      if (hardTiming === 'first-session') lines.push('DIFFICULTY SCHEDULING: Schedule hardest/newest material in the FIRST study window of the day (whatever time that is). Lighter review in later windows.');
+      else if (hardTiming === 'last-session') lines.push('DIFFICULTY SCHEDULING: Schedule hardest/newest material in the LAST study window of the day. Earlier windows for review and lighter work.');
+      else if (hardTiming === 'middle-session') lines.push('DIFFICULTY SCHEDULING: Start with warm-up/review in the first window, tackle hardest material in the middle window, wind down with lighter review in the last window.');
+
+      const weekendMode = pc?.weekendIntensity || 'same';
+      if (weekendMode === 'lighter') lines.push('WEEKENDS: Lighter study on Sat/Sun — prioritize review and catch-up over new material. Use 60-70% of available hours.');
+      else if (weekendMode === 'heavier') lines.push('WEEKENDS: Use weekends for heavier study sessions — fill all available hours, tackle challenging material.');
+      else if (weekendMode === 'off') lines.push('WEEKENDS: Do NOT schedule any study on Saturday or Sunday.');
+
+      const examMode = pc?.examDateMode || 'none';
+      if (examMode === 'end-of-course') lines.push('EXAMS: Each course has an exam at the end. Start exam-prep phase at 85% of course hours. Last 2 days = exam prep + light review.');
+
+      // H12: Inject per-course exam dates into prompt for date-based prep ramps
+      const examDates = active.filter(c => c.examDate).map(c => `${c.courseCode || c.name}: exam on ${c.examDate}`);
+      if (examDates.length > 0) {
+        lines.push('EXAM DATES (build prep ramp backwards from these):\n' + examDates.map(e => `  - ${e}`).join('\n') +
+          '\n  For each exam: 7 days before = begin review phase. 2 days before = practice tests only. 1 day before = light review or rest (per preference above). Exam day = exam block only.');
+      }
+
+      return lines.length > 0 ? '\nSTUDENT PREFERENCES:\n' + lines.join('\n') : '';
+    })();
+
+    // H9: Build system prompt once before the loop (only ctx changes per week)
+    const baseSys = buildSystemPrompt(data, '');
+
     let hoursAssigned = 0;
     let weekContinuity = ''; // Inter-week context for AI continuity
+    const courseHoursMap = {}; // B2: cumulative hours per course across all weeks
+    let consecutiveEmptyWeeks = 0; // C7: stall detection
+    let catchUpHours = 0; // H5: hours missed from failed weeks to add to next target
 
     // FSRS-based review schedule: compute optimal review dates for completed topics
     const fsrsReviewPrompt = (() => {
@@ -413,7 +498,8 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
         if (dt > today) continue;
         for (const t of safeArr(dayTasks)) {
           if (!t.done || !t.planId || t.category === 'break') continue;
-          const topic = t.title?.split(/\s*[\u2014\-]\s*/)[0]?.trim();
+          const { courseKey } = matchTaskToCourse(t.title, courses);
+          const topic = courseKey || t.title?.split(/\s*[\u2014\u2013\-:|\u2015]\s*/)[0]?.trim();
           if (!topic) continue;
           if (!completedTopics[topic] || dt > completedTopics[topic].lastDate) {
             completedTopics[topic] = { lastDate: dt, count: (completedTopics[topic]?.count || 0) + 1 };
@@ -450,8 +536,16 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
 
       if (endDt && ws > endDt) break;
 
+      const weekTimer = Date.now();
+      // Compute timeout early so we can show it in the log
+      const isThinkingModel = (profile.model || '').match(/thinking|think|r1\b|qwq|reasoner|glm-5\.1|glm-5(?!.*turbo)/i);
+      const isNonStreaming = !!quirks.disableStreamingWithTools || noTools;
+      const WEEK_TIMEOUT_MS = isThinkingModel ? 480000 : isNonStreaming ? 300000 : 180000;
+      const timeoutMins = Math.round(WEEK_TIMEOUT_MS / 60000);
       bgSet({ label: `Generating week ${week + 1}/${totalWeeks}: ${ws} \u2014 ${we}...` });
       bgLog({ type: 'user', content: `\uD83D\uDCC5 Week ${week + 1}/${totalWeeks}: ${ws} \u2192 ${we}` });
+      const timeoutLabel = isThinkingModel ? 'thinking model' : isNonStreaming ? 'non-streaming' : null;
+      bgLog({ type: 'text', content: `\u23F1 Sending request to ${profile.name} (${profile.model})${timeoutLabel ? ` [${timeoutLabel} \u2014 ${timeoutMins}min timeout]` : ''}...` });
 
       const weekExDts = exDts.filter(d => d >= ws && d <= we);
       const hoursRemaining = totalEstHours - hoursAssigned;
@@ -480,56 +574,239 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
           }
         }
         weekAvailStr = `\nTHIS WEEK'S AVAILABILITY:\n${dayLines.join('\n')}`;
+        // C1: Include commitment blocks so AI knows what to avoid
+        const commitments = pc.commitments || [];
+        if (commitments.length > 0) {
+          weekAvailStr += '\n\nBLOCKED COMMITMENTS (do NOT schedule study during these times):\n' +
+            commitments.map(c => `- ${c.label}: ${c.days.map(d => DAY_NAMES[d]).join('/')} ${c.start}-${c.end}`).join('\n');
+        }
       }
 
-      const sys = buildSystemPrompt(data, `Use generate_study_plan to create tasks for ONLY ${ws} through ${we} (7 days). Do NOT use add_tasks. Do NOT plan outside this date range.`);
+      // Thinking models generate slower — split weeks into smaller chunks (3-4 days each)
+      const chunkSize = isThinkingModel ? 3 : 7;
+      const weekDays = [];
+      for (let i = 0; i < 7; i++) {
+        const dt = new Date(weekStart);
+        dt.setDate(dt.getDate() + i);
+        const ds = dt.toISOString().split('T')[0];
+        if (endDt && ds > endDt) break;
+        weekDays.push(ds);
+      }
 
-      const weekMsg = `Generate study tasks for WEEK ${week + 1}: ${ws} to ${we}. Use generate_study_plan tool.
+      // Split into sub-chunks
+      const chunks = [];
+      for (let i = 0; i < weekDays.length; i += chunkSize) {
+        chunks.push(weekDays.slice(i, i + chunkSize));
+      }
 
-PROGRESS: ${Math.round(hoursAssigned)}h of ${totalEstHours}h assigned. ~${Math.round(hoursRemaining)}h remaining. Target ~${Math.min(Math.round(weeklyHours), Math.round(hoursRemaining))}h this week.
-${weekExDts.length > 0 ? `Days off this week: ${weekExDts.join(', ')}` : ''}
-${week === 0 ? `First day starts at ${derivedStart}.` : ''}
-${weekContinuity || 'This is the first week — start with course #1.'}
+      for (let ci = 0; ci < chunks.length; ci++) {
+        if (abortCtrl.signal.aborted) break;
+        const chunkDays = chunks[ci];
+        const cs = chunkDays[0], ce = chunkDays[chunkDays.length - 1];
+        const chunkLabel = chunks.length > 1 ? ` (part ${ci + 1}/${chunks.length}: ${cs} to ${ce})` : '';
+
+        if (chunks.length > 1) {
+          bgLog({ type: 'text', content: `\u2702 Chunk ${ci + 1}/${chunks.length}: ${cs} \u2192 ${ce}` });
+        }
+
+      // Build per-day availability for this chunk only
+      let chunkAvailStr = '';
+      if (pc) {
+        const dayLines = [];
+        for (const ds of chunkDays) {
+          const dow = new Date(ds + 'T12:00:00').getDay();
+          if (weekExDts.includes(ds)) {
+            dayLines.push(`${ds} (${DAY_NAMES[dow]}): OFF (exception date)`);
+          } else {
+            const hrs = getEffectiveHours(pc, dow);
+            if (hrs <= 0) {
+              dayLines.push(`${ds} (${DAY_NAMES[dow]}): OFF`);
+            } else {
+              const day = pc.weeklyAvailability[dow];
+              const windowStr = day?.windows?.map(w => `${w.start}-${w.end}`).join(', ') || '';
+              dayLines.push(`${ds} (${DAY_NAMES[dow]}): ${windowStr} (${hrs}h available)`);
+            }
+          }
+        }
+        chunkAvailStr = `\nAVAILABILITY:\n${dayLines.join('\n')}`;
+        const commitments = pc.commitments || [];
+        if (commitments.length > 0) {
+          chunkAvailStr += '\n\nBLOCKED COMMITMENTS (do NOT schedule during these):\n' +
+            commitments.map(c => `- ${c.label}: ${c.days.map(d => DAY_NAMES[d]).join('/')} ${c.start}-${c.end}`).join('\n');
+        }
+      }
+
+      const hoursRemaining = totalEstHours - hoursAssigned;
+      if (hoursRemaining <= 0) { bgLog({ type: 'text', content: 'All course hours assigned \u2014 done!' }); break; }
+      const chunkTarget = chunks.length > 1
+        ? Math.round((weeklyHours + catchUpHours) / chunks.length)
+        : Math.min(Math.round(weeklyHours + catchUpHours), Math.round(hoursRemaining));
+
+      // H9: Reuse cached system prompt, only append per-chunk context
+      const sys = noTools
+        ? baseSys + `\nCONTEXT:\nGenerate study tasks for ONLY ${cs} through ${ce}. Output ONLY a JSON object with a "daily_tasks" array. Do NOT plan outside this date range.`
+        : baseSys + `\nCONTEXT:\nUse generate_study_plan to create tasks for ONLY ${cs} through ${ce}. Do NOT use add_tasks. Do NOT plan outside this date range.`;
+
+      const toolInstruction = noTools
+        ? `OUTPUT FORMAT: Respond with ONLY a JSON object (no markdown, no prose, no explanation). The JSON must have this exact structure:
+{"daily_tasks":[{"date":"YYYY-MM-DD","time":"HH:MM","endTime":"HH:MM","title":"CourseCode - Topic","category":"study","priority":"medium","notes":"..."}]}
+Output NOTHING except the JSON object. No text before or after it.`
+        : `IMPORTANT: Call the generate_study_plan tool IMMEDIATELY with all tasks in daily_tasks. Do NOT write a text description or summary — put ALL output into the tool call. No prose, just the tool call.`;
+
+      const weekMsg = `Generate study tasks for ${cs} to ${ce}${chunkLabel}.
+
+${toolInstruction}
+
+COURSES:\n${courseDetails}
+
+PROGRESS: ${Math.round(hoursAssigned)}h of ${totalEstHours}h assigned. ~${Math.round(hoursRemaining)}h remaining. Target ~${chunkTarget}h for these ${chunkDays.length} days.${catchUpHours > 0 && ci === 0 ? ` (includes ${Math.round(catchUpHours)}h catch-up)` : ''}
+${weekExDts.filter(d => d >= cs && d <= ce).length > 0 ? `Days off: ${weekExDts.filter(d => d >= cs && d <= ce).join(', ')}` : ''}
+${week === 0 && ci === 0 ? `First day starts at ${derivedStart}.` : ''}
+${weekContinuity || (() => {
+  const initLines = active.map(c => {
+    const hrs = c.averageStudyHours > 0 ? c.averageStudyHours : ([0, 20, 35, 50, 70, 100][c.difficulty || 3] || 50);
+    return `  ${c.courseCode || c.name}: 0h assigned / ${hrs}h est (${hrs}h remaining)`;
+  });
+  return `This is the first week — start with course #1.\nCourse status:\n${initLines.join('\n')}`;
+})()}
 
 ${modePrompt}
 ${pacingPrompt}
 ${blockPrompt}
 
-${weekAvailStr || availPrompt}
-
+${chunkAvailStr || availPrompt}
+${prefsPrompt}
 RULES:
-- ONLY dates ${ws} to ${we}. Each task: date, time, endTime (24h), title ("CourseCode \u2014 Topic"), category.
+- ONLY dates ${cs} to ${ce}. Each task: date, time, endTime (24h), title ("CourseCode \u2014 Topic"), category.
 - Categories: study, review, exam-prep, exam-day, project, class, break.
 - Do NOT schedule on OFF days or during commitment blocks.
-- Morning: hardest material. Evening: lighter review. Start each session with 10-15 min warm-up.
+- Follow the DIFFICULTY SCHEDULING and STUDENT PREFERENCES above for when to schedule hard vs light material.
+- Start each session with 10-15 min retrieval practice from the previous session (self-quiz without notes).
 - At ~80% course hours: switch to "review". At ~90%: "exam-prep". Day before exam: light review only. Day after exam: light day (1-2h).
 - If pre-assessment weak areas exist, allocate 60-70% of hours to them.
+- Follow each course's study order and time allocation percentages listed above. Distribute hours proportional to topic weights (high > medium > low).
+${week === 0 && ci === 0 ? '- Front-load quick wins for momentum, then tackle hardest concepts.' : ''}
 
-STUDY TECHNIQUE GUIDANCE (include in task notes field):
-- For "study" tasks: include a note like "Active study: After reading, close materials and summarize from memory."
-- For "review" tasks: include "Retrieval practice: WITHOUT looking at notes, write everything you know. Then check gaps."
-- For "exam-prep" tasks: include "Test simulation: Complete practice problems under timed conditions."
+${fsrsReviewPrompt ? `SPACED REVIEW:\n${fsrsReviewPrompt}\nNote: Review hours are INCLUDED in the target — do not add extra hours beyond the target.` : ''}
 
-SPACED REVIEW:
-Allocate ~10% of weekly hours to reviewing previously completed topics. Tag these as "review" category. Even when studying a new course, include brief reviews of prior courses.
-${fsrsReviewPrompt}${userCtx}`;
+FATIGUE MANAGEMENT:
+- If a day has 5+ study hours, include at least one longer break (30-60 min).
+- After 3+ consecutive hours on the same subject, switch to a different course or review topic.${userCtx}`;
 
       try {
-        // Use higher token limit for plan generation (tasks can be large)
-        const { logs: wLogs } = await runAILoop(profile, sys, [{ role: 'user', content: weekMsg }], data, previewSetData, executeTools, null, true, 0, 65536);
+        // Log prompt size for debugging
+        const promptSize = sys.length + weekMsg.length;
+        const estTokens = Math.round(promptSize / 4);
+        dlog('info', 'planner', `Week ${week + 1}${chunkLabel} prompt: ~${estTokens} tokens (${Math.round(promptSize / 1024)}KB) — sys:${Math.round(sys.length / 1024)}KB + msg:${Math.round(weekMsg.length / 1024)}KB`);
+        const planTools = noTools ? null : TOOLS.filter(t => t.name === 'generate_study_plan');
+        const weekPromise = runAILoop(profile, sys, [{ role: 'user', content: weekMsg }], data, previewSetData, executeTools, null, true, 0, 65536, planTools);
+        let timeoutId;
+        const timeoutPromise = new Promise((_, rej) => {
+          timeoutId = setTimeout(() => {
+            // Abort the in-flight request so it doesn't bleed into future sessions
+            if (getBgState().abortCtrl) getBgState().abortCtrl.abort();
+            rej(new Error(`Week ${week + 1}${chunkLabel} timed out after ${timeoutMins} minutes. The AI provider may be slow or unresponsive.`));
+          }, WEEK_TIMEOUT_MS);
+        });
+        let wLogs, finalText;
+        try {
+          const result = await Promise.race([weekPromise, timeoutPromise]);
+          wLogs = result.logs; finalText = result.finalText;
+        } finally {
+          clearTimeout(timeoutId); // Clean up timeout if request completed first
+        }
+        const elapsed = ((Date.now() - weekTimer) / 1000).toFixed(1);
+        bgLog({ type: 'text', content: `\u23F1 Week ${week + 1}${chunkLabel} response received in ${elapsed}s` });
         for (const l of wLogs) bgLog(l);
-        const weekTasks = capturedTasks.filter(t => t.date >= ws && t.date <= we);
 
-        // Post-generation validation: filter out invalid tasks
+        // No-tool fallback: parse JSON tasks from the AI's text response
+        if (noTools && finalText) {
+          bgLog({ type: 'text', content: 'Parsing JSON from text response (no-tool mode)...' });
+          try {
+            // Extract JSON from the response — find the outermost { ... }
+            const jsonMatch = finalText.match(/\{[\s\S]*"daily_tasks"[\s\S]*\}/);
+            if (jsonMatch) {
+              let parsed;
+              try { parsed = JSON.parse(jsonMatch[0]); } catch (_) {
+                // Try repairing truncated JSON
+                const { repairTruncatedJSON } = await import('../../utils/jsonRepair.js');
+                parsed = repairTruncatedJSON(jsonMatch[0]);
+              }
+              const tasks = safeArr(parsed.daily_tasks || parsed.tasks);
+              if (tasks.length > 0) {
+                bgLog({ type: 'text', content: `Parsed ${tasks.length} tasks from JSON response` });
+                // Insert tasks into data (same as generate_study_plan handler)
+                setData(d => {
+                  const allTasks = { ...d.tasks };
+                  const courses = d.courses || [];
+                  for (const t of tasks) {
+                    const dt = t.date || cs;
+                    if (!allTasks[dt]) allTasks[dt] = [];
+                    const { courseId: cid } = matchTaskToCourse(t.title, courses);
+                    allTasks[dt].push({
+                      id: uid(), time: t.time || '', endTime: t.endTime || '', title: t.title || '',
+                      category: t.category || 'study', priority: t.priority || 'medium',
+                      notes: t.notes || '', done: false, courseId: cid, planId,
+                    });
+                  }
+                  return { ...d, tasks: allTasks };
+                });
+                // Also add to capturedTasks for tracking
+                for (const t of tasks) {
+                  const dt = t.date || cs;
+                  if (!seenTaskIds.has(t.title + dt)) {
+                    seenTaskIds.add(t.title + dt);
+                    capturedTasks.push({ ...t, planId, date: dt, id: uid() });
+                  }
+                }
+              } else {
+                bgLog({ type: 'warn', content: 'JSON parsed but contained 0 tasks' });
+              }
+            } else {
+              bgLog({ type: 'warn', content: 'No JSON object found in AI response. The AI may have output prose instead of JSON.' });
+            }
+          } catch (parseErr) {
+            bgLog({ type: 'error', content: `Failed to parse JSON from response: ${parseErr.message}` });
+          }
+        }
+
+        const weekTasks = capturedTasks.filter(t => t.date >= cs && t.date <= ce);
+
+        // Post-generation validation: filter out invalid tasks, fix missing endTime
         const validTasks = [];
+        const blockDurations = { standard: 75, pomodoro: 25, sprint: 50 };
+        const defaultDur = blockDurations[effectiveBlockStyle] || 60;
         for (const t of weekTasks) {
           const issues = [];
-          if (!t.date || t.date < ws || t.date > we) issues.push('date out of range');
+          // C3: Estimate endTime FIRST so subsequent validation can use it
+          if (t.time && !t.endTime) {
+            const st = parseTime(t.time);
+            if (st) {
+              const endMins = st.mins + defaultDur;
+              t.endTime = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+            }
+          }
+          if (!t.date || t.date < cs || t.date > ce) issues.push('date out of range');
+          if (endDt && t.date > endDt) issues.push('past end date');
           if (!t.title || t.title.trim().length === 0) issues.push('empty title');
-          if (t.time && t.endTime && pc) {
+          if (t.time && pc) {
             const dow = new Date(t.date + 'T12:00:00').getDay();
             const day = pc.weeklyAvailability?.[dow];
             if (day && !day.available) issues.push('scheduled on unavailable day');
+            // H2: Validate task time falls within an availability window (handles overnight windows)
+            if (day?.available && day.windows?.length > 0 && t.endTime && t.category !== 'break') {
+              const tStart = parseTime(t.time)?.mins, tEnd = parseTime(t.endTime)?.mins;
+              if (tStart != null && tEnd != null) {
+                const inWindow = day.windows.some(w => {
+                  const wS = parseTime(w.start)?.mins, wE = parseTime(w.end)?.mins;
+                  if (wS == null || wE == null) return false;
+                  if (wE > wS) return tStart >= wS && tEnd <= wE; // normal window
+                  // Overnight window (e.g., 22:00-06:00): task fits in evening or morning segment
+                  return (tStart >= wS && tEnd <= 1440) || (tStart >= 0 && tEnd <= wE);
+                });
+                if (!inWindow) issues.push(`time ${t.time}-${t.endTime} outside availability windows`);
+              }
+            }
           }
           if (issues.length > 0) {
             bgLog({ type: 'error', content: `Skipped invalid task: "${t.title || '(empty)'}" - ${issues.join(', ')}` });
@@ -544,20 +821,76 @@ ${fsrsReviewPrompt}${userCtx}`;
         }, 0);
         hoursAssigned += weekHrs;
 
-        // Build inter-week continuity for next iteration
+        // Build inter-week continuity (C4: unified course matching, B2: rich tracking)
         const courseHrsThisWeek = {};
+        const lastTaskPerCourse = {};
         for (const t of validTasks) {
-          const name = t.title?.split(/\s*[\u2014\-]\s*/)[0]?.trim() || 'Other';
+          const { courseKey } = matchTaskToCourse(t.title, active);
           const st = parseTime(t.time), et = parseTime(t.endTime);
           const hrs = st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0;
-          courseHrsThisWeek[name] = (courseHrsThisWeek[name] || 0) + hrs;
+          courseHrsThisWeek[courseKey] = (courseHrsThisWeek[courseKey] || 0) + hrs;
+          courseHoursMap[courseKey] = (courseHoursMap[courseKey] || 0) + hrs;
+          if (t.title && t.category !== 'break') lastTaskPerCourse[courseKey] = t.title;
         }
-        const lines = Object.entries(courseHrsThisWeek).map(([name, hrs]) => `  ${name}: ${Math.round(hrs)}h this week`);
-        weekContinuity = `Last week assigned:\n${lines.join('\n')}\nCumulative: ${Math.round(hoursAssigned)}h of ${totalEstHours}h total. Continue from where the previous week left off.`;
+        // Build continuity with per-course remaining hours + last topic
+        const contLines = active.map(c => {
+          const key = c.courseCode || c.name;
+          const est = c.averageStudyHours > 0 ? c.averageStudyHours : ([0, 20, 35, 50, 70, 100][c.difficulty || 3] || 50);
+          const assigned = courseHoursMap[key] || 0;
+          const remaining = Math.max(0, est - assigned);
+          const thisWeek = courseHrsThisWeek[key] || 0;
+          let line = `  ${key}: ${Math.round(thisWeek)}h this week, ${Math.round(assigned)}h total / ${est}h est (${Math.round(remaining)}h remaining)`;
+          if (lastTaskPerCourse[key]) line += `\n    Last topic: "${lastTaskPerCourse[key]}"`;
+          return line;
+        });
+        weekContinuity = `Last week's progress:\n${contLines.join('\n')}\nCumulative: ${Math.round(hoursAssigned)}h of ${totalEstHours}h total. Continue from where the previous week left off — pick up from the last topic listed for each course.`;
 
-        bgLog({ type: 'text', content: `Week ${week + 1}: ${validTasks.length} tasks, ~${Math.round(weekHrs)}h (total: ~${Math.round(hoursAssigned)}h/${totalEstHours}h)` });
+        bgLog({ type: 'text', content: `\u2705 ${cs}\u2192${ce}: ${validTasks.length} tasks, ~${Math.round(weekHrs)}h` });
+
       } catch (e) {
-        bgLog({ type: 'error', content: `Week ${week + 1} failed: ${e.message}` });
+        const failElapsed = ((Date.now() - weekTimer) / 1000).toFixed(1);
+        bgLog({ type: 'error', content: `\u274C Week ${week + 1}${chunkLabel} failed after ${failElapsed}s: ${e.message}` });
+      }
+
+      } // end chunk loop
+
+      // Week-level summary and stall detection
+      const allWeekTasks = capturedTasks.filter(t => t.date >= ws && t.date <= we);
+      const weekTotalHrs = allWeekTasks.reduce((s, t) => {
+        const st = parseTime(t.time), et = parseTime(t.endTime);
+        return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0);
+      }, 0);
+      const totalElapsed = ((Date.now() - weekTimer) / 1000).toFixed(1);
+      bgLog({ type: 'text', content: `\u2705 Week ${week + 1} total: ${allWeekTasks.length} tasks, ~${Math.round(weekTotalHrs)}h (cumulative: ~${Math.round(hoursAssigned)}h/${totalEstHours}h) [${totalElapsed}s]` });
+
+      // H5: Track shortfall for catch-up
+      const fullWeekTarget = Math.min(weeklyHours + catchUpHours, totalEstHours - (hoursAssigned - weekTotalHrs));
+      if (weekTotalHrs < fullWeekTarget * 0.7 && weekTotalHrs > 0) {
+        catchUpHours = Math.round((fullWeekTarget - weekTotalHrs) * 0.5);
+      } else if (weekTotalHrs === 0) {
+        catchUpHours = Math.min(catchUpHours + Math.round(weeklyHours * 0.5), Math.round(weeklyHours * 0.5));
+      } else {
+        catchUpHours = 0;
+      }
+
+      // C7: Stall detection
+      const weekHasStudyDays = pc ? (() => {
+        for (let i = 0; i < 7; i++) {
+          const dt = new Date(weekStart); dt.setDate(dt.getDate() + i);
+          const ds = dt.toISOString().split('T')[0];
+          if (weekExDts.includes(ds)) continue;
+          if (getEffectiveHours(pc, dt.getDay()) > 0) return true;
+        }
+        return false;
+      })() : true;
+      if (allWeekTasks.length === 0 && weekHasStudyDays) {
+        consecutiveEmptyWeeks++;
+        if (consecutiveEmptyWeeks >= 2) {
+          bgLog({ type: 'error', content: `Stopping: ${consecutiveEmptyWeeks} consecutive weeks produced 0 tasks. Try a different model or simplify your schedule.` });
+          break;
+        }
+      } else {
+        consecutiveEmptyWeeks = 0;
       }
     }
 
@@ -580,16 +913,74 @@ ${fsrsReviewPrompt}${userCtx}`;
 
     // Fix #7: finally block — always reset loading state
     } finally {
-      bgSet({ loading: false, regenId: null, label: '', abortCtrl: null });
-      setGenLock(false);
+      bgSet({ loading: false, regenId: null, label: '', abortCtrl: null, outerAbortCtrl: null });
     }
   };
 
+  const [expandedWeeks, setExpandedWeeks] = useState({ 0: true }); // Week 0 expanded by default
+  const [excludedWeeks, setExcludedWeeks] = useState({}); // Per-week accept toggles
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [undoSnapshot, setUndoSnapshot] = useState(null); // For undo after confirm
+  const [courseFilter, setCourseFilter] = useState(null); // P2-9: course filter
+  const [editingTask, setEditingTask] = useState(null); // P2-10: { id, field, value }
+  const PLAN_COLORS = [T.accent, T.blue, T.purple, T.orange, T.red, '#4ecdc4', '#f7b731', '#e88bb3'];
+
   const confirmPlan = () => {
     if (!pendingPlan) return;
+    // Remove excluded week tasks before confirming
+    const excludedDates = new Set();
+    if (Object.keys(excludedWeeks).length > 0) {
+      const sortedDates = [...new Set(pendingPlan.tasks.map(t => t.date))].sort();
+      const firstDate = new Date(sortedDates[0] + 'T12:00:00');
+      for (const dt of sortedDates) {
+        const wn = Math.floor((new Date(dt + 'T12:00:00') - firstDate) / (7 * 86400000));
+        if (excludedWeeks[wn]) excludedDates.add(dt);
+      }
+    }
+    // Remove excluded tasks from data
+    if (excludedDates.size > 0) {
+      setData(d => {
+        const tasks = { ...d.tasks };
+        for (const t of pendingPlan.tasks) {
+          if (excludedDates.has(t.date) && tasks[t.date]) {
+            tasks[t.date] = tasks[t.date].filter(x => x.id !== t.id);
+            if (tasks[t.date].length === 0) delete tasks[t.date];
+          }
+        }
+        return { ...d, tasks };
+      });
+    }
+    // Store snapshot for undo
+    setUndoSnapshot({ tasks: pendingPlan.tasks.filter(t => !excludedDates.has(t.date)), planId: pendingPlan.planId });
+    const kept = pendingPlan.tasks.filter(t => !excludedDates.has(t.date)).length;
     setPendingPlan(null);
     setShowPostConfirm(true);
-    toast(`Study plan confirmed: ${pendingPlan.tasks.length} tasks added to calendar`, 'success');
+    setExpandedWeeks({ 0: true });
+    setExcludedWeeks({});
+    toast(`Plan confirmed: ${kept} tasks added to calendar`, 'success');
+    // Auto-clear undo after 15 seconds
+    setTimeout(() => setUndoSnapshot(null), 15000);
+  };
+
+  const undoConfirm = () => {
+    if (!undoSnapshot) return;
+    setData(d => {
+      const tasks = { ...d.tasks };
+      for (const t of undoSnapshot.tasks) {
+        if (tasks[t.date]) {
+          tasks[t.date] = tasks[t.date].filter(x => x.id !== t.id);
+          if (tasks[t.date].length === 0) delete tasks[t.date];
+        }
+      }
+      // Remove planHistory entry
+      const ph = [...(d.planHistory || [])];
+      const idx = ph.findIndex(p => p.planId === undoSnapshot.planId);
+      if (idx >= 0) ph.splice(idx, 1);
+      return { ...d, tasks, planHistory: ph };
+    });
+    setUndoSnapshot(null);
+    setShowPostConfirm(false);
+    toast('Plan undone — tasks removed from calendar', 'info');
   };
 
   const discardPlan = () => {
@@ -605,8 +996,73 @@ ${fsrsReviewPrompt}${userCtx}`;
       return { ...d, tasks };
     });
     setPendingPlan(null);
+    setShowDiscardConfirm(false);
+    setExpandedWeeks({ 0: true });
+    setExcludedWeeks({});
     toast('Plan discarded', 'info');
   };
+
+  const removeTaskFromPending = (taskId, taskDate) => {
+    if (!pendingPlan) return;
+    // Remove from data.tasks
+    setData(d => {
+      const tasks = { ...d.tasks };
+      if (tasks[taskDate]) {
+        tasks[taskDate] = tasks[taskDate].filter(x => x.id !== taskId);
+        if (tasks[taskDate].length === 0) delete tasks[taskDate];
+      }
+      return { ...d, tasks };
+    });
+    // Remove from pendingPlan
+    const updated = pendingPlan.tasks.filter(t => t.id !== taskId);
+    const hrs = updated.reduce((s, t) => { const st = parseTime(t.time), et = parseTime(t.endTime); return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0); }, 0);
+    setPendingPlan({ ...pendingPlan, tasks: updated, summary: `${updated.length} tasks across ${[...new Set(updated.map(t => t.date))].length} days (~${Math.round(hrs)}h scheduled)` });
+  };
+
+  // Course color helper for plan review
+  const getCourseColor = (title) => {
+    if (!title) return T.dim;
+    const { courseKey } = matchTaskToCourse(title, courses);
+    const idx = courses.findIndex(c => (c.courseCode || c.name) === courseKey);
+    return idx >= 0 ? PLAN_COLORS[idx % PLAN_COLORS.length] : T.dim;
+  };
+
+  // P2-10: Update a task field in both pendingPlan and data.tasks
+  const updatePendingTask = (taskId, taskDate, field, value) => {
+    if (!pendingPlan) return;
+    setData(d => {
+      const tasks = { ...d.tasks };
+      if (tasks[taskDate]) {
+        tasks[taskDate] = tasks[taskDate].map(t => t.id === taskId ? { ...t, [field]: value } : t);
+      }
+      return { ...d, tasks };
+    });
+    if (pendingPlan) {
+      setPendingPlan({
+        ...pendingPlan,
+        tasks: pendingPlan.tasks.map(t => t.id === taskId ? { ...t, [field]: value } : t),
+      });
+    }
+    setEditingTask(null);
+  };
+
+  // P2-13: Detect conflicts between pending plan and existing calendar tasks
+  const planConflicts = useMemo(() => {
+    if (!pendingPlan) return [];
+    const conflicts = [];
+    for (const t of pendingPlan.tasks) {
+      if (!t.time || !t.endTime || t.category === 'break') continue;
+      const existing = safeArr(data.tasks?.[t.date]).filter(x => !x.planId && x.time && x.endTime);
+      for (const ex of existing) {
+        const tS = parseTime(t.time)?.mins, tE = parseTime(t.endTime)?.mins;
+        const eS = parseTime(ex.time)?.mins, eE = parseTime(ex.endTime)?.mins;
+        if (tS != null && tE != null && eS != null && eE != null && tS < eE && tE > eS) {
+          conflicts.push({ planTask: t, existing: ex, date: t.date });
+        }
+      }
+    }
+    return conflicts;
+  }, [pendingPlan, data.tasks]);
 
   // ── Derived state ──
   const unenrichedCount = activeCourses.filter(c => !hasCtx(c)).length;
@@ -704,7 +1160,8 @@ ${fsrsReviewPrompt}${userCtx}`;
     for (const dt of sortedDates) {
       for (const t of safeArr(data.tasks[dt])) {
         if (t.planId !== lastPlan.planId) continue;
-        const name = t.title?.split(/\s*[\u2014\-]\s*/)[0]?.trim() || 'Other';
+        const { courseKey } = matchTaskToCourse(t.title, courses);
+        const name = courseKey || 'Other';
         if (!courseMap[name]) courseMap[name] = { name, startDate: dt, endDate: dt, totalMins: 0, doneMins: 0, tasks: 0 };
         courseMap[name].endDate = dt;
         courseMap[name].tasks++;
@@ -851,7 +1308,15 @@ ${fsrsReviewPrompt}${userCtx}`;
       {/* ═══════════════════════════════════════════════════════════════ */}
       {hasPlan && !showSettings && !isGenerating && courses.length > 0 && (() => {
         const pp = planProgress;
-        if (!pp || pp.totalTasks === 0) return null;
+        if (!pp || pp.totalTasks === 0) return (
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: '20px 24px', marginBottom: 16, textAlign: 'center' }}>
+            <div style={{ fontSize: fs(14), color: T.dim, marginBottom: 12 }}>Your previous plan has no remaining tasks.</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <Btn v="ai" onClick={() => setShowSettings(true)}>Create a New Plan</Btn>
+              <Btn v="secondary" onClick={() => setPage('daily')}>View Daily Tasks</Btn>
+            </div>
+          </div>
+        );
         return (
           <>
             {/* ── Plan Progress (promoted to top) ── */}
@@ -1149,10 +1614,60 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </div>
               </div>
 
+              {/* Study Preferences */}
+              <div style={{ marginBottom: 12, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: fs(12), fontWeight: 700, color: T.text, marginBottom: 10 }}>Study Preferences</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {/* Exam day strategy */}
+                  <div>
+                    <Label>Day before an exam</Label>
+                    <select value={pc?.examDayStrategy || 'light-review'} onChange={e => setPc({ examDayStrategy: e.target.value })}
+                      style={{ width: '100%', padding: '6px 10px', fontSize: fs(11), borderRadius: 6, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                      <option value="light-review">Light review only (recommended)</option>
+                      <option value="no-study">No study — rest day</option>
+                      <option value="normal">Study as normal</option>
+                      <option value="intensive-review">Intensive review / cram</option>
+                    </select>
+                  </div>
+                  {/* Hard material timing */}
+                  <div>
+                    <Label>Hardest material when?</Label>
+                    <select value={pc?.hardMaterialTiming || 'first-session'} onChange={e => setPc({ hardMaterialTiming: e.target.value })}
+                      style={{ width: '100%', padding: '6px 10px', fontSize: fs(11), borderRadius: 6, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                      <option value="first-session">First study window (freshest)</option>
+                      <option value="middle-session">Middle window (after warm-up)</option>
+                      <option value="last-session">Last study window</option>
+                      <option value="no-preference">No preference</option>
+                    </select>
+                  </div>
+                  {/* Weekend intensity */}
+                  <div>
+                    <Label>Weekend study</Label>
+                    <select value={pc?.weekendIntensity || 'same'} onChange={e => setPc({ weekendIntensity: e.target.value })}
+                      style={{ width: '100%', padding: '6px 10px', fontSize: fs(11), borderRadius: 6, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                      <option value="same">Same as weekdays</option>
+                      <option value="lighter">Lighter (review & catch-up)</option>
+                      <option value="heavier">Heavier (make up for weekdays)</option>
+                      <option value="off">Off — no study</option>
+                    </select>
+                  </div>
+                  {/* Per-course exam dates */}
+                  <div>
+                    <Label>Exam dates known?</Label>
+                    <select value={pc?.examDateMode || 'none'} onChange={e => setPc({ examDateMode: e.target.value })}
+                      style={{ width: '100%', padding: '6px 10px', fontSize: fs(11), borderRadius: 6, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                      <option value="none">No fixed exam dates</option>
+                      <option value="end-of-course">Exams at end of each course</option>
+                      <option value="custom">I'll specify in notes below</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               {/* Additional context */}
               <div style={{ marginBottom: 12 }}>
                 <Label>Notes for your plan</Label>
-                <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30" or "Focus on networking courses first"'} style={{ minHeight: 50, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
+                <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30", "Focus on networking courses first", or exam dates like "C850 exam on Apr 15"'} style={{ minHeight: 50, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
               </div>
 
               {/* Generate */}
@@ -1188,24 +1703,27 @@ ${fsrsReviewPrompt}${userCtx}`;
                       <Ic.Spin s={16} />
                       <span style={{ fontSize: fs(13), fontWeight: 700, color: T.purple }}>{bg.label || 'Working...'}</span>
                     </div>
-                    {getBgState().abortCtrl && <Btn small v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, label: '' }); toast('Cancelled', 'info'); }} style={{ color: T.red, borderColor: T.red }}>Stop</Btn>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: fs(10), color: T.dim, fontFamily: "'JetBrains Mono', monospace" }}><ElapsedTimer /></span>
+                      <Btn small v="ghost" onClick={cancelGeneration} style={{ color: T.red, borderColor: T.red }}>Stop</Btn>
+                    </div>
                   </div>
                   {bg.streamText && (
                     <div style={{ padding: '6px 10px', borderRadius: 7, background: T.purpleD, border: `1px solid ${T.purple}33`, fontSize: fs(11), color: T.purple, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', marginBottom: 6 }}>{bg.streamText}</div>
                   )}
                   {bg.logs.length > 0 && (
-                    <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {bg.logs.slice(-8).map((l, i) => <LogLine key={i} l={l} />)}
+                    <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {bg.logs.slice(-12).map((l, i) => <LogLine key={i} l={l} />)}
                     </div>
                   )}
-                  {/* Response size indicator */}
+                  {/* Debug footer */}
                   {bg.logs.length > 0 && (() => {
                     const totalChars = bg.logs.reduce((s, l) => s + (l.content || '').length, 0) + (bg.streamText || '').length;
                     const estTokens = Math.round(totalChars / 4);
                     return (
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono', monospace" }}>
-                        <span>{bg.logs.length} events</span>
-                        <span>~{estTokens > 1000 ? `${(estTokens / 1000).toFixed(1)}K` : estTokens} tokens received</span>
+                        <span>{bg.logs.length} events {'\u00B7'} {profile?.name || '?'} ({profile?.model || '?'})</span>
+                        <span>~{estTokens > 1000 ? `${(estTokens / 1000).toFixed(1)}K` : estTokens} tokens</span>
                       </div>
                     );
                   })()}
@@ -1325,6 +1843,54 @@ ${fsrsReviewPrompt}${userCtx}`;
                   </div>
                 )}
 
+                {/* Study Preferences (advanced panel) */}
+                {pc && (
+                  <div style={{ marginTop: 14, marginBottom: 14 }}>
+                    <Label>Study Preferences</Label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: T.panel, borderRadius: 8, padding: '10px 12px', border: `1px solid ${T.border}` }}>
+                      <div>
+                        <div style={{ fontSize: fs(9), color: T.dim, marginBottom: 3, fontWeight: 600 }}>Day before exam</div>
+                        <select value={pc.examDayStrategy || 'light-review'} onChange={e => setPc({ examDayStrategy: e.target.value })}
+                          style={{ width: '100%', padding: '5px 8px', fontSize: fs(10), borderRadius: 5, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                          <option value="light-review">Light review only</option>
+                          <option value="no-study">No study — rest</option>
+                          <option value="normal">Study as normal</option>
+                          <option value="intensive-review">Intensive review</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: fs(9), color: T.dim, marginBottom: 3, fontWeight: 600 }}>Hard material when?</div>
+                        <select value={pc.hardMaterialTiming || 'first-session'} onChange={e => setPc({ hardMaterialTiming: e.target.value })}
+                          style={{ width: '100%', padding: '5px 8px', fontSize: fs(10), borderRadius: 5, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                          <option value="first-session">First window (freshest)</option>
+                          <option value="middle-session">Middle window (after warm-up)</option>
+                          <option value="last-session">Last window</option>
+                          <option value="no-preference">No preference</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: fs(9), color: T.dim, marginBottom: 3, fontWeight: 600 }}>Weekend study</div>
+                        <select value={pc.weekendIntensity || 'same'} onChange={e => setPc({ weekendIntensity: e.target.value })}
+                          style={{ width: '100%', padding: '5px 8px', fontSize: fs(10), borderRadius: 5, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                          <option value="same">Same as weekdays</option>
+                          <option value="lighter">Lighter (review & catch-up)</option>
+                          <option value="heavier">Heavier (make up for weekdays)</option>
+                          <option value="off">Off — no study</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: fs(9), color: T.dim, marginBottom: 3, fontWeight: 600 }}>Exam dates</div>
+                        <select value={pc.examDateMode || 'none'} onChange={e => setPc({ examDateMode: e.target.value })}
+                          style={{ width: '100%', padding: '5px 8px', fontSize: fs(10), borderRadius: 5, border: `1px solid ${T.border}`, background: T.input, color: T.text }}>
+                          <option value="none">No fixed exam dates</option>
+                          <option value="end-of-course">Exams at end of each course</option>
+                          <option value="custom">I'll specify in notes</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Schedule warnings — with student-friendly explanations */}
                 {(() => {
                   const warns = [];
@@ -1401,7 +1967,7 @@ ${fsrsReviewPrompt}${userCtx}`;
               {!pendingPlan && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   {isGenerating && getBgState().abortCtrl && (
-                    <Btn v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, regenId: null, label: '' }); toast('Plan generation stopped', 'info'); }} style={{ color: T.red, borderColor: T.red, flexShrink: 0 }}>{'\u2B1B'} Stop</Btn>
+                    <Btn v="ghost" onClick={cancelGeneration} style={{ color: T.red, borderColor: T.red, flexShrink: 0 }}>{'\u2B1B'} Stop</Btn>
                   )}
                   <Btn v={isBusy ? 'secondary' : 'ai'} style={{ flex: 1, justifyContent: 'center', padding: '12px 24px', fontSize: fs(14) }} onClick={async () => {
                     setData(d => {
@@ -1419,62 +1985,266 @@ ${fsrsReviewPrompt}${userCtx}`;
                 </div>
               )}
 
-              {/* Pending plan preview */}
-              {pendingPlan && (
-                <div style={{ marginTop: 12 }} ref={el => { if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); }}>
-                  <div style={{ fontSize: fs(10), color: T.dim, padding: '6px 12px', background: T.input, borderRadius: 8, marginBottom: 8, lineHeight: 1.4 }}>
-                    Study hours and topic estimates are AI-generated. Adjust based on your actual pace and your instructor{'\u2019'}s guidance.
-                  </div>
-                  <div style={{ marginBottom: 10, position: 'sticky', top: 0, zIndex: 5, background: T.card, padding: '8px 0' }}>
-                    <div style={{ fontSize: fs(12), color: T.soft, marginBottom: 8 }}>{pendingPlan.summary}</div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Btn v="ai" style={{ flex: 1, justifyContent: 'center', padding: '10px 0' }} onClick={confirmPlan}>{'\u2713'} Confirm Plan</Btn>
-                      <Btn v="ghost" style={{ flexShrink: 0 }} onClick={discardPlan}>{'\u2717'} Discard</Btn>
+              {/* ═══ REDESIGNED PLAN REVIEW ═══ */}
+              {pendingPlan && (() => {
+                const tasks = pendingPlan.tasks;
+                const sortedDates = [...new Set(tasks.map(t => t.date))].sort();
+                if (sortedDates.length === 0) return null;
+                const firstDate = new Date(sortedDates[0] + 'T12:00:00');
+                const weeks = {};
+                for (const dt of sortedDates) {
+                  const d = new Date(dt + 'T12:00:00');
+                  const wn = Math.floor((d - firstDate) / (7 * 86400000));
+                  if (!weeks[wn]) weeks[wn] = [];
+                  weeks[wn].push(dt);
+                }
+                const weekEntries = Object.entries(weeks);
+                const totalHrs = tasks.reduce((s, t) => { const st = parseTime(t.time), et = parseTime(t.endTime); return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0); }, 0);
+
+                // Per-course breakdown
+                const courseBreak = {};
+                for (const t of tasks) {
+                  const color = getCourseColor(t.title);
+                  const { courseKey } = matchTaskToCourse(t.title, courses);
+                  const st = parseTime(t.time), et = parseTime(t.endTime);
+                  const hrs = st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0;
+                  if (!courseBreak[courseKey]) courseBreak[courseKey] = { hrs: 0, color, count: 0 };
+                  courseBreak[courseKey].hrs += hrs;
+                  courseBreak[courseKey].count++;
+                }
+
+                // Quality checks
+                const warnings = [];
+                const dayHrs = {};
+                for (const t of tasks) {
+                  const st = parseTime(t.time), et = parseTime(t.endTime);
+                  const hrs = st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0;
+                  dayHrs[t.date] = (dayHrs[t.date] || 0) + hrs;
+                }
+                const heavyDays = Object.entries(dayHrs).filter(([, h]) => h > 5);
+                if (heavyDays.length > 0) warnings.push(`${heavyDays.length} day${heavyDays.length > 1 ? 's' : ''} over 5 hours`);
+                const utilPct = weeklyHours > 0 ? Math.round((totalHrs / (weeklyHours * weekEntries.length)) * 100) : 0;
+
+                const includedWeeks = weekEntries.filter(([wn]) => !excludedWeeks[wn]).length;
+
+                return (
+                <div style={{ marginTop: 12 }} ref={el => { if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); }}
+                  role="region" aria-label="Review generated study plan">
+
+                  {/* ── Plan Summary Dashboard ── */}
+                  <div className="plan-reveal" style={{ background: `linear-gradient(135deg, ${T.purpleD}, ${T.accentD})`, border: `1px solid ${T.purple}33`, borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+                    <div style={{ fontSize: fs(14), fontWeight: 700, color: T.text, marginBottom: 2 }}>Your Study Plan is Ready</div>
+                    <div style={{ fontSize: fs(10), color: T.dim, marginBottom: 4 }}>
+                      {tasks.length} tasks {'\u00B7'} {weekEntries.length} week{weekEntries.length !== 1 ? 's' : ''} {'\u00B7'} ~{Math.round(totalHrs)}h scheduled {'\u00B7'} {utilPct}% of available time
                     </div>
-                  </div>
-                  <div style={{ maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {(() => {
-                      const sortedDates = [...new Set(pendingPlan.tasks.map(t => t.date))].sort();
-                      if (sortedDates.length === 0) return null;
-                      const firstDate = new Date(sortedDates[0] + 'T12:00:00');
-                      const weeks = {};
-                      for (const dt of sortedDates) {
-                        const d = new Date(dt + 'T12:00:00');
-                        const weekNum = Math.floor((d - firstDate) / (7 * 86400000));
-                        if (!weeks[weekNum]) weeks[weekNum] = [];
-                        weeks[weekNum].push(dt);
-                      }
-                      return Object.entries(weeks).map(([wn, dates]) => {
-                        const weekTasks = pendingPlan.tasks.filter(t => dates.includes(t.date));
-                        const weekHrs = weekTasks.reduce((s, t) => { const st = parseTime(t.time), et = parseTime(t.endTime); return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0); }, 0);
+                    {/* P2-14: Finish line projection */}
+                    {sortedDates.length > 0 && (
+                      <div style={{ fontSize: fs(9), color: T.accent, marginBottom: 8 }}>
+                        {'\u2192'} Follow this plan through {new Date(sortedDates[sortedDates.length - 1] + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} to stay on track
+                        {activeCourses.length > 0 && totalHrs >= totalEstHours * 0.9 ? ` \u2014 covers ${Math.round((totalHrs / totalEstHours) * 100)}% of your coursework` : ''}
+                      </div>
+                    )}
+
+                    {/* Course breakdown bars */}
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: T.input }}>
+                        {Object.entries(courseBreak).map(([name, { hrs, color }]) => (
+                          <div key={name} style={{ width: `${(hrs / totalHrs) * 100}%`, background: color, minWidth: 2 }} title={`${name}: ${Math.round(hrs)}h`} />
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+                        {Object.entries(courseBreak).map(([name, { hrs, color, count }]) => (
+                          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: fs(9), color: T.soft }}>
+                            <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600 }}>{name}</span>
+                            <span style={{ color: T.dim }}>{Math.round(hrs)}h ({count})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Weekly load bars */}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 32, marginBottom: 6 }}>
+                      {weekEntries.map(([wn, dates]) => {
+                        const wTasks = tasks.filter(t => dates.includes(t.date));
+                        const wHrs = wTasks.reduce((s, t) => { const st = parseTime(t.time), et = parseTime(t.endTime); return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0); }, 0);
+                        const maxH = Math.max(...weekEntries.map(([, ds]) => tasks.filter(t => ds.includes(t.date)).reduce((s, t) => { const st = parseTime(t.time), et = parseTime(t.endTime); return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0); }, 0)), 1);
+                        const pct = (wHrs / maxH) * 100;
+                        const isExcluded = excludedWeeks[wn];
                         return (
-                          <div key={wn} style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
-                            <div style={{ padding: '6px 10px', background: T.input, fontSize: fs(10), fontWeight: 700, color: T.soft, display: 'flex', justifyContent: 'space-between' }}>
-                              <span>Week {Number(wn) + 1}: {new Date(dates[0] + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {'\u2013'} {new Date(dates[dates.length - 1] + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                              <span>{Math.round(weekHrs)}h</span>
-                            </div>
-                            <div style={{ padding: '4px 8px' }}>
-                              {dates.map(dt => (
-                                <div key={dt}>
-                                  <div style={{ fontSize: fs(10), fontWeight: 700, color: T.accent, padding: '3px 0 1px' }}>{new Date(dt + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-                                  {pendingPlan.tasks.filter(t => t.date === dt).map((t, j) => (
-                                    <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 6px', borderRadius: 5, background: T.input, marginBottom: 2, fontSize: fs(10) }}>
-                                      <span style={{ color: T.blue, minWidth: 40, fontFamily: "'JetBrains Mono',monospace" }}>{t.time || '\u2014'}</span>
-                                      <span style={{ flex: 1, color: T.text }}>{t.title}</span>
-                                      {t.endTime && <span style={{ color: T.dim, fontSize: fs(9) }}>{'\u2192'} {t.endTime}</span>}
-                                      {t.category && t.category !== 'study' && <Badge color={t.category === 'break' ? T.dim : t.category === 'exam-day' ? T.red : t.category === 'exam-prep' ? T.orange : t.category === 'review' ? T.blue : T.purple} bg={(t.category === 'break' ? T.dim : t.category === 'exam-day' ? T.red : t.category === 'exam-prep' ? T.orange : t.category === 'review' ? T.blue : T.purple) + '22'}>{t.category}</Badge>}
-                                    </div>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
+                          <div key={wn} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            <div style={{ width: '100%', background: isExcluded ? T.border : T.accent, borderRadius: 3, height: `${Math.max(4, pct)}%`, opacity: isExcluded ? 0.3 : 0.8, transition: 'all .2s' }} title={`Week ${Number(wn) + 1}: ${Math.round(wHrs)}h`} />
+                            <span style={{ fontSize: fs(7), color: T.dim }}>W{Number(wn) + 1}</span>
                           </div>
                         );
+                      })}
+                    </div>
+
+                    {/* Quality checks */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: fs(9) }}>
+                      {warnings.length === 0 && <span style={{ color: T.accent }}>{'\u2713'} Plan looks balanced</span>}
+                      {warnings.map((w, i) => <span key={i} style={{ color: T.orange }}>{'\u26A0'} {w}</span>)}
+                      {utilPct <= 90 && <span style={{ color: T.accent }}>{'\u2713'} Fits your availability</span>}
+                      {utilPct > 90 && <span style={{ color: T.orange }}>{'\u26A0'} {utilPct}% utilization is tight</span>}
+                    </div>
+                  </div>
+
+                  {/* P2-13: Conflict detection banner */}
+                  {planConflicts.length > 0 && (
+                    <div style={{ padding: '8px 12px', borderRadius: 8, background: T.orangeD, border: `1px solid ${T.orange}33`, marginBottom: 8, fontSize: fs(10), color: T.orange }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{'\u26A0'} {planConflicts.length} conflict{planConflicts.length !== 1 ? 's' : ''} with existing calendar items</div>
+                      {planConflicts.slice(0, 3).map((c, i) => (
+                        <div key={i} style={{ fontSize: fs(9), opacity: 0.85, marginLeft: 8 }}>
+                          {new Date(c.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} {c.planTask.time}: "{c.planTask.title?.split(/[\u2014\-:]/)[0]?.trim()}" overlaps "{c.existing.title}"
+                        </div>
+                      ))}
+                      {planConflicts.length > 3 && <div style={{ fontSize: fs(9), opacity: 0.7, marginLeft: 8 }}>+{planConflicts.length - 3} more...</div>}
+                    </div>
+                  )}
+
+                  {/* P2-9: Course filter pills */}
+                  {Object.keys(courseBreak).length > 1 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6, padding: '0 2px' }}>
+                      <button onClick={() => setCourseFilter(null)}
+                        style={{ padding: '3px 10px', borderRadius: 12, border: `1.5px solid ${!courseFilter ? T.accent : T.border}`, background: !courseFilter ? T.accentD : 'transparent', color: !courseFilter ? T.accent : T.dim, fontSize: fs(9), fontWeight: 600, cursor: 'pointer' }}>All</button>
+                      {Object.entries(courseBreak).map(([name, { color }]) => (
+                        <button key={name} onClick={() => setCourseFilter(courseFilter === name ? null : name)}
+                          style={{ padding: '3px 10px', borderRadius: 12, border: `1.5px solid ${courseFilter === name ? color : T.border}`, background: courseFilter === name ? color + '22' : 'transparent', color: courseFilter === name ? color : T.dim, fontSize: fs(9), fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: 2, background: color, flexShrink: 0 }} />
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── AI disclaimer ── */}
+                  <div style={{ fontSize: fs(9), color: T.dim, padding: '4px 10px', marginBottom: 6, lineHeight: 1.4 }}>
+                    AI-generated estimates. Remove tasks with {'\u2717'}, click times/titles to edit, or uncheck weeks.
+                  </div>
+
+                  {/* ── Sticky confirm/discard bar ── */}
+                  <div style={{ position: 'sticky', top: 0, zIndex: 5, background: T.card, padding: '6px 0 8px', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Btn v="ai" style={{ flex: 1, justifyContent: 'center', padding: '10px 0' }} onClick={confirmPlan}>
+                        Confirm {includedWeeks < weekEntries.length ? `${includedWeeks}/${weekEntries.length} Weeks` : 'Plan'}
+                      </Btn>
+                      {!showDiscardConfirm ? (
+                        <Btn v="ghost" style={{ flexShrink: 0 }} onClick={() => setShowDiscardConfirm(true)}>Discard</Btn>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <span style={{ fontSize: fs(10), color: T.orange }}>Sure?</span>
+                          <Btn small v="ghost" onClick={discardPlan} style={{ color: T.red, borderColor: T.red }}>Yes, discard</Btn>
+                          <Btn small v="ghost" onClick={() => setShowDiscardConfirm(false)}>Keep</Btn>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Collapsible week cards ── */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+                    role="list" aria-label="Plan weeks">
+                    {weekEntries.map(([wn, dates]) => {
+                      const wnNum = Number(wn);
+                      const weekTasks = tasks.filter(t => dates.includes(t.date));
+                      const weekHrs = weekTasks.reduce((s, t) => { const st = parseTime(t.time), et = parseTime(t.endTime); return s + (st && et ? Math.max(0, (et.mins - st.mins) / 60) : 0); }, 0);
+                      const isExpanded = !!expandedWeeks[wn];
+                      const isExcluded = !!excludedWeeks[wn];
+                      // Mini day dots
+                      const dayDots = [0, 1, 2, 3, 4, 5, 6].map(i => {
+                        const dt = new Date(new Date(dates[0] + 'T12:00:00'));
+                        dt.setDate(dt.getDate() + i);
+                        const ds = dt.toISOString().split('T')[0];
+                        return dayHrs[ds] || 0;
                       });
-                    })()}
+                      const maxDayH = Math.max(...dayDots, 1);
+
+                      return (
+                        <div key={wn} role="listitem" className="plan-reveal" style={{ background: T.panel, border: `1px solid ${isExcluded ? T.border : T.purple + '33'}`, borderRadius: 10, overflow: 'hidden', opacity: isExcluded ? 0.5 : 1, transition: 'opacity .2s' }}>
+                          {/* Week header — clickable */}
+                          <div onClick={() => setExpandedWeeks(p => ({ ...p, [wn]: !p[wn] }))}
+                            style={{ padding: '8px 12px', background: T.input, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+                            <span style={{ fontSize: fs(10), color: T.dim, transition: 'transform .2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}>{'\u25B6'}</span>
+                            <span style={{ fontSize: fs(11), fontWeight: 700, color: T.text, flex: 1 }}>
+                              Week {wnNum + 1}: {new Date(dates[0] + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {'\u2013'} {new Date(dates[dates.length - 1] + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                            {/* Mini day dots */}
+                            <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 14 }}>
+                              {dayDots.map((h, i) => (
+                                <div key={i} style={{ width: 4, borderRadius: 1, background: h > 0 ? T.accent : T.border, height: Math.max(2, (h / maxDayH) * 14), opacity: h > 0 ? 0.7 : 0.3 }} />
+                              ))}
+                            </div>
+                            <span style={{ fontSize: fs(10), fontWeight: 600, color: T.soft, minWidth: 30, textAlign: 'right' }}>{Math.round(weekHrs)}h</span>
+                            {/* Week accept toggle */}
+                            <button onClick={e => { e.stopPropagation(); setExcludedWeeks(p => ({ ...p, [wn]: !p[wn] })); }}
+                              style={{ width: 20, height: 20, borderRadius: 4, border: `1.5px solid ${isExcluded ? T.border : T.accent}`, background: isExcluded ? 'transparent' : T.accentD, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(10), color: isExcluded ? T.dim : T.accent, padding: 0, flexShrink: 0 }}
+                              title={isExcluded ? 'Include this week' : 'Exclude this week'}>
+                              {isExcluded ? '' : '\u2713'}
+                            </button>
+                          </div>
+
+                          {/* Expanded content — days and tasks */}
+                          <div style={{ maxHeight: isExpanded ? 2000 : 0, overflow: 'hidden', transition: 'max-height .3s ease' }}>
+                            <div style={{ padding: '6px 10px' }}>
+                              {dates.map(dt => {
+                                const dtTasks = tasks.filter(t => t.date === dt);
+                                const dtHrs = dayHrs[dt] || 0;
+                                return (
+                                  <div key={dt}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0 2px' }}>
+                                      <span style={{ fontSize: fs(10), fontWeight: 700, color: T.accent }}>{new Date(dt + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {dtHrs > 5 && <span style={{ fontSize: fs(8), color: T.orange }}>{'\u26A0'}</span>}
+                                        <span style={{ fontSize: fs(9), color: T.dim }}>{Math.round(dtHrs * 10) / 10}h</span>
+                                      </div>
+                                    </div>
+                                    {dtTasks.map((t, j) => {
+                                      const { courseKey: tCourse } = matchTaskToCourse(t.title, courses);
+                                      const filtered = courseFilter && tCourse !== courseFilter;
+                                      const isEditingTime = editingTask?.id === t.id && editingTask?.field === 'time';
+                                      const isEditingTitle = editingTask?.id === t.id && editingTask?.field === 'title';
+                                      return (
+                                      <div key={t.id || j} className="plan-task-row" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', borderRadius: 5, background: j % 2 === 0 ? T.input : 'transparent', marginBottom: 1, fontSize: fs(10), borderLeft: `3px solid ${getCourseColor(t.title)}`, opacity: filtered ? 0.2 : 1, transition: 'opacity .15s', pointerEvents: filtered ? 'none' : 'auto' }}>
+                                        {/* P2-10: Inline time editing */}
+                                        {isEditingTime ? (
+                                          <input type="time" defaultValue={t.time} autoFocus
+                                            onBlur={e => updatePendingTask(t.id, t.date, 'time', e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingTask(null); }}
+                                            style={{ width: 56, padding: '1px 2px', fontSize: fs(9), fontFamily: "'JetBrains Mono',monospace", border: `1px solid ${T.accent}`, borderRadius: 3, background: T.input, color: T.text }} />
+                                        ) : (
+                                          <span onClick={() => setEditingTask({ id: t.id, field: 'time' })}
+                                            style={{ color: T.blue, minWidth: 36, fontFamily: "'JetBrains Mono',monospace", fontSize: fs(9), cursor: 'pointer' }} title="Click to edit time">{t.time || '\u2014'}</span>
+                                        )}
+                                        {/* P2-10: Inline title editing */}
+                                        {isEditingTitle ? (
+                                          <input type="text" defaultValue={t.title} autoFocus
+                                            onBlur={e => updatePendingTask(t.id, t.date, 'title', e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingTask(null); }}
+                                            style={{ flex: 1, padding: '1px 4px', fontSize: fs(10), border: `1px solid ${T.accent}`, borderRadius: 3, background: T.input, color: T.text }} />
+                                        ) : (
+                                          <span onClick={() => setEditingTask({ id: t.id, field: 'title' })}
+                                            style={{ flex: 1, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }} title="Click to edit title">{t.title}</span>
+                                        )}
+                                        {t.endTime && <span style={{ color: T.dim, fontSize: fs(8), flexShrink: 0 }}>{t.endTime}</span>}
+                                        {t.category && t.category !== 'study' && <Badge color={t.category === 'break' ? T.dim : t.category === 'exam-day' ? T.red : t.category === 'exam-prep' ? T.orange : t.category === 'review' ? T.blue : T.purple} bg={(t.category === 'break' ? T.dim : t.category === 'exam-day' ? T.red : t.category === 'exam-prep' ? T.orange : t.category === 'review' ? T.blue : T.purple) + '22'}>{t.category}</Badge>}
+                                        <button onClick={() => removeTaskFromPending(t.id, t.date)}
+                                          className="plan-task-delete"
+                                          style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', padding: '0 2px', fontSize: fs(11), opacity: 0, transition: 'opacity .15s', flexShrink: 0 }}
+                                          title="Remove task">{'\u2715'}</button>
+                                      </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               <AIActivity />
             </div>
@@ -1486,11 +2256,16 @@ ${fsrsReviewPrompt}${userCtx}`;
       {showPostConfirm && !pendingPlan && (
         <div className="slide-up" style={{ background: `linear-gradient(135deg, ${T.accentD}, ${T.purpleD})`, border: `1px solid ${T.accent}33`, borderRadius: 14, padding: '20px 24px', textAlign: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: fs(14), fontWeight: 700, color: T.accent, marginBottom: 4 }}>{'\u2705'} Plan Confirmed</div>
-          <div style={{ fontSize: fs(12), color: T.soft, marginBottom: 16 }}>Your study tasks have been added to the calendar.</div>
+          <div style={{ fontSize: fs(12), color: T.soft, marginBottom: undoSnapshot ? 10 : 16 }}>Your study tasks have been added to the calendar.</div>
+          {undoSnapshot && (
+            <div style={{ marginBottom: 12 }}>
+              <Btn small v="ghost" onClick={undoConfirm} style={{ color: T.orange, borderColor: T.orange + '55' }}>Undo — remove all added tasks</Btn>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <Btn v="ai" onClick={() => { setShowPostConfirm(false); setPage('daily'); }}>View Today{'\u2019'}s Tasks {'\u2192'}</Btn>
-            <Btn v="secondary" onClick={() => { setShowPostConfirm(false); setPage('calendar'); }}>View Calendar {'\u2192'}</Btn>
-            <Btn v="ghost" onClick={() => setShowPostConfirm(false)}>Stay Here</Btn>
+            <Btn v="ai" onClick={() => { setShowPostConfirm(false); setUndoSnapshot(null); setPage('daily'); }}>View Today{'\u2019'}s Tasks {'\u2192'}</Btn>
+            <Btn v="secondary" onClick={() => { setShowPostConfirm(false); setUndoSnapshot(null); setPage('calendar'); }}>View Calendar {'\u2192'}</Btn>
+            <Btn v="ghost" onClick={() => { setShowPostConfirm(false); }}>Stay Here</Btn>
           </div>
         </div>
       )}

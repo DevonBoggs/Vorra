@@ -83,6 +83,61 @@ export function findCourse(courses, match) {
   });
 }
 
+/**
+ * Extract a course identifier from a task title and match it to a course.
+ * Unified matching strategy used across the entire app.
+ * Returns { courseId, courseKey } or { courseId: '', courseKey: titlePrefix }
+ */
+export function matchTaskToCourse(title, courses) {
+  if (!title || !courses?.length) return { courseId: '', courseKey: title || 'Other' };
+  // Extract the prefix before any separator (—, –, -, :, |)
+  const prefix = title.split(/\s*[\u2014\u2013\u2015\-:|]\s*/)[0]?.trim() || title;
+  // Try extracting a course code first (most reliable)
+  const code = extractCode(prefix);
+  if (code) {
+    const idx = courses.findIndex(c => (c.courseCode || '').toUpperCase().trim() === code);
+    if (idx >= 0) return { courseId: courses[idx].id || '', courseKey: courses[idx].courseCode || courses[idx].name };
+  }
+  // Fall back to findCourse with the full prefix
+  const idx = findCourse(courses, prefix);
+  if (idx >= 0) return { courseId: courses[idx].id || '', courseKey: courses[idx].courseCode || courses[idx].name };
+  // Last resort: try the full title
+  const idx2 = findCourse(courses, title);
+  if (idx2 >= 0) return { courseId: courses[idx2].id || '', courseKey: courses[idx2].courseCode || courses[idx2].name };
+  return { courseId: '', courseKey: prefix };
+}
+
+// H8: Normalize date/time formats from AI output
+function normalizeDate(d) {
+  if (!d) return todayStr();
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  // Try parsing as a date
+  try { const dt = new Date(d + 'T12:00:00'); if (!isNaN(dt)) return dt.toISOString().split('T')[0]; } catch(_) {}
+  return todayStr();
+}
+function normalizeTime(t) {
+  if (!t) return '';
+  // Already HH:MM — validate range
+  if (/^\d{2}:\d{2}$/.test(t)) {
+    const [h, m] = t.split(':').map(Number);
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return t;
+    return '';
+  }
+  // Handle H:MM
+  if (/^\d{1}:\d{2}$/.test(t)) return '0' + t;
+  // Handle "8:00 AM" / "8:00 PM" format
+  const m = t.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+  if (m) {
+    let h = parseInt(m[1]);
+    const min = m[2];
+    if (m[3]?.toLowerCase() === 'pm' && h < 12) h += 12;
+    if (m[3]?.toLowerCase() === 'am' && h === 12) h = 0;
+    return String(h).padStart(2, '0') + ':' + min;
+  }
+  return t;
+}
+
 const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan'];
 
 export function executeTools(toolCalls, data, setData) {
@@ -101,7 +156,7 @@ export function executeTools(toolCalls, data, setData) {
         const ct = safeArr(input.tasks).length;
         setData(d => {
           const tasks = { ...d.tasks };
-          for (const t of safeArr(input.tasks)) { const dt=t.date||todayStr(); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:t.time,endTime:t.endTime||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false,courseId:t.courseId||""}); }
+          for (const t of safeArr(input.tasks)) { const dt=normalizeDate(t.date); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:normalizeTime(t.time),endTime:normalizeTime(t.endTime)||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false,courseId:t.courseId||""}); }
           return { ...d, tasks };
         });
         results.push({id:call.id,result:`Added ${ct} task(s)`});
@@ -223,7 +278,18 @@ export function executeTools(toolCalls, data, setData) {
         const ct = safeArr(input.daily_tasks).length;
         setData(d => {
           const tasks = { ...d.tasks };
-          for (const t of safeArr(input.daily_tasks)) { const dt=t.date||todayStr(); if(!tasks[dt])tasks[dt]=[]; tasks[dt].push({id:uid(),time:t.time,endTime:t.endTime||"",title:t.title,category:t.category||"study",priority:t.priority||"medium",notes:t.notes||"",done:false,courseId:t.courseId||""}); }
+          const courses = d.courses || [];
+          for (const t of safeArr(input.daily_tasks)) {
+            const dt = normalizeDate(t.date);
+            if (!tasks[dt]) tasks[dt] = [];
+            // H6: Auto-populate courseId by matching task title to courses
+            let cid = t.courseId || '';
+            if (!cid || !courses.some(c => c.id === cid)) {
+              const { courseId } = matchTaskToCourse(t.title, courses);
+              cid = courseId;
+            }
+            tasks[dt].push({ id: uid(), time: normalizeTime(t.time), endTime: normalizeTime(t.endTime) || '', title: t.title, category: t.category || 'study', priority: t.priority || 'medium', notes: t.notes || '', done: false, courseId: cid });
+          }
           return { ...d, tasks };
         });
         results.push({id:call.id,result:`Plan: ${input.summary||'(no summary)'}. ${ct} tasks added.`});

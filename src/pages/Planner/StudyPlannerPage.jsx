@@ -9,7 +9,7 @@ import { useBreakpoint } from '../../systems/breakpoint.js';
 import { dlog } from '../../systems/debug.js';
 import { toast } from '../../systems/toast.js';
 import { buildSystemPrompt, runAILoop } from '../../systems/api.js';
-import { useBgTask, bgSet, bgLog, getBgState } from '../../systems/background.js';
+import { useBgTask, bgSet, bgLog, bgNewAbort, getBgState } from '../../systems/background.js';
 import { executeTools, safeArr } from '../../utils/toolExecution.js';
 import { Badge } from '../../components/ui/Badge.jsx';
 import { Label } from '../../components/ui/Label.jsx';

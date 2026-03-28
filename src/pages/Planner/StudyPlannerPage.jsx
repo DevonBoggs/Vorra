@@ -805,7 +805,7 @@ ${fsrsReviewPrompt}${userCtx}`;
       return { ...d, tasks, studyStartDate: today };
     });
     toast('Cleared future plan tasks. Generating new plan from today...', 'info');
-    requestAnimationFrame(() => requestAnimationFrame(() => genPlan()));
+    setTimeout(() => genPlan().catch(e => { toast(`Generation failed: ${e.message}`, 'error'); bgSet({ loading: false, label: '' }); }), 100);
   };
 
   const exportToCalendar = () => {
@@ -954,7 +954,7 @@ ${fsrsReviewPrompt}${userCtx}`;
               <Btn small v="secondary" onClick={() => setShowSettings(true)}>{'\u2699'} Adjust Schedule</Btn>
               <Btn small v="secondary" onClick={replanFromToday}>{'\u21BB'} Replan from today</Btn>
               <Btn small v="secondary" onClick={exportToCalendar}>{'\uD83D\uDCC5'} Export to Calendar</Btn>
-              <Btn small v="ghost" onClick={() => { setShowSettings(true); requestAnimationFrame(() => requestAnimationFrame(() => genPlan())); }}>Regenerate Plan</Btn>
+              <Btn small v="ghost" onClick={() => { setShowSettings(true); setTimeout(() => genPlan().catch(e => { toast(`Generation failed: ${e.message}`, 'error'); bgSet({ loading: false, label: '' }); }), 100); }}>Regenerate Plan</Btn>
             </div>
 
             {/* ── Plan Timeline (Gantt-style course blocks) ── */}
@@ -1179,7 +1179,8 @@ ${fsrsReviewPrompt}${userCtx}`;
 
               {/* Generate */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Btn v="ai" style={{ flex: 1, justifyContent: 'center', padding: '14px 24px', fontSize: fs(14) }} onClick={() => {
+                <Btn v="ai" style={{ flex: 1, justifyContent: 'center', padding: '14px 24px', fontSize: fs(14) }} onClick={async () => {
+                  // Auto-save dates and config synchronously
                   setData(d => {
                     const updated = { ...d };
                     if (!d.studyStartDate) updated.studyStartDate = autoStart;
@@ -1187,9 +1188,17 @@ ${fsrsReviewPrompt}${userCtx}`;
                     if (!d.plannerConfig) updated.plannerConfig = migrateToPlannerConfig(updated);
                     return updated;
                   });
-                  requestAnimationFrame(() => requestAnimationFrame(() => genPlan()));
+                  // Small delay for state to flush, then generate
+                  await new Promise(r => setTimeout(r, 100));
+                  try {
+                    await genPlan();
+                  } catch (e) {
+                    toast(`Generation failed: ${e.message}`, 'error');
+                    dlog('error', 'planner', 'genPlan error', e.message);
+                    bgSet({ loading: false, label: '' });
+                  }
                 }} disabled={bg.loading || !profile || activeCourses.length === 0}>
-                  {isGenerating ? <><Ic.Spin s={14} /> Generating...</> : 'Generate Study Plan'}
+                  {bg.loading ? <><Ic.Spin s={14} /> Generating...</> : 'Generate Study Plan'}
                 </Btn>
               </div>
 
@@ -1405,7 +1414,7 @@ ${fsrsReviewPrompt}${userCtx}`;
                   {isGenerating && getBgState().abortCtrl && (
                     <Btn v="ghost" onClick={() => { getBgState().abortCtrl?.abort(); bgSet({ loading: false, regenId: null, label: '' }); toast('Plan generation stopped', 'info'); }} style={{ color: T.red, borderColor: T.red, flexShrink: 0 }}>{'\u2B1B'} Stop</Btn>
                   )}
-                  <Btn v={isBusy ? 'secondary' : 'ai'} style={{ flex: 1, justifyContent: 'center', padding: '12px 24px', fontSize: fs(14) }} onClick={() => {
+                  <Btn v={isBusy ? 'secondary' : 'ai'} style={{ flex: 1, justifyContent: 'center', padding: '12px 24px', fontSize: fs(14) }} onClick={async () => {
                     setData(d => {
                       const updated = { ...d };
                       if (!d.studyStartDate) updated.studyStartDate = autoStart;
@@ -1413,9 +1422,10 @@ ${fsrsReviewPrompt}${userCtx}`;
                       if (!d.plannerConfig) updated.plannerConfig = migrateToPlannerConfig(updated);
                       return updated;
                     });
-                    requestAnimationFrame(() => requestAnimationFrame(() => genPlan()));
+                    await new Promise(r => setTimeout(r, 100));
+                    try { await genPlan(); } catch (e) { toast(`Generation failed: ${e.message}`, 'error'); bgSet({ loading: false, label: '' }); }
                   }} disabled={bg.loading || !profile || activeCourses.length === 0}>
-                    {isGenerating ? <><Ic.Spin s={14} /> Generating...</> : isBusy ? 'Waiting...' : !feasible ? `${'\u26A0'} Generate (Aggressive)` : hasPlan ? 'Regenerate Plan' : 'Generate Study Plan'}
+                    {bg.loading ? <><Ic.Spin s={14} /> Generating...</> : !feasible ? `${'\u26A0'} Generate (Aggressive)` : hasPlan ? 'Regenerate Plan' : 'Generate Study Plan'}
                   </Btn>
                 </div>
               )}

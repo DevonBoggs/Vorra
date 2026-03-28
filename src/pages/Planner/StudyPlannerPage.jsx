@@ -535,7 +535,8 @@ Allocate ~10% of weekly hours to reviewing previously completed topics. Tag thes
 ${fsrsReviewPrompt}${userCtx}`;
 
       try {
-        const { logs: wLogs } = await runAILoop(profile, sys, [{ role: 'user', content: weekMsg }], data, previewSetData, executeTools);
+        // Use higher token limit for plan generation (tasks can be large)
+        const { logs: wLogs } = await runAILoop(profile, sys, [{ role: 'user', content: weekMsg }], data, previewSetData, executeTools, null, true, 0, 32768);
         for (const l of wLogs) bgLog(l);
         const weekTasks = capturedTasks.filter(t => t.date >= ws && t.date <= we);
 

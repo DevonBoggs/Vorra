@@ -88,7 +88,7 @@ export function guessModelsUrl(baseUrl) {
 // ----------------------------------------------------------------------
 // AI CALLER with tool-use protocol
 // ----------------------------------------------------------------------
-export async function callAIWithTools(profile, systemPrompt, messages, imageData = null, toolOverride = null) {
+export async function callAIWithTools(profile, systemPrompt, messages, imageData = null, toolOverride = null, maxTokens = 16384) {
   const isAnth = isAnthProvider(profile);
   dlog('api','api',`Calling: ${profile.name} (${profile.model})`, {provider:isAnth?"anthropic":"openai",msgs:messages.length,hasImg:!!imageData});
   const headers = getAuthHeaders(profile);
@@ -118,12 +118,12 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
   if (quirks.noToolSupport) {
     // Provider does not support tool calling — omit tools entirely
     body = isAnth
-      ? { model: profile.model, max_tokens: 16384, system: systemPrompt, messages: processedMessages }
-      : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt }, ...processedMessages] };
+      ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: processedMessages }
+      : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...processedMessages] };
   } else if (isAnth) {
-    body = { model: profile.model, max_tokens: 16384, system: systemPrompt, messages: processedMessages, tools: toolSet };
+    body = { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: processedMessages, tools: toolSet };
   } else {
-    body = { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt }, ...processedMessages], tools: toolSetOAI };
+    body = { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...processedMessages], tools: toolSetOAI };
     if (quirks.requireToolChoice) body.tool_choice = "auto";
   }
 
@@ -143,12 +143,12 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
     let retryBody;
     if (quirks.noToolSupport) {
       retryBody = isAnth
-        ? { model: profile.model, max_tokens: 16384, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs }
-        : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs] };
+        ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs }
+        : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs] };
     } else {
       retryBody = isAnth
-        ? { model: profile.model, max_tokens: 16384, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs, tools: toolSet }
-        : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs], tools: toolSetOAI };
+        ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead.", messages: plainMsgs, tools: toolSet }
+        : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt + "\n\nNOTE: An image was provided but your model doesn't support vision. Ask the user to describe what's in the image instead." }, ...plainMsgs], tools: toolSetOAI };
     }
     try {
       res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(retryBody) });
@@ -218,7 +218,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
 // ----------------------------------------------------------------------
 // STREAMING API CALLER (SSE) — shows live text as it arrives
 // ----------------------------------------------------------------------
-export async function callAIStream(profile, systemPrompt, messages, imageData = null, onChunk = null, toolOverride = null) {
+export async function callAIStream(profile, systemPrompt, messages, imageData = null, onChunk = null, toolOverride = null, maxTokens = 16384) {
   const quirks = getProviderQuirks(profile);
   if (quirks.disableStreamingWithTools) {
     return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride);
@@ -412,8 +412,8 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
   }
 
   const body = isAnth
-    ? { model: profile.model, max_tokens: 16384, system: systemPrompt, messages: extendedMessages, tools: TOOLS }
-    : { model: profile.model, max_tokens: 16384, messages: [{ role: "system", content: systemPrompt }, ...extendedMessages], tools: TOOLS_OPENAI };
+    ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: extendedMessages, tools: TOOLS }
+    : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...extendedMessages], tools: TOOLS_OPENAI };
 
   dlog('api','api','Continuing after tool results');
   const res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
@@ -644,7 +644,7 @@ ${ctx ? `\nCONTEXT:\n${ctx}` : ""}`;
 // ----------------------------------------------------------------------
 // AI LOOP HELPER
 // ----------------------------------------------------------------------
-export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true, maxLoops = 0) {
+export async function runAILoop(profile, sys, msgs, data, setData, executeTools, img = null, useStream = true, maxLoops = 0, maxTokens = 16384) {
   if (typeof executeTools !== 'function') {
     dlog('error','api','runAILoop called without executeTools function — tool calls will not be processed');
   }
@@ -655,8 +655,8 @@ export async function runAILoop(profile, sys, msgs, data, setData, executeTools,
   const onChunk = useStream ? (text) => bgStream(text) : null;
   try {
     resp = useStream
-      ? await callAIStream(profile, sys, msgs, img, onChunk)
-      : await callAIWithTools(profile, sys, msgs, img);
+      ? await callAIStream(profile, sys, msgs, img, onChunk, null, maxTokens)
+      : await callAIWithTools(profile, sys, msgs, img, null, maxTokens);
   }
   catch (e) {
     if (e.message === 'Cancelled') return {logs:[{type:"error",content:"⛔ Cancelled"}],finalText:""};

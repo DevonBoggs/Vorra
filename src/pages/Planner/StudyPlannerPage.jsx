@@ -75,6 +75,7 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [shiftDays, setShiftDays] = useState(1);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
 
   const bg = useBgTask();
 
@@ -235,8 +236,18 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
     // Confirm before replacing existing schedule
     const hasExisting = pc?.weeklyAvailability && Object.values(pc.weeklyAvailability).some(d => d.windows?.length > 0);
     if (hasExisting && pc?.lifeTemplate !== templateId) {
-      if (!confirm(`Replace your current schedule with "${tpl.label}"? This will overwrite your study windows and commitments.`)) return;
+      setConfirmDialog({
+        message: `Replace your current schedule with "${tpl.label}"? This will overwrite your study windows and commitments.`,
+        onConfirm: () => { setConfirmDialog(null); doApplyTemplate(templateId); },
+      });
+      return;
     }
+    doApplyTemplate(templateId);
+  };
+
+  const doApplyTemplate = (templateId) => {
+    const tpl = LIFE_TEMPLATES[templateId];
+    if (!tpl) return;
     setData(d => ({
       ...d,
       plannerConfig: {
@@ -1018,18 +1029,19 @@ ${fsrsReviewPrompt}${userCtx}`;
               </div>
               <div style={{ fontSize: fs(11), color: T.dim, marginBottom: 16 }}>Pick your situation, set a deadline, and we{'\u2019'}ll generate a personalized schedule.</div>
 
-              {/* Template cards */}
+              {/* Template pills */}
               <Label>What does your week look like?</Label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8, marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
                 {LIFE_TEMPLATE_IDS.map(id => {
                   const tpl = LIFE_TEMPLATES[id];
                   const isActive = pc?.lifeTemplate === id;
                   return (
-                    <button key={id} onClick={() => applyTemplate(id)}
-                      style={{ padding: '12px 14px', borderRadius: 10, border: `2px solid ${isActive ? T.accent : T.border}`, background: isActive ? T.accentD : T.input, cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
-                      <div style={{ fontSize: fs(16), marginBottom: 4 }}>{tpl.icon}</div>
-                      <div style={{ fontSize: fs(12), fontWeight: 700, color: isActive ? T.accent : T.text }}>{tpl.label}</div>
-                      <div style={{ fontSize: fs(10), color: T.dim }}>{tpl.description}</div>
+                    <button key={id} onClick={() => applyTemplate(id)} title={tpl.description}
+                      style={{ padding: '6px 14px', borderRadius: 20, border: `1.5px solid ${isActive ? T.accent : T.border}`, background: isActive ? T.accentD : T.input, cursor: 'pointer', fontSize: fs(11), fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.soft, transition: 'all .15s', display: 'flex', alignItems: 'center', gap: 5 }}
+                      onMouseEnter={e => { if (!isActive) { e.currentTarget.style.borderColor = T.accent + '66'; e.currentTarget.style.color = T.text; } }}
+                      onMouseLeave={e => { if (!isActive) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.soft; } }}>
+                      <span style={{ fontSize: fs(13) }}>{tpl.icon}</span>
+                      {tpl.label}
                     </button>
                   );
                 })}
@@ -1261,7 +1273,7 @@ ${fsrsReviewPrompt}${userCtx}`;
                               </button>
                             );
                           })}
-                          {exceptionDates.length > 0 && <Btn small v="ghost" onClick={() => { if (confirm(`Clear all ${exceptionDates.length} exception dates?`)) setData(d => ({ ...d, exceptionDates: [] })); }}>Clear All</Btn>}
+                          {exceptionDates.length > 0 && <Btn small v="ghost" onClick={() => { setConfirmDialog({ message: `Clear all ${exceptionDates.length} exception dates?`, onConfirm: () => { setConfirmDialog(null); setData(d => ({ ...d, exceptionDates: [] })); } }); }}>Clear All</Btn>}
                         </div>
                         {exceptionDates.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxHeight: 100, overflowY: 'auto' }}>{exceptionDates.map(dt => <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '3px 9px', borderRadius: 5, background: T.orangeD, fontSize: fs(10), color: T.orange }}>{new Date(dt + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}<button onClick={() => removeExDate(dt)} style={{ background: 'none', border: 'none', color: T.orange, cursor: 'pointer', fontSize: fs(12), padding: 0 }}>{'\u00D7'}</button></div>)}</div>}
                       </div>
@@ -1434,6 +1446,20 @@ ${fsrsReviewPrompt}${userCtx}`;
             <Btn v="ai" onClick={() => { setShowPostConfirm(false); setPage('daily'); }}>View Today{'\u2019'}s Tasks {'\u2192'}</Btn>
             <Btn v="secondary" onClick={() => { setShowPostConfirm(false); setPage('calendar'); }}>View Calendar {'\u2192'}</Btn>
             <Btn v="ghost" onClick={() => setShowPostConfirm(false)}>Stay Here</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Themed confirm dialog */}
+      {confirmDialog && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setConfirmDialog(null)}>
+          <div className="pop-in" onClick={e => e.stopPropagation()} style={{ background: T.card, border: `1.5px solid ${T.border}`, borderRadius: 16, padding: '24px 28px', maxWidth: 400, textAlign: 'center', boxShadow: '0 24px 60px rgba(0,0,0,.5)' }}>
+            <div style={{ fontSize: fs(14), fontWeight: 600, color: T.text, marginBottom: 16, lineHeight: 1.5 }}>{confirmDialog.message}</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <Btn v="ghost" onClick={() => setConfirmDialog(null)}>Cancel</Btn>
+              <Btn v="ai" onClick={confirmDialog.onConfirm}>Confirm</Btn>
+            </div>
           </div>
         </div>
       )}

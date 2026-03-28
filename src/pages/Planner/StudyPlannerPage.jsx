@@ -1028,7 +1028,7 @@ ${fsrsReviewPrompt}${userCtx}`;
       {((!hasPlan || showSettings || pendingPlan || isGenerating) && courses.length > 0) && (
         <>
           {/* ── Simplified first-run wizard ── */}
-          {!hasPlan && !showAdvanced && !pendingPlan && !isGenerating && (
+          {!hasPlan && !showAdvanced && !pendingPlan && (
             <div style={{ background: T.card, border: `1px solid ${T.accent}33`, borderRadius: 12, padding: '20px 24px', marginBottom: 16 }}>
               <div style={{ fontSize: fs(15), fontWeight: 700, color: T.text, marginBottom: 4 }}>
                 {activeCourses.length} course{activeCourses.length !== 1 ? 's' : ''}, ~{totalEstHours}h total. Let{'\u2019'}s build your study plan.
@@ -1170,11 +1170,7 @@ ${fsrsReviewPrompt}${userCtx}`;
                 <textarea value={planPrompt} onChange={e => setPlanPrompt(e.target.value)} disabled={isBusy} placeholder={'e.g. "I have a work trip Mar 28-30" or "Focus on networking courses first"'} style={{ minHeight: 50, fontSize: fs(11), opacity: isBusy ? 0.4 : 1, border: `1px solid ${T.border}`, background: T.input, borderRadius: 8, padding: '10px 12px', width: '100%', resize: 'vertical' }} />
               </div>
 
-              <button onClick={() => setShowAdvanced(true)} style={{ background: 'none', border: 'none', color: T.dim, cursor: 'pointer', fontSize: fs(10), textDecoration: 'underline', padding: '4px 0', marginBottom: 8 }}>
-                Advanced options (study mode, pacing, days off)
-              </button>
-
-              {/* Generate + Advanced toggle */}
+              {/* Generate */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <Btn v="ai" style={{ flex: 1, justifyContent: 'center', padding: '14px 24px', fontSize: fs(14) }} onClick={() => {
                   setData(d => {
@@ -1196,7 +1192,7 @@ ${fsrsReviewPrompt}${userCtx}`;
           )}
 
           {/* ── Full Settings Panel (advanced mode or editing existing) ── */}
-          {(showAdvanced || hasPlan || pendingPlan || isGenerating) && (
+          {(showAdvanced || hasPlan || pendingPlan) && (
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
               <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: fs(14), fontWeight: 700, color: T.text }}>Schedule Settings</div>
@@ -1359,7 +1355,7 @@ ${fsrsReviewPrompt}${userCtx}`;
           )}
 
           {/* ── Generate / Review divider — only for advanced/returning users ── */}
-          {(hasSettings || isFirstRun) && (showAdvanced || hasPlan || pendingPlan || isGenerating) && (
+          {(hasSettings || isFirstRun) && (showAdvanced || hasPlan || pendingPlan) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '0 4px' }}>
               <div style={{ flex: 1, height: 1, background: T.border }} />
               <span style={{ fontSize: fs(10), fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: 1 }}>{pendingPlan ? 'Review Plan' : 'Generate'}</span>
@@ -1368,7 +1364,7 @@ ${fsrsReviewPrompt}${userCtx}`;
           )}
 
           {/* ═══ GENERATE + PLAN PREVIEW — only for advanced/returning/generating/reviewing ═══ */}
-          {(hasSettings || isFirstRun) && (showAdvanced || hasPlan || pendingPlan || isGenerating) && (
+          {(hasSettings || isFirstRun) && (showAdvanced || hasPlan || pendingPlan) && (
             <div style={{ background: T.card, border: `1px solid ${pendingPlan ? T.purple + '44' : T.accent + '33'}`, borderRadius: 12, padding: '16px 18px', marginBottom: 16, boxShadow: `0 0 0 1px ${pendingPlan ? T.purple + '11' : T.accent + '11'}` }}>
               <div style={{ fontSize: fs(14), fontWeight: 700, color: pendingPlan ? T.purple : T.text, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {pendingPlan ? 'Review Generated Plan' : hasPlan ? 'Regenerate Study Plan' : 'Generate Study Plan'}

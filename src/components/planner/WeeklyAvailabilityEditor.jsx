@@ -97,8 +97,9 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
   const [hoveredBlock, setHoveredBlock] = useState(null); // { dow, winIdx, type: 'study'|'commitment', commitmentId? }
   const [selectedBlock, setSelectedBlock] = useState(null); // { dow, winIdx, type: 'study'|'commitment', commitmentId? }
   const [selectedBlocks, setSelectedBlocks] = useState([]);
-  const [selectionBox, setSelectionBox] = useState(null); // { startDow, startMin, currentDow, currentMin }
+  const [selectionBox, setSelectionBox] = useState(null); // { startX, startY, currentX, currentY, startDow, startMin }
   const barRefs = useRef({});
+  const wrapperRef = useRef(null);
 
   const wa = plannerConfig?.weeklyAvailability || {};
   const commitments = plannerConfig?.commitments || [];
@@ -628,13 +629,43 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     dayComm.forEach((c, i) => { if (blockType !== 'commitment' || i !== winIdx) others.push({ start: toMin(c.start), end: toMin(c.end) }); });
 
     document.body.style.userSelect = 'none';
-    setDrag({ dow, winIdx, mode, startX: e.clientX, barWidth: barRect.width, origStart, origEnd, others, blockType, commitmentId });
+    // Capture original positions of all selected blocks for multi-drag
+    const multiOriginals = selectedBlocks.length > 1 ? selectedBlocks.filter(b => b.type === 'study').map(b => {
+      const d = wa[b.dow] || { available: true, windows: [] };
+      const w = (d.windows || [])[b.winIdx];
+      return w ? { ...b, origStart: toMin(w.start), origEnd: toMin(w.end) } : null;
+    }).filter(Boolean) : [];
+    setDrag({ dow, winIdx, mode, startX: e.clientX, barWidth: barRect.width, origStart, origEnd, others, blockType, commitmentId, multiOriginals });
   };
 
   useEffect(() => {
     if (!drag) return;
     const handleMouseMove = (e) => {
-      const deltaMin = ((e.clientX - drag.startX) / drag.barWidth) * 1440;
+      const deltaMin = snapMin(((e.clientX - drag.startX) / drag.barWidth) * 1440);
+
+      // If this block is part of a multi-selection and we're in move mode, move ALL selected blocks
+      const isPartOfMultiSelect = selectedBlocks.length > 1 && drag.mode === 'move' &&
+        selectedBlocks.some(b => b.dow === drag.dow && b.winIdx === drag.winIdx && b.type === drag.blockType);
+
+      if (isPartOfMultiSelect && drag.multiOriginals?.length > 0) {
+        // Move all selected study blocks by the same absolute delta from their original positions
+        const newWa = { ...wa };
+        for (const orig of drag.multiOriginals) {
+          const day = { ...(newWa[orig.dow] || { available: true, windows: [] }) };
+          const windows = [...(day.windows || [])];
+          const dur = orig.origEnd - orig.origStart;
+          let ns = clampMin(snapMin(orig.origStart + deltaMin));
+          let ne = ns + dur;
+          if (ne > 1440) { ne = 1440; ns = ne - dur; }
+          if (ns < 0) { ns = 0; ne = dur; }
+          windows[orig.winIdx] = { ...windows[orig.winIdx], start: minToTime(ns), end: minToTime(ne) };
+          newWa[orig.dow] = { ...day, windows };
+        }
+        onUpdate({ weeklyAvailability: newWa });
+        return;
+      }
+
+      // Single block drag (existing logic)
       let newStart, newEnd;
       if (drag.mode === 'move') {
         const dur = drag.origEnd - drag.origStart;
@@ -649,10 +680,8 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
         if (newEnd - newStart < MIN_DURATION) newEnd = newStart + MIN_DURATION;
       }
       newStart = clampMin(newStart); newEnd = clampMin(newEnd);
-      // Overlaps are allowed — conflicts shown as warnings, not prevented
       if (newEnd - newStart < MIN_DURATION) return;
 
-      // Use raw onUpdate during drag — undo snapshot was already captured in mouseDown
       if (drag.blockType === 'commitment' && onUpdateCommitment) {
         onUpdateCommitment(drag.commitmentId, minToTime(newStart), minToTime(newEnd));
       } else {
@@ -668,48 +697,52 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [drag]);
 
-  // ── Selection box drag (supports cross-day selection) ──
+  // ── Selection box drag (unified rectangle across days) ──
   useEffect(() => {
     if (!selectionBox) return;
     const handleMouseMove = (e) => {
-      // Determine which day the mouse is over by checking bar positions
-      let currentDow = selectionBox.startDow;
-      for (const d of DAY_ORDER) {
-        const barEl = barRefs.current[d];
-        if (!barEl) continue;
-        const rect = barEl.getBoundingClientRect();
-        if (e.clientY >= rect.top && e.clientY <= rect.bottom) { currentDow = d; break; }
-      }
-      // Get time position from whichever bar the mouse is over
-      const barEl = barRefs.current[currentDow] || barRefs.current[selectionBox.startDow];
-      if (!barEl) return;
-      const rect = barEl.getBoundingClientRect();
-      const currentMin = snapMin(Math.max(0, Math.min(1440, ((e.clientX - rect.left) / rect.width) * 1440)));
-      setSelectionBox(prev => prev ? { ...prev, currentDow, currentMin } : null);
+      const wrapRect = wrapperRef.current?.getBoundingClientRect();
+      if (!wrapRect) return;
+      setSelectionBox(prev => prev ? {
+        ...prev,
+        currentX: e.clientX - wrapRect.left,
+        currentY: e.clientY - wrapRect.top,
+      } : null);
     };
     const handleMouseUp = () => {
-      if (selectionBox) {
-        const minStart = Math.min(selectionBox.startMin, selectionBox.currentMin);
-        const maxEnd = Math.max(selectionBox.startMin, selectionBox.currentMin);
-        // Determine the range of days covered (using DAY_ORDER indices)
-        const startIdx = DAY_ORDER.indexOf(selectionBox.startDow);
-        const endIdx = DAY_ORDER.indexOf(selectionBox.currentDow);
-        const fromIdx = Math.min(startIdx, endIdx);
-        const toIdx = Math.max(startIdx, endIdx);
-        const daysInRange = DAY_ORDER.slice(fromIdx, toIdx + 1);
-        const hasDrag = maxEnd - minStart >= 15 || daysInRange.length > 1;
-        if (hasDrag) {
+      document.body.style.userSelect = '';
+      if (selectionBox && wrapperRef.current) {
+        const wrapRect = wrapperRef.current.getBoundingClientRect();
+        // Convert pixel rectangle to block selection
+        const selLeft = Math.min(selectionBox.startX, selectionBox.currentX);
+        const selRight = Math.max(selectionBox.startX, selectionBox.currentX);
+        const selTop = Math.min(selectionBox.startY, selectionBox.currentY);
+        const selBottom = Math.max(selectionBox.startY, selectionBox.currentY);
+        // Only select if dragged at least 5px in any direction
+        if (selRight - selLeft > 5 || selBottom - selTop > 5) {
           const selected = [];
-          for (const dow of daysInRange) {
-            const day = wa[dow] || { available: true, windows: [] };
-            const dayComm = commitments.filter(c => c.days?.includes(dow));
+          for (const d of DAY_ORDER) {
+            const barEl = barRefs.current[d];
+            if (!barEl) continue;
+            const barRect = barEl.getBoundingClientRect();
+            const barTop = barRect.top - wrapRect.top;
+            const barBottom = barRect.bottom - wrapRect.top;
+            const barLeft = barRect.left - wrapRect.left;
+            const barWidth = barRect.width;
+            // Check if this day's bar overlaps the selection vertically
+            if (barBottom < selTop || barTop > selBottom) continue;
+            // Convert horizontal pixel range to time range
+            const timeStart = Math.max(0, ((selLeft - barLeft) / barWidth) * 1440);
+            const timeEnd = Math.min(1440, ((selRight - barLeft) / barWidth) * 1440);
+            const day = wa[d] || { available: true, windows: [] };
+            const dayComm = commitments.filter(c => c.days?.includes(d));
             (day.windows || []).forEach((w, wi) => {
               const ws = toMin(w.start), we = toMin(w.end);
-              if (ws < maxEnd && we > minStart) selected.push({ dow, winIdx: wi, type: 'study' });
+              if (ws < timeEnd && we > timeStart) selected.push({ dow: d, winIdx: wi, type: 'study' });
             });
             dayComm.forEach((c, ci) => {
               const cs = toMin(c.start), ce = toMin(c.end);
-              if (cs < maxEnd && ce > minStart) selected.push({ dow, winIdx: ci, type: 'commitment', commitmentId: c.id });
+              if (cs < timeEnd && ce > timeStart) selected.push({ dow: d, winIdx: ci, type: 'commitment', commitmentId: c.id });
             });
           }
           setSelectedBlocks(selected);
@@ -782,7 +815,16 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
         <div style={{ width: 8 }} /><div style={{ width: 20, flexShrink: 0 }} />
       </div>
 
-      {/* Day rows */}
+      {/* Day rows wrapper — unified selection overlay renders here */}
+      <div ref={wrapperRef} style={{ position: 'relative' }}>
+      {/* Unified selection rectangle */}
+      {selectionBox && (() => {
+        const left = Math.min(selectionBox.startX, selectionBox.currentX);
+        const top = Math.min(selectionBox.startY, selectionBox.currentY);
+        const width = Math.abs(selectionBox.currentX - selectionBox.startX);
+        const height = Math.abs(selectionBox.currentY - selectionBox.startY);
+        return <div style={{ position: 'absolute', left, top, width, height, background: T.accent + '12', border: `1px solid ${T.accent}55`, borderRadius: 3, pointerEvents: 'none', zIndex: 20 }} />;
+      })()}
       {DAY_ORDER.map(dow => {
         const day = wa[dow] || { available: true, windows: [{ start: '09:00', end: '17:00' }] };
         const hrs = getEffectiveHours(plannerConfig, dow);
@@ -814,11 +856,18 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                 onMouseDown={(e) => {
                   if (e.target !== barRefs.current[dow]) return;
                   if (e.detail >= 2) return;
+                  const wrapRect = wrapperRef.current?.getBoundingClientRect();
+                  if (!wrapRect) return;
                   const barEl = barRefs.current[dow];
-                  const rect = barEl.getBoundingClientRect();
-                  const clickMin = snapMin(((e.clientX - rect.left) / rect.width) * 1440);
-                  setSelectionBox({ startDow: dow, startMin: clickMin, currentDow: dow, currentMin: clickMin });
+                  const barRect = barEl.getBoundingClientRect();
+                  const clickMin = snapMin(((e.clientX - barRect.left) / barRect.width) * 1440);
+                  setSelectionBox({
+                    startX: e.clientX - wrapRect.left, startY: e.clientY - wrapRect.top,
+                    currentX: e.clientX - wrapRect.left, currentY: e.clientY - wrapRect.top,
+                    startDow: dow, startMin: clickMin,
+                  });
                   setSelectedBlocks([]);
+                  document.body.style.userSelect = 'none';
                 }}
                 onDoubleClick={(e) => handleBarDoubleClick(e, dow)}
                 onContextMenu={(e) => {
@@ -923,18 +972,6 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
                     </div>
                   );
                 })}
-                {/* Selection box overlay — spans across days */}
-                {selectionBox && (() => {
-                  const startIdx = DAY_ORDER.indexOf(selectionBox.startDow);
-                  const endIdx = DAY_ORDER.indexOf(selectionBox.currentDow);
-                  const fromIdx = Math.min(startIdx, endIdx);
-                  const toIdx = Math.max(startIdx, endIdx);
-                  const dowIdx = DAY_ORDER.indexOf(dow);
-                  if (dowIdx < fromIdx || dowIdx > toIdx) return null;
-                  const left = (Math.min(selectionBox.startMin, selectionBox.currentMin) / 1440) * 100;
-                  const width = (Math.abs(selectionBox.currentMin - selectionBox.startMin) / 1440) * 100;
-                  return <div style={{ position: 'absolute', left: `${left}%`, width: `${width}%`, top: 0, bottom: 0, background: T.accent + '15', border: `1px dashed ${T.accent}55`, borderRadius: 3, pointerEvents: 'none', zIndex: 8 }} />;
-                })()}
                 {/* Conflict overlay */}
                 {conflicts.filter(c => c.type === 'overlap').length > 0 && dayCommitments.length >= 2 && (() => {
                   const overlaps = [];
@@ -980,6 +1017,8 @@ export const WeeklyAvailabilityEditor = ({ plannerConfig, onUpdate, onUpdateComm
           </div>
         );
       })}
+
+      </div>{/* end wrapper */}
 
       {/* Weekly summary */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, padding: '6px 10px', background: T.input, borderRadius: 8 }}>

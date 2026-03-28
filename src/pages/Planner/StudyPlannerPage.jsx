@@ -542,7 +542,7 @@ ${fsrsReviewPrompt}${userCtx}`;
 
       try {
         // Use higher token limit for plan generation (tasks can be large)
-        const { logs: wLogs } = await runAILoop(profile, sys, [{ role: 'user', content: weekMsg }], data, previewSetData, executeTools, null, true, 0, 32768);
+        const { logs: wLogs } = await runAILoop(profile, sys, [{ role: 'user', content: weekMsg }], data, previewSetData, executeTools, null, true, 0, 65536);
         for (const l of wLogs) bgLog(l);
         const weekTasks = capturedTasks.filter(t => t.date >= ws && t.date <= we);
 
@@ -1220,6 +1220,17 @@ ${fsrsReviewPrompt}${userCtx}`;
                       {bg.logs.slice(-8).map((l, i) => <LogLine key={i} l={l} />)}
                     </div>
                   )}
+                  {/* Response size indicator */}
+                  {bg.logs.length > 0 && (() => {
+                    const totalChars = bg.logs.reduce((s, l) => s + (l.content || '').length, 0) + (bg.streamText || '').length;
+                    const estTokens = Math.round(totalChars / 4);
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono', monospace" }}>
+                        <span>{bg.logs.length} events</span>
+                        <span>~{estTokens > 1000 ? `${(estTokens / 1000).toFixed(1)}K` : estTokens} tokens received</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

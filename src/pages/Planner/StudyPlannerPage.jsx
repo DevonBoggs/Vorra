@@ -295,9 +295,9 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
 
   // ── Generate plan ──
   const genPlan = async () => {
-    if (!profile) return;
+    if (!profile) { toast('Connect an AI provider in Settings first', 'warn'); return; }
     const active = courses.filter(c => c.status !== 'completed');
-    if (!active.length) return;
+    if (!active.length) { toast('No active courses to plan', 'warn'); return; }
 
     // Auto-save dates if not set
     if (!data.studyStartDate) setData(d => ({ ...d, studyStartDate: todayStr() }));
@@ -306,10 +306,15 @@ const StudyPlannerPage = ({ data, setData, profile, setPage }) => {
       setData(d => ({ ...d, targetCompletionDate: derived }));
     }
 
+    // Auto-create plannerConfig if missing
+    if (!data.plannerConfig) {
+      setData(d => ({ ...d, plannerConfig: migrateToPlannerConfig(d) }));
+    }
+
     // Pre-flight validation — warn but allow
     if (!feasible) toast('Heads up: this is a very tight schedule. The plan will be generated, but you may want to extend your deadline afterward.', 'warn');
     if (estCompletionDate && data.targetDate && estCompletionDate > data.targetDate) toast('Note: your estimated finish date is past your term end. The plan will still be generated.', 'warn');
-    if (hrsPerDay < 0.5) { toast('Not enough study hours configured', 'warn'); return; }
+    if (hrsPerDay < 0.5) { toast('Add study time to your weekly schedule first — no study windows are configured', 'warn'); return; }
 
     const planId = `plan_${Date.now()}`;
     bgNewAbort(); // Fresh abort controller for this generation run

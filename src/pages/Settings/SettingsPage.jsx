@@ -12,6 +12,7 @@ import { Label } from "../../components/ui/Label.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { TOOLS } from "../../constants/tools.js";
+import { safeArr } from "../../utils/toolExecution.js";
 import { INIT } from "../../systems/storage.js";
 import {
   UNIVERSITY_PRESETS, EDUCATION_MODELS, GRADING_SYSTEMS, ASSESSMENT_MODELS,
@@ -21,12 +22,12 @@ import {
 const PROVIDERS = {
   // ── Direct API (sorted by popularity) ──
   openai:    { cat:"direct", name:"OpenAI",       icon:"ProvOpenAI",    url:"https://api.openai.com/v1/chat/completions", models:["gpt-4o","gpt-4o-mini","gpt-4.1","gpt-4.1-mini","o3","o4-mini"], default:"gpt-4o", keyHint:"sk-...", color:"#10a37f" },
-  anthropic: { cat:"direct", name:"Anthropic",    icon:"ProvAnthropic", url:"https://api.anthropic.com/v1/messages", models:["claude-opus-4-20250514","claude-sonnet-4-20250514","claude-haiku-4-5-20251001"], default:"claude-sonnet-4-20250514", keyHint:"sk-ant-...", color:"#d97706" },
+  anthropic: { cat:"direct", name:"Anthropic",    icon:"ProvAnthropic", url:"https://api.anthropic.com/v1/messages", models:["claude-opus-4-6","claude-sonnet-4-6","claude-opus-4-20250514","claude-sonnet-4-20250514","claude-haiku-4-5-20251001"], default:"claude-sonnet-4-6", keyHint:"sk-ant-...", color:"#d97706" },
   deepseek:  { cat:"direct", name:"DeepSeek",     icon:"ProvDeepSeek",  url:"https://api.deepseek.com/v1/chat/completions", models:["deepseek-chat","deepseek-reasoner","deepseek-coder"], default:"deepseek-chat", keyHint:"sk-...", color:"#4f6df5" },
   gemini:    { cat:"direct", name:"Google Gemini", icon:"ProvGemini",   url:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", models:["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"], default:"gemini-2.5-flash", keyHint:"AIza...", color:"#4285f4" },
   mistral:   { cat:"direct", name:"Mistral",      icon:"ProvMistral",   url:"https://api.mistral.ai/v1/chat/completions", models:["mistral-large-latest","mistral-small-latest","codestral-latest","mistral-medium-latest"], default:"mistral-large-latest", keyHint:"...", color:"#ff7000" },
   xai:       { cat:"direct", name:"xAI (Grok)",   icon:"ProvXAI",      url:"https://api.x.ai/v1/chat/completions", models:["grok-3","grok-3-mini","grok-2"], default:"grok-3-mini", keyHint:"xai-...", color:"#1da1f2" },
-  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5-turbo","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0", note:"Default URL is for Coding Plan. General plan users: click Edit and remove /coding/ from the URL. For image parsing (degree plans), select gpt-4o or claude-sonnet-4 \u2014 glm-5-turbo and deepseek-chat do not support vision." },
+  zai:       { cat:"direct", name:"Z.AI",         icon:"ProvZAI",      url:"https://api.z.ai/api/coding/paas/v4/chat/completions", models:["glm-5.1","glm-5-turbo","glm-5","claude-sonnet-4","gpt-4o","deepseek-chat"], default:"glm-5-turbo", keyHint:"sk-...", color:"#06d6a0", note:"Default URL is for Coding Plan (glm-5.1 is Coding Plan exclusive). General plan users: remove /coding/ from the URL. GLM-5.1 is a thinking model \u2014 generation takes 2-4 min per course. For vision, use gpt-4o or claude-sonnet-4." },
   cohere:    { cat:"direct", name:"Cohere",       icon:"ProvCohere",   url:"https://api.cohere.ai/compatibility/v1/chat/completions", models:["command-r-plus","command-r","command-a"], default:"command-r-plus", keyHint:"...", color:"#39594d" },
   ai21:      { cat:"direct", name:"AI21",         icon:"ProvAI21",     url:"https://api.ai21.com/studio/v1/chat/completions", models:["jamba-1.5-large","jamba-1.5-mini"], default:"jamba-1.5-large", keyHint:"...", color:"#6c3ea0" },
 
@@ -126,15 +127,12 @@ const SettingsPage = ({ data, setData, setPage }) => {
     setAddCategory(p.cat);
     setShowAdd(true);
   };
-  // Auto-fetch models for a profile (used on edit open + duplicate)
+  // Auto-fetch models for a profile (used on edit open + duplicate + test)
   const fetchModelsForProfile = async (prof) => {
+    if (!prof.baseUrl && !prof.apiKey) return;
     const isAnth = isAnthProvider(prof);
-    if (isAnth) {
-      setModels(['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001']);
-      return;
-    }
-    if (!prof.baseUrl) return;
-    const mUrl = guessModelsUrl(prof.baseUrl);
+    // For Anthropic, use their /v1/models endpoint
+    const mUrl = isAnth ? 'https://api.anthropic.com/v1/models' : guessModelsUrl(prof.baseUrl);
     if (!mUrl) return;
     setModelsLoading(true);
     try {
@@ -143,17 +141,15 @@ const SettingsPage = ({ data, setData, setPage }) => {
       if (res.ok) {
         const mData = await res.json();
         let ids = [];
-        if (Array.isArray(mData.data)) ids = mData.data.map(m => m.id).sort();
+        if (Array.isArray(mData.data)) ids = mData.data.map(m => m.id).filter(Boolean).sort();
         else if (Array.isArray(mData)) ids = mData.map(m => typeof m === 'string' ? m : (m.id || m.name || '')).filter(Boolean).sort();
-        if (ids.length > 0) setModels(ids);
-        dlog('info', 'profile', `Auto-fetched ${ids.length} models for ${prof.name}`);
+        if (ids.length > 0) { setModels(ids); dlog('info', 'profile', `Auto-fetched ${ids.length} models for ${prof.name}`); }
+        else dlog('warn', 'profile', 'Model list was empty');
       } else {
         dlog('warn', 'profile', `Auto-fetch models failed: HTTP ${res.status}`);
-        setTestResult({ ok: false, msg: `Could not refresh model list (HTTP ${res.status}). The saved model is still selected.` });
       }
     } catch (e) {
       dlog('warn', 'profile', `Auto-fetch models error: ${e.message}`);
-      setTestResult({ ok: false, msg: `Could not reach ${new URL(prof.baseUrl).hostname} to refresh models. Check your connection.` });
     }
     setModelsLoading(false);
   };
@@ -207,25 +203,20 @@ const SettingsPage = ({ data, setData, setPage }) => {
     let fetchedModels = [];
     setModelsLoading(true);
     try {
-      if (isAnth) {
-        fetchedModels = ["claude-opus-4-20250514","claude-sonnet-4-20250514","claude-haiku-4-5-20251001"];
-      } else {
-        const mUrl = guessModelsUrl(form.baseUrl);
-        if (mUrl) {
-          dlog('api','profile',`Fetching models: ${mUrl}`);
-          const mHeaders = {...headers}; // use same auth
-          const mRes = await fetch(mUrl, { headers: mHeaders });
-          if (mRes.ok) {
-            const mData = await mRes.json();
-            let ids = [];
-            if (Array.isArray(mData.data)) ids = mData.data.map(m => m.id).sort();
-            else if (Array.isArray(mData)) ids = mData.map(m => typeof m === 'string' ? m : (m.id || m.name || "")).filter(Boolean).sort();
-            dlog('info','profile',`Got ${ids.length} models`);
-            fetchedModels = ids;
-          } else {
-            const errText = await mRes.text();
-            dlog('warn','profile',`Models fetch HTTP ${mRes.status}`, errText.slice(0,200));
-          }
+      const mUrl = isAnth ? 'https://api.anthropic.com/v1/models' : guessModelsUrl(form.baseUrl);
+      if (mUrl) {
+        dlog('api','profile',`Fetching models: ${mUrl}`);
+        const mRes = await fetch(mUrl, { headers });
+        if (mRes.ok) {
+          const mData = await mRes.json();
+          let ids = [];
+          if (Array.isArray(mData.data)) ids = mData.data.map(m => m.id).filter(Boolean).sort();
+          else if (Array.isArray(mData)) ids = mData.map(m => typeof m === 'string' ? m : (m.id || m.name || "")).filter(Boolean).sort();
+          dlog('info','profile',`Got ${ids.length} models`);
+          fetchedModels = ids;
+        } else {
+          const errText = await mRes.text();
+          dlog('warn','profile',`Models fetch HTTP ${mRes.status}`, errText.slice(0,200));
         }
       }
     } catch (e) { dlog('warn','profile',`Models error: ${e.message}`); }
@@ -233,7 +224,7 @@ const SettingsPage = ({ data, setData, setPage }) => {
     setModelsLoading(false);
 
     // Pick a model to test with: user-selected > first fetched > fallback
-    const testModel = form.model || fetchedModels[0] || (isAnth ? "claude-sonnet-4-20250514" : "");
+    const testModel = form.model || fetchedModels[0] || "";
     if (!testModel) {
       setTestResult({ ok: false, msg: "Could not determine a model to test with. Select a model from the dropdown above." });
       setTesting(false); return;

@@ -174,3 +174,23 @@ select { color-scheme: dark; }
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Task completion animation ──────────────────────────────────── */
+.task-complete-anim {
+  animation: taskDone .4s ease both;
+}
+@keyframes taskDone {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.02); }
+  60% { transform: scale(0.98); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 0.4; }
+}
+
+/* ── Now line pulse ──────────────────────────────────────────────── */
+.now-line-pulse {
+  animation: nowPulse 2s ease-in-out infinite;
+}
+@keyframes nowPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}

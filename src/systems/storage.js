@@ -25,6 +25,10 @@ export const INIT = {
   plannerConfig: null,
   planHistory: [],
   pendingPlan: null, // { planId, tasks: [], summary } — transient, cleared on confirm/discard
+  lessonPlan: null, // AI-generated per-course learning path (what to study, in what order)
+  scheduleOutline: null, // Legacy — replaced by taskQueue
+  taskQueue: [], // Ordered study task queue from lesson plan (queue model)
+  planPrompt: '', // User's additional context for plan generation
   onboardingComplete: false,
   examHistory: [],
   termHistory: [],

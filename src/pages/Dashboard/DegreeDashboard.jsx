@@ -110,7 +110,17 @@ const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
     for (let i=0; i<rem+exDates.length+365 && rem>0; i++) { const ds=d.toISOString().split("T")[0]; if(!exDates.includes(ds)) rem--; d.setDate(d.getDate()+1); }
     return d.toISOString().split("T")[0];
   };
-  const estFinish = calcFinish(hrsPerDay);
+  // Use blueprint finish date if available, otherwise linear estimate
+  const blueprintFinish = (() => {
+    if (!data.scheduleOutline?.weeks?.length) return null;
+    const outline = data.scheduleOutline;
+    const lastWeek = outline.weeks[outline.weeks.length - 1];
+    if (!lastWeek?.week_of) return null;
+    const d = new Date(lastWeek.week_of + 'T12:00:00');
+    d.setDate(d.getDate() + 6); // end of last week
+    return d.toISOString().split('T')[0];
+  })();
+  const estFinish = blueprintFinish || calcFinish(hrsPerDay);
 
   const tasks = data.tasks || {};
   const today = todayStr();

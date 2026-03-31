@@ -3,7 +3,7 @@
 import { EMPTY_DEEP } from "../constants/tools.js";
 import { dlog } from "../systems/debug.js";
 import { toast } from "../systems/toast.js";
-import { uid, todayStr } from "../utils/helpers.js";
+import { uid, todayStr, parseTime } from "../utils/helpers.js";
 
 export function safeArr(v) { return Array.isArray(v) ? v : []; }
 
@@ -88,7 +88,8 @@ export function findCourse(courses, match) {
  * Unified matching strategy used across the entire app.
  * Returns { courseId, courseKey } or { courseId: '', courseKey: titlePrefix }
  */
-export function matchTaskToCourse(title, courses) {
+export function matchTaskToCourse(title, courses, category = null) {
+  if (category === 'break') return { courseId: '', courseKey: 'Break' };
   if (!title || !courses?.length) return { courseId: '', courseKey: title || 'Other' };
   // Extract the prefix before any separator (—, –, -, :, |)
   const prefix = title.split(/\s*[\u2014\u2013\u2015\-:|]\s*/)[0]?.trim() || title;
@@ -138,7 +139,7 @@ function normalizeTime(t) {
   return t;
 }
 
-const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan'];
+const VALID_TOOLS = ['add_tasks', 'add_courses', 'update_courses', 'enrich_course_context', 'generate_study_plan', 'create_lesson_plan', 'create_schedule_outline'];
 
 export function executeTools(toolCalls, data, setData) {
   dlog('tool','tool',`Executing ${toolCalls.length} tool(s)`);
@@ -275,10 +276,13 @@ export function executeTools(toolCalls, data, setData) {
         else dlog('warn', 'tool', `enrich_course_context called but no courses matched. Enrichments: ${enrichments.map(e => e.course_name_match || e.courseCode || '?').join(', ')}`);
       }
       else if (name === "generate_study_plan") {
+        // Sanitize Unicode escape sequences that AI models sometimes output as literal text
+        const cleanUnicode = (s) => typeof s === 'string' ? s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))) : s;
         const ct = safeArr(input.daily_tasks).length;
         setData(d => {
           const tasks = { ...d.tasks };
           const courses = d.courses || [];
+          const batchInserted = new Set(); // dedup within this batch only
           for (const t of safeArr(input.daily_tasks)) {
             const dt = normalizeDate(t.date);
             if (!tasks[dt]) tasks[dt] = [];
@@ -288,12 +292,36 @@ export function executeTools(toolCalls, data, setData) {
               const { courseId } = matchTaskToCourse(t.title, courses);
               cid = courseId;
             }
-            tasks[dt].push({ id: uid(), time: normalizeTime(t.time), endTime: normalizeTime(t.endTime) || '', title: t.title, category: t.category || 'study', priority: t.priority || 'medium', notes: t.notes || '', done: false, courseId: cid });
+            // Dedup: skip if this exact task was already inserted in THIS batch
+            const normTime = normalizeTime(t.time);
+            const batchKey = `${dt}|${t.title}|${normTime}`;
+            if (batchInserted.has(batchKey)) { dlog('info', 'tool', `Skipped duplicate in batch: "${t.title}" at ${normTime} on ${dt}`); continue; }
+            batchInserted.add(batchKey);
+            // Validate category — normalize invalid values to 'study'
+            const VALID_CATS = new Set(['study','review','exam-prep','exam-day','project','class','break','health','work','personal','other']);
+            const cat = VALID_CATS.has(t.category) ? t.category : (t.category === 'exam' ? 'exam-day' : t.category === 'practice' ? 'study' : 'study');
+            // Validate endTime > time
+            const endT = normalizeTime(t.endTime) || '';
+            const validEnd = endT && normTime && endT > normTime ? endT : (normTime ? (() => { const st = parseTime(normTime); if (!st) return ''; const em = st.mins + 60; return `${String(Math.floor(em/60)).padStart(2,'0')}:${String(em%60).padStart(2,'0')}`; })() : '');
+            tasks[dt].push({ id: uid(), time: normTime, endTime: validEnd, title: cleanUnicode(t.title), category: cat, priority: t.priority || 'medium', notes: cleanUnicode(t.notes) || '', done: false, courseId: cid, planId: t._planId || '' });
           }
           return { ...d, tasks };
         });
-        results.push({id:call.id,result:`Plan: ${input.summary||'(no summary)'}. ${ct} tasks added.`});
+        results.push({id:call.id,result:`Plan: ${cleanUnicode(input.summary)||'(no summary)'}. ${ct} tasks added.`});
         toast(`Study plan created: ${ct} tasks`,"success");
+      }
+      else if (name === "create_lesson_plan") {
+        // Lesson plan — store for reference, log result
+        const courseCount = safeArr(input.courses).length;
+        const totalUnits = safeArr(input.courses).reduce((s, c) => s + safeArr(c.units).length, 0);
+        results.push({id:call.id,result:`Lesson plan: ${courseCount} courses, ${totalUnits} units. ${input.summary || ''}`});
+        dlog('info', 'tool', `create_lesson_plan: ${courseCount} courses, ${totalUnits} units`);
+      }
+      else if (name === "create_schedule_outline") {
+        // Schedule outline — store for reference, log result
+        const weekCount = safeArr(input.weeks).length;
+        results.push({id:call.id,result:`Schedule outline: ${weekCount} weeks. ${input.summary || ''}`});
+        dlog('info', 'tool', `create_schedule_outline: ${weekCount} weeks`);
       }
     } catch(e) {
       dlog('error','tool',`Tool "${name}" error`, e.message);

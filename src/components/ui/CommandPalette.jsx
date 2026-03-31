@@ -80,7 +80,7 @@ const NAV_ITEMS = [
   { id: 'dashboard', label: 'Degree Dashboard', icon: 'Grad',   color: '#06d6a0', shortcutId: 'go-dashboard' },
   { id: 'courses',   label: 'My Courses',        icon: 'Edit',   color: '#a78bfa', shortcutId: 'go-courses' },
   { id: 'planner',   label: 'Study Planner',     icon: 'Cal',    color: '#8b5cf6', shortcutId: 'go-planner' },
-  { id: 'daily',     label: 'Study Schedule',    icon: 'List',   color: '#60a5fa', shortcutId: 'go-daily' },
+  { id: 'daily',     label: 'Daily Planner',     icon: 'List',   color: '#60a5fa', shortcutId: 'go-daily' },
   { id: 'calendar',  label: 'Calendar',          icon: 'Cal',    color: '#f472b6', shortcutId: 'go-calendar' },
   { id: 'chat',      label: 'Study Chat',        icon: 'Chat',   color: '#34d399', shortcutId: 'go-chat' },
   { id: 'quiz',      label: 'Practice Exam',     icon: 'Quiz',   color: '#fb923c', shortcutId: 'go-quiz' },

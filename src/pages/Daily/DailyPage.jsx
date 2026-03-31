@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useTheme, fs } from "../../styles/tokens.js";
 import Ic from "../../components/icons/index.jsx";
 import { todayStr, pad, fmtTime, parseTime, minsToStr, nowMins, uid, fmtDateLong, diffDays } from "../../utils/helpers.js";
+import { findNextUndonePlanTask, pullTaskToToday } from "../../utils/courseLifecycle.js";
 import { getCAT, AI_CATS, STUDY_CATS, getPRIO, getSTATUS_C, STATUS_L } from "../../constants/categories.js";
 import { useBreakpoint } from "../../systems/breakpoint.js";
 import { dlog } from "../../systems/debug.js";
@@ -18,6 +19,13 @@ import { ProgressBar } from "../../components/ui/ProgressBar.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { Label } from "../../components/ui/Label.jsx";
 import { SortableList, SortableItem } from "../../components/ui/SortableList.jsx";
+import { ProgressHeader, useDayProgress } from "../../components/daily/ProgressHeader.jsx";
+import { NowStrip } from "../../components/daily/NowStrip.jsx";
+import { DayTimeline } from "../../components/daily/DayTimeline.jsx";
+import { FocusMode } from "../../components/daily/FocusMode.jsx";
+import { AIAssistBar } from "../../components/daily/AIAssistBar.jsx";
+import { pushUndoSnapshot, undo, redo, useUndoState } from "../../systems/undoStack.js";
+import { shiftUndoneTasks, detectUndoneTasks } from "../../utils/scheduleShift.js";
 
 const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
   const T = useTheme();
@@ -41,7 +49,64 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
   const[showTemplates,setShowTemplates]=useState(false);
   const[manualOrder,setManualOrder]=useState(null); // array of task ids when user has manually reordered
   const[expandedWeekDays,setExpandedWeekDays]=useState({});
+  const[dayView,setDayView]=useState('list'); // 'list' or 'timeline'
+  const[showAIPlanner,setShowAIPlanner]=useState(false); // collapsed by default
+  const[focusTaskId,setFocusTaskId]=useState(null); // active task in focus mode
+  const[expandedTaskId,setExpandedTaskId]=useState(null); // queue task detail expansion
+  const[activeTimerId,setActiveTimerId]=useState(null); // task with running timer
+  const[timerRemaining,setTimerRemaining]=useState(0); // seconds remaining
+  const[timerPaused,setTimerPaused]=useState(false);
+  const timerRef=useRef(null);
+  const undoState = useUndoState();
   const isToday=date===todayStr();
+
+  // ── Task timer logic ──
+  const playTimerSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Play a pleasant chime: two ascending tones
+      [440, 554, 659].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.2);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.2 + 0.5);
+        osc.start(ctx.currentTime + i * 0.2);
+        osc.stop(ctx.currentTime + i * 0.2 + 0.5);
+      });
+    } catch (_) {}
+  }, []);
+  const startTimer = useCallback((taskId, mins) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setActiveTimerId(taskId);
+    setTimerRemaining(mins * 60);
+    setTimerPaused(false);
+  }, []);
+  const pauseTimer = useCallback(() => setTimerPaused(p => !p), []);
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setActiveTimerId(null); setTimerRemaining(0); setTimerPaused(false);
+  }, []);
+  // Tick the timer
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (!activeTimerId || timerPaused) return;
+    timerRef.current = setInterval(() => {
+      setTimerRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          playTimerSound();
+          toast('Timer complete!', 'success');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [activeTimerId, timerPaused, playTimerSound]);
+  const dayProgress = useDayProgress(tasks, data);
   useEffect(()=>{const iv=setInterval(()=>setNow(nowMins()),30000);return()=>clearInterval(iv)},[]);
   // Reset manual order when date changes
   useEffect(()=>{setManualOrder(null)},[date]);
@@ -145,9 +210,23 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
     toast(`Carried forward: ${task.title}`, "info");
   };
   const carryAll = () => {
+    pushUndoSnapshot(`Carry ${carryTasks.length} tasks forward`, data.tasks);
     const newTasks = carryTasks.map(t => ({...t, id:uid(), done:false}));
     setTasks([...tasks, ...newTasks]);
-    toast(`${newTasks.length} task(s) carried forward from yesterday`, "info");
+    toast(`${newTasks.length} task(s) carried forward`, "info");
+  };
+
+  // Schedule shift: move undone tasks from a date to future available days
+  const handleShiftDay = (sourceDate) => {
+    pushUndoSnapshot(`Shift tasks from ${sourceDate}`, data.tasks);
+    const pc = data.plannerConfig;
+    const exDts = safeArr(data.exceptionDates);
+    const fixedExams = {};
+    for (const c of (data.courses || [])) { if (c.examDate) fixedExams[c.courseCode || c.name] = c.examDate; }
+    const { updatedTasks, shiftedCount, summary, warnings } = shiftUndoneTasks(data.tasks, sourceDate, pc, exDts, { fixedExamDates: fixedExams });
+    setData(d => ({ ...d, tasks: updatedTasks }));
+    toast(summary, shiftedCount > 0 ? 'success' : 'info');
+    for (const w of warnings) toast(w, 'warn');
   };
 
   const openAdd=(cat)=>{setForm({time:"09:00",endTime:"09:30",title:"",category:cat||"study",priority:"medium",notes:"",recurring:""});setEditId(null);setShowAdd(true)};
@@ -196,8 +275,28 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
     }
     setShowAdd(false);
   };
-  const toggleTask=id=>setTasks(tasks.map(t=>t.id===id?{...t,done:!t.done,completedAt:!t.done?new Date().toISOString():null}:t));
-  const deleteTask=id=>setTasks(tasks.filter(t=>t.id!==id));
+  const toggleTask = (id) => {
+    const task = tasks.find(t => t.id === id);
+    const wasDone = task?.done;
+    setTasks(tasks.map(t => t.id === id ? { ...t, done: !t.done, completedAt: !t.done ? new Date().toISOString() : null } : t));
+    if (!wasDone) {
+      // Just marked done — show undo option
+      toast(`Task completed. Tap to undo.`, 'success');
+    }
+  };
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const deleteTask = (id) => {
+    const task = tasks.find(t => t.id === id);
+    // Plan tasks require 2-step confirmation
+    if (task?.planId && deleteConfirmId !== id) {
+      setDeleteConfirmId(id);
+      return;
+    }
+    pushUndoSnapshot(`Delete: ${task?.title || 'task'}`, data.tasks);
+    setTasks(tasks.filter(t => t.id !== id));
+    setDeleteConfirmId(null);
+    toast(`Deleted "${task?.title?.slice(0, 30) || 'task'}". Press Ctrl+Z to undo.`, 'info');
+  };
 
   const [showRestructure, setShowRestructure] = useState(null);
   const completeEarly = (task) => {
@@ -231,7 +330,7 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
 
   const stopAI = () => { if(aiAbort) { aiAbort.abort(); setAiAbort(null); setAiLoading(false); toast("Cancelled","info"); } };
 
-  const generateAI=async(preset)=>{
+  const generateAI=async(preset, freeformPrompt = null)=>{
     if(!profile)return;
     const controller = new AbortController();
     setAiAbort(controller);
@@ -292,7 +391,7 @@ ${userInstructions ? `INSTRUCTIONS: ${userInstructions}` : "Optimize the schedul
 RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention. Each task needs date, time, endTime (24h format), title, and category.`;
       })(),
     };
-    const msg = preset ? (typeof presets[preset]==="function"?presets[preset]():presets[preset]) : (aiPrompt.trim()||presets.full);
+    const msg = freeformPrompt ? `${freeformPrompt}\n\nContext: Date is ${fmtDateLong(date)}. Courses: ${activeCourseNames}.${startCtx}${todayCtx}\nUse add_tasks to create or modify tasks. Each task needs date "${date}", time (24h), endTime, title, and category.` : preset ? (typeof presets[preset]==="function"?presets[preset]():presets[preset]) : (aiPrompt.trim()||presets.full);
     logs.push({type:"user",content:msg});
     setAiLog([...logs]);
     const dateCtx = view === "week" ? `The user is viewing the week of ${weekDates[0]} to ${weekDates[6]}. Create tasks across multiple days.` : `The user is viewing the study schedule for ${fmtDateLong(date)}. When adding tasks, use date "${date}".`;
@@ -358,6 +457,15 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
 
   // Task card renderer — used inside SortableItem
   const renderTaskCard = (t) => {
+    // Ghost placeholder for pulled tasks
+    if (t._ghost) {
+      const s = parseTime(t.time);
+      return (<div className="fade" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: T.input, border: `1px dashed ${T.border}`, borderRadius: 10, opacity: 0.4, marginBottom: 4 }}>
+        <span className="mono" style={{ fontSize: fs(11), color: T.dim }}>{s ? fmtTime(s.h, s.m) : '—'}</span>
+        <span style={{ fontSize: fs(10), color: T.dim, fontStyle: 'italic', flex: 1 }}>{t.title}</span>
+        <span style={{ fontSize: fs(9), color: T.accent }}>Pulled to {t._pulledTo === todayStr() ? 'today' : new Date(t._pulledTo + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+      </div>);
+    }
     const c=CAT[t.category]||CAT.other,s=parseTime(t.time),e=parseTime(t.endTime),dur=s&&e?e.mins-s.mins:null,isCur=t.id===currentId;
     const hasConflict = conflicts.has(t.id);
     const isExamDay = t.category === "exam-day";
@@ -365,22 +473,22 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
       style={{display:"flex",alignItems:"stretch",background:isExamDay?`${c.bg}`:t.done?`${T.input}88`:hasConflict?T.redD:T.card,border:`1.5px solid ${isExamDay?c.fg+"55":hasConflict?T.red+"55":isCur?T.accent+"55":T.border}`,borderRadius:12,overflow:"hidden",opacity:t.done?.5:1,boxShadow:isExamDay?`0 0 16px ${c.fg}18`:isCur?`0 0 20px ${T.accentD}`:"0 1px 4px rgba(0,0,0,.08)"}}>
       <div style={{width:3,background:hasConflict?T.red:c.fg,flexShrink:0}}/>
       <div style={{padding:"10px 14px",minWidth:100,display:"flex",flexDirection:"column",justifyContent:"center",borderRight:`1px solid ${T.border}`}}>
-        <span className="mono" style={{fontSize:fs(13),fontWeight:600,color:hasConflict?T.red:isCur?T.accent:T.text}}>{s?fmtTime(s.h,s.m):"\u2014"}</span>
-        {e&&<span className="mono" style={{fontSize:fs(10),color:T.dim}}>\u2192 {fmtTime(e.h,e.m)}</span>}
-        {dur>0&&<span style={{fontSize:fs(9),color:T.dim,display:"flex",alignItems:"center",gap:2,marginTop:1}}><Ic.Clock/>{minsToStr(dur)}</span>}
-        {hasConflict&&<span style={{fontSize:fs(8),color:T.red,fontWeight:700,marginTop:1}}>OVERLAP</span>}
+        <span className="mono" style={{fontSize:fs(15),fontWeight:600,color:hasConflict?T.red:isCur?T.accent:T.text}}>{s?fmtTime(s.h,s.m):"\u2014"}</span>
+        {e&&<span className="mono" style={{fontSize:fs(12),color:T.dim}}>{'\u2192'} {fmtTime(e.h,e.m)}</span>}
+        {dur>0&&<span style={{fontSize:fs(11),color:T.dim,display:"flex",alignItems:"center",gap:2,marginTop:1}}><Ic.Clock/>{minsToStr(dur)}</span>}
+        {hasConflict&&<span style={{fontSize:fs(10),color:T.red,fontWeight:700,marginTop:1}}>OVERLAP</span>}
       </div>
       <div style={{flex:1,padding:"10px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span style={{fontSize:fs(13),fontWeight:500,textDecoration:t.done?"line-through":"none",color:t.done?T.dim:T.text}}>{t.title}</span>
-          {isCur&&!t.done&&<span style={{fontSize:fs(8),padding:"2px 5px",borderRadius:3,background:T.accentD,color:T.accent,fontWeight:700}}>NOW</span>}
-          {t.planId&&<span style={{fontSize:fs(8),padding:"1px 5px",borderRadius:3,background:T.purpleD,color:T.purple,fontWeight:600}}>PLAN</span>}
-          {t.recurring&&<span style={{fontSize:fs(8),padding:"1px 5px",borderRadius:3,background:T.blueD,color:T.blue,fontWeight:600}}>\u21BB {t.recurring}</span>}
+          <span style={{fontSize:fs(15),fontWeight:500,textDecoration:t.done?"line-through":"none",color:t.done?T.dim:T.text}}>{t.title}</span>
+          {isCur&&!t.done&&<span style={{fontSize:fs(10),padding:"2px 6px",borderRadius:4,background:T.accentD,color:T.accent,fontWeight:700}}>NOW</span>}
+          {t.planId&&<span style={{fontSize:fs(10),padding:"2px 6px",borderRadius:4,background:T.purpleD,color:T.purple,fontWeight:600}}>PLAN</span>}
+          {t.recurring&&<span style={{fontSize:fs(10),padding:"2px 6px",borderRadius:4,background:T.blueD,color:T.blue,fontWeight:600}}>{'\u21BB'} {t.recurring}</span>}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:5}}>
           <Badge color={c.fg} bg={c.bg}>{c.l}</Badge>
-          <span style={{fontSize:fs(9),color:PRIO[t.priority]||T.soft,fontWeight:600}}>{'\u25CF'} {t.priority}</span>
-          {t.notes&&<span style={{fontSize:fs(10),color:T.dim}}>{'\u2014'} {t.notes}</span>}
+          <span style={{fontSize:fs(11),color:PRIO[t.priority]||T.soft,fontWeight:600}}>{'\u25CF'} {t.priority}</span>
+          {t.notes&&<span style={{fontSize:fs(12),color:T.dim}}>{'\u2014'} {t.notes}</span>}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 10px"}}>
@@ -390,7 +498,14 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         {!t.done && setPage && ["exam-prep","exam-day"].includes(t.category) && <button className="sf-icon-btn" onClick={()=>setPage("quiz")} title="Practice Exam" style={{background:"none",border:"none",cursor:"pointer",padding:"2px 6px",fontSize:fs(9),fontWeight:700,color:T.purple,borderRadius:4}}>PRACTICE</button>}
         <button onClick={()=>toggleTask(t.id)} style={{width:30,height:30,borderRadius:8,border:`2px solid ${t.done?T.accent:T.border}`,background:t.done?T.accentD:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.accent,transition:"all .15s"}}>{t.done&&<Ic.Check s={14}/>}</button>
         <button className="sf-icon-btn" onClick={()=>openEdit(t)} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:5}}><Ic.Edit/></button>
-        <button className="sf-icon-btn" onClick={()=>deleteTask(t.id)} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:5}}><Ic.Trash/></button>
+        {deleteConfirmId === t.id ? (
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <button onClick={() => deleteTask(t.id)} style={{ padding: '4px 10px', borderRadius: 5, border: `1px solid ${T.red}`, background: T.redD, color: T.red, fontSize: fs(11), cursor: 'pointer', fontWeight: 600 }}>Confirm Delete</button>
+            <button onClick={() => setDeleteConfirmId(null)} style={{ padding: '4px 8px', borderRadius: 5, border: `1px solid ${T.border}`, background: T.input, color: T.dim, fontSize: fs(11), cursor: 'pointer' }}>Cancel</button>
+          </div>
+        ) : (
+          <button className="sf-icon-btn" onClick={()=>deleteTask(t.id)} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",padding:5}}><Ic.Trash/></button>
+        )}
       </div>
     </div>);
   };
@@ -412,6 +527,50 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
   };
   const goToday = () => setDate(todayStr());
 
+  // Focus Mode: find the task and next task
+  const focusTask = focusTaskId ? tasks.find(t => t.id === focusTaskId) : null;
+  const focusNextTask = focusTask ? sorted.find(t => !t.done && t.id !== focusTaskId && (parseTime(t.time)?.mins || 0) > (parseTime(focusTask.time)?.mins || 0)) : null;
+
+  // Global keyboard shortcuts (outside focus mode)
+  useEffect(() => {
+    if (focusTaskId) return; // focus mode handles its own shortcuts
+    const handler = (e) => {
+      // Undo/Redo (works even in inputs)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        const restored = undo(data.tasks);
+        if (restored) setData(d => ({ ...d, tasks: restored }));
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        const restored = redo(data.tasks);
+        if (restored) setData(d => ({ ...d, tasks: restored }));
+        return;
+      }
+      if (e.target.closest('input,textarea,select')) return;
+      if (e.key === 'f' || e.key === 'F') {
+        const target = currentId || sorted.find(t => !t.done)?.id;
+        if (target) setFocusTaskId(target);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [focusTaskId, currentId, sorted, data.tasks]);
+
+  // If focus mode active, render it instead of the normal page
+  if (focusTask && !focusTask.done) {
+    return (
+      <FocusMode
+        task={focusTask}
+        nextTask={focusNextTask}
+        courses={data.courses || []}
+        onDone={(id) => { toggleTask(id); if (focusNextTask) setFocusTaskId(focusNextTask.id); else setFocusTaskId(null); }}
+        onExit={() => { setFocusTaskId(null); }}
+      />
+    );
+  }
+
   return(
     <div className="fade">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -424,7 +583,7 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
           </div>
           <div>
             <h1 style={{fontSize:fs(24),fontWeight:800,marginBottom:2}}>
-              {view==="week" ? "Weekly Schedule" : isToday ? "Today's Schedule" : fmtDateLong(date)}
+              {view==="week" ? "Weekly Planner" : isToday ? "Today's Plan" : fmtDateLong(date)}
               {view==="day"&&!isToday && (() => { const days = diffDays(todayStr(), date); return <span style={{fontSize:fs(14),fontWeight:500,color:days>0?T.blue:T.orange,marginLeft:10}}>{days > 0 ? `${days}d from now` : days < 0 ? `${Math.abs(days)}d ago` : ""}</span>; })()}
             </h1>
             <p style={{color:T.dim,fontSize:fs(13)}}>{view==="week" ? `${weekDates[0].slice(5)} \u2014 ${weekDates[6].slice(5)}` : tasks.length===0?"Empty \u2014 add tasks or let AI plan":`${tasks.length} tasks \u00B7 ${completed} done`}</p>
@@ -435,34 +594,48 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
             <button className="sf-toggle" onClick={()=>setView("day")} style={{padding:"6px 12px",fontSize:fs(11),fontWeight:view==="day"?700:400,border:"none",cursor:"pointer",background:view==="day"?T.accentD:"transparent",color:view==="day"?T.accent:T.dim}}>Day</button>
             <button className="sf-toggle" onClick={()=>setView("week")} style={{padding:"6px 12px",fontSize:fs(11),fontWeight:view==="week"?700:400,border:"none",cursor:"pointer",background:view==="week"?T.accentD:"transparent",color:view==="week"?T.accent:T.dim}}>Week</button>
           </div>
+          {/* Undo/Redo buttons */}
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button onClick={() => { const r = undo(data.tasks); if (r) setData(d => ({ ...d, tasks: r })); }} disabled={!undoState.canUndo}
+              title={undoState.canUndo ? `Undo: ${undoState.undoLabel} (Ctrl+Z)` : 'Nothing to undo'}
+              style={{ width: 38, height: 38, borderRadius: 8, border: `1.5px solid ${undoState.canUndo ? T.accent + '44' : T.border}`, background: undoState.canUndo ? T.input : 'transparent', color: undoState.canUndo ? T.text : T.dim, cursor: undoState.canUndo ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(16), fontWeight: 600, opacity: undoState.canUndo ? 1 : 0.3 }}>
+              ↩
+            </button>
+            <button onClick={() => { const r = redo(data.tasks); if (r) setData(d => ({ ...d, tasks: r })); }} disabled={!undoState.canRedo}
+              title={undoState.canRedo ? `Redo: ${undoState.redoLabel} (Ctrl+Y)` : 'Nothing to redo'}
+              style={{ width: 38, height: 38, borderRadius: 8, border: `1.5px solid ${undoState.canRedo ? T.accent + '44' : T.border}`, background: undoState.canRedo ? T.input : 'transparent', color: undoState.canRedo ? T.text : T.dim, cursor: undoState.canRedo ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(16), fontWeight: 600, opacity: undoState.canRedo ? 1 : 0.3 }}>
+              ↪
+            </button>
+          </div>
           <Btn onClick={()=>openAdd()}><Ic.Plus s={15}/> Add Task</Btn>
-        </div>
-      </div>
-
-      {/* Toolbar: Pomodoro + Templates + Carry Forward */}
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-        {/* Pomodoro */}
-        <div style={{display:"flex",alignItems:"center",gap:6,background:pomActive?(pomBreak?T.blueD:T.accentD):T.card,border:`1.5px solid ${pomActive?(pomBreak?T.blue:T.accent):T.border}`,borderRadius:12,padding:"8px 14px",boxShadow:pomActive?`0 0 12px ${pomBreak?T.blue:T.accent}15`:"none",transition:"all .2s"}}>
-          <span style={{fontSize:fs(14),fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:pomActive?(pomBreak?T.blue:T.accent):T.dim,minWidth:40}}>{Math.floor(pomTimeSec/60)}:{String(pomTimeSec%60).padStart(2,'0')}</span>
-          <button onClick={pomToggle} style={{background:"none",border:"none",cursor:"pointer",color:pomActive?T.accent:T.soft,fontSize:fs(12),fontWeight:600}}>{pomActive?"\u23F8":"\u25B6"}</button>
-          {pomActive&&<button onClick={pomReset} style={{background:"none",border:"none",cursor:"pointer",color:T.dim,fontSize:fs(10)}}>↻</button>}
-          <span style={{fontSize:fs(9),color:T.dim}}>{pomBreak?"Break":"Focus"}</span>
-        </div>
-        {/* Templates */}
-        <div style={{position:"relative"}}>
-          <Btn small v="ghost" onClick={()=>setShowTemplates(p=>!p)}>📋 Templates</Btn>
-          {showTemplates && (
-            <div className="fade" style={{position:"absolute",top:"100%",left:0,marginTop:4,background:T.card,border:`1.5px solid ${T.border}`,borderRadius:12,padding:8,boxShadow:"0 8px 24px rgba(0,0,0,.35)",zIndex:20,width:240}}>
-              {TEMPLATES.map((t,i) => (
-                <button key={i} className="sf-row" onClick={()=>applyTemplate(t)} style={{width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:7,border:"none",cursor:"pointer",background:"transparent",marginBottom:2,color:T.text,fontSize:fs(11)}}>
-                  <div style={{fontWeight:600}}>{t.name}</div>
-                  <div style={{fontSize:fs(9),color:T.dim}}>{t.tasks.length} tasks</div>
-                </button>
-              ))}
-            </div>
+          {isToday && sorted.some(t => !t.done) && (
+            <button onClick={() => { const target = currentId || sorted.find(t => !t.done)?.id; if (target) setFocusTaskId(target); }}
+              title="Enter Focus Mode (F)"
+              style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${T.accent}44`, background: T.accentD, color: T.accent, fontSize: fs(11), fontWeight: 600, cursor: 'pointer' }}>
+              Focus
+            </button>
           )}
         </div>
       </div>
+
+      {/* Progress Header — always visible */}
+      <ProgressHeader progress={dayProgress} />
+
+      {/* Now Strip — current/next task with integrated timer (today only) */}
+      {isToday && view === 'day' && (
+        <NowStrip
+          tasks={sorted}
+          currentId={currentId}
+          now={now}
+          timerState={_timerState}
+          onToggleTask={toggleTask}
+          onStartTimer={(t) => setFocusTaskId(t.id)}
+          onNavigateDaily={() => {}}
+        />
+      )}
+
+      {/* Toolbar: Pomodoro + Templates + Carry Forward */}
+      {/* Pomodoro timer removed — queue model handles pacing */}
 
       {/* Smart Carry Forward — incomplete study tasks from yesterday */}
       {carryTasks.length > 0 && (
@@ -536,9 +709,37 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: fs(9), color: T.dim }}>Overall: {overallPct}% complete ({overallDone}/{overallTotal} tasks)</span>
               {allDone && !safeArr(tasks).every(t => t.done) && (
-                <span style={{ fontSize: fs(9), color: T.accent }}>Plan tasks done {'\u2014'} finish remaining tasks or rest!</span>
+                <span style={{ fontSize: fs(9), color: T.accent }}>Plan tasks done — finish remaining tasks or rest!</span>
               )}
             </div>
+
+            {/* All Done — Acceleration Options */}
+            {allDone && (() => {
+              const today = todayStr();
+              const nextTask = findNextUndonePlanTask(data.tasks, lastPlan.planId, today, today);
+              if (!nextTask) return null;
+              return (
+                <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: T.accentD, border: `1px solid ${T.accent}33` }}>
+                  <div style={{ fontSize: fs(10), fontWeight: 600, color: T.accent, marginBottom: 6 }}>You finished today's plan early! What next?</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button onClick={() => {
+                      const { tasks: updated } = pullTaskToToday(data.tasks, nextTask.task.id, nextTask.date, today);
+                      setData(d => ({ ...d, tasks: updated }));
+                      toast(`Pulled "${nextTask.task.title?.split(/[\u2014\-:]/)[0]?.trim()}" from ${new Date(nextTask.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}`, 'success');
+                    }} style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${T.accent}44`, background: T.accentD, color: T.accent, fontSize: fs(10), fontWeight: 600, cursor: 'pointer' }}>
+                      Continue with next material
+                    </button>
+                    <button onClick={() => toast('Great work today! Enjoy your break.', 'success')}
+                      style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.input, color: T.soft, fontSize: fs(10), cursor: 'pointer' }}>
+                      Take the rest off
+                    </button>
+                  </div>
+                  <div style={{ fontSize: fs(9), color: T.dim, marginTop: 4 }}>
+                    Next: {nextTask.task.title} ({new Date(nextTask.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })})
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
@@ -598,54 +799,373 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         );
       })()}
 
-      {/* AI Planner with presets */}
-      <div style={{background:`linear-gradient(135deg,${T.panel},${T.card})`,border:`1.5px solid ${T.border}`,borderRadius:14,padding:18,marginBottom:16,boxShadow:"0 2px 12px rgba(0,0,0,.08)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-          <Ic.AI s={16}/><span style={{fontSize:fs(13),fontWeight:700}}>AI Planner</span>
-          {profile&&<Badge color={T.accent} bg={T.accentD}>{profile.name}</Badge>}
-        </div>
-        {!profile?<p style={{fontSize:fs(12),color:T.dim}}>Connect an AI profile in Settings first.</p>:<>
-          {/* Quick actions */}
-          <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-            <Btn small v="ai" onClick={()=>generateAI("school")} disabled={aiLoading}>\📚 Plan Study</Btn>
-            <Btn small v="secondary" onClick={()=>generateAI("life")} disabled={aiLoading}>\🏠 Plan Personal</Btn>
-            <Btn small v="secondary" onClick={()=>generateAI("full")} disabled={aiLoading}>\📋 Plan Full Day</Btn>
-            {view==="week"&&<Btn small v="secondary" onClick={()=>generateAI("week")} disabled={aiLoading}>\📅 Plan Full Week</Btn>}
-          </div>
+      {/* AI Assist Bar removed — queue model handles task flow */}
 
-          {/* Reschedule section */}
-          <div style={{background:T.input,borderRadius:10,padding:12,marginBottom:10}}>
-            <div style={{fontSize:fs(11),fontWeight:700,color:T.soft,marginBottom:8}}>Reschedule Existing Calendar</div>
-            <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
-              {[{k:"day",l:"This Day"},{k:"week",l:"This Week"},{k:"month",l:"This Month"},{k:"custom",l:"Custom"}].map(s=>(
-                <button key={s.k} onClick={()=>setReschedScope(s.k)} style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${reschedScope===s.k?T.accent:T.border}`,background:reschedScope===s.k?T.accentD:"transparent",color:reschedScope===s.k?T.accent:T.dim,fontSize:fs(10),fontWeight:600,cursor:"pointer"}}>{s.l}</button>
-              ))}
-              {reschedScope==="custom"&&<div style={{display:"flex",alignItems:"center",gap:4}}><input type="number" min="1" max="12" value={reschedMonths} onChange={e=>setReschedMonths(Number(e.target.value))} style={{width:50,padding:"4px 6px",fontSize:fs(11),textAlign:"center"}}/><span style={{fontSize:fs(10),color:T.dim}}>month(s)</span></div>}
-            </div>
-            <textarea value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} placeholder="Explain what to change: e.g. 'Move all study blocks to mornings', 'Add gym sessions MWF at 6am', 'Clear Thursday and reschedule everything to other days'..." style={{minHeight:40,fontSize:fs(11),marginBottom:8}}/>
-            <div style={{display:"flex",gap:6}}>
-              <Btn small v="ai" onClick={()=>generateAI("reschedule")} disabled={aiLoading}>\🔄 Reschedule</Btn>
-              {aiPrompt.trim()&&<Btn small v="secondary" onClick={()=>generateAI()} disabled={aiLoading}>Send Custom</Btn>}
-              {aiLoading&&<Btn small v="ghost" onClick={stopAI} style={{color:T.red,borderColor:T.red}}>\u2B1B Stop</Btn>}
-            </div>
-          </div>
+      {/* ═══ QUEUE-BASED DAILY VIEW ═══ */}
+      {(() => {
+        const queue = data.taskQueue || [];
+        const hasQueue = queue.length > 0 && queue.some(t => !t.done);
+        if (!hasQueue || !isToday) return null;
 
-          {aiLog.length>0&&(
-            <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-              {aiLog.map((l,i)=>(
-                <div key={i} style={{padding:"5px 10px",borderRadius:7,fontSize:fs(10),lineHeight:1.5,
-                  background:l.type==="error"?T.redD:l.type==="tool_call"?T.purpleD:l.type==="tool_result"?T.accentD:l.type==="user"?T.blueD:T.input,
-                  color:l.type==="error"?T.red:l.type==="tool_call"?T.purple:l.type==="tool_result"?T.accent:l.type==="user"?T.blue:T.text,
-                  borderLeft:`3px solid ${l.type==="error"?T.red:l.type==="tool_call"?T.purple:l.type==="tool_result"?T.accent:l.type==="user"?T.blue:T.border}`,
-                }}>{l.content}</div>
-              ))}
+        // Compute today's queue
+        const pc = data.plannerConfig;
+        const targetDate = data.targetCompletionDate || data.targetDate || '';
+        const startDt = data.studyStartDate || todayStr();
+
+        // Import-free inline populateToday logic
+        const dow = new Date(todayStr() + 'T12:00:00').getDay();
+        const dayConf = pc?.weeklyAvailability?.[dow];
+        const dayAvailMins = dayConf?.available ? (() => {
+          let mins = 0;
+          for (const w of (dayConf.windows || [])) {
+            const [sh, sm] = (w.start || '08:00').split(':').map(Number);
+            const [eh, em] = (w.end || '17:00').split(':').map(Number);
+            mins += (eh * 60 + em) - (sh * 60 + sm);
+          }
+          return Math.max(0, mins);
+        })() : 4 * 60;
+
+        const remainingStudy = queue.filter(t => !t.done && t.category !== 'break');
+        const totalRemMins = remainingStudy.reduce((s, t) => s + (t.estimatedMins || 60), 0);
+        const daysLeft = targetDate ? Math.max(1, diffDays(todayStr(), targetDate)) : 30;
+        const dailyTargetMins = Math.min(dayAvailMins, Math.ceil(totalRemMins / daysLeft));
+
+        // Fill today + work-ahead
+        // Find the "frontier" — the first undone non-break task. Everything before it is
+        // already completed (show dimmed). The frontier + enough tasks to fill daily target
+        // = today's active list. Everything after = work-ahead (hidden until today is done).
+        const frontierIdx = queue.findIndex(t => !t.done && t.category !== 'break');
+        const todayQ = [], aheadQ = [];
+        let filledMins = 0;
+        let targetMet = false;
+
+        // Include recent completed tasks for context (up to 5 before the frontier)
+        const contextStart = Math.max(0, frontierIdx - 5);
+        for (let i = contextStart; i < frontierIdx && i >= 0; i++) {
+          const t = queue[i];
+          if (t.done && t.category !== 'break') todayQ.push(t);
+        }
+
+        // Fill from the frontier forward
+        for (let i = Math.max(0, frontierIdx); i < queue.length; i++) {
+          const t = queue[i];
+          if (t.done) { todayQ.push(t); continue; } // undone-then-redone tasks stay in place
+          if (!targetMet) {
+            todayQ.push(t);
+            if (t.category !== 'break') filledMins += t.estimatedMins || 0;
+            if (filledMins >= dailyTargetMins) targetMet = true;
+          } else if (aheadQ.length < 8) {
+            aheadQ.push(t);
+          }
+        }
+
+        const doneTodayMins = todayQ.filter(t => t.done).reduce((s, t) => s + (t.estimatedMins || 0), 0);
+        const totalDoneMins = queue.filter(t => t.done && t.category !== 'break').reduce((s, t) => s + (t.estimatedMins || 0), 0);
+        const totalMins = queue.filter(t => t.category !== 'break').reduce((s, t) => s + (t.estimatedMins || 0), 0);
+        const overallPct = totalMins > 0 ? Math.round(totalDoneMins / totalMins * 100) : 0;
+
+        // SPI
+        const elapsed = startDt ? Math.max(1, diffDays(startDt, todayStr())) : 1;
+        const totalDays = targetDate && startDt ? Math.max(1, diffDays(startDt, targetDate)) : 60;
+        const expectedMins = totalMins * Math.min(1, elapsed / totalDays);
+        const spi = expectedMins > 0 ? totalDoneMins / expectedMins : 1;
+        const status = spi >= 1.1 ? 'ahead' : spi >= 0.9 ? 'on-track' : spi >= 0.7 ? 'behind' : 'at-risk';
+        const statusColors = { ahead: '#4ecdc4', 'on-track': T.accent, behind: '#f0c674', 'at-risk': T.red };
+        const statusLabels = { ahead: 'Ahead of pace', 'on-track': 'On track', behind: 'Behind pace', 'at-risk': 'At risk' };
+        const dailyNeedHrs = Math.round(totalRemMins / daysLeft / 60 * 10) / 10;
+
+        const toggleQueueTask = (taskId) => {
+          setData(d => ({
+            ...d,
+            taskQueue: (d.taskQueue || []).map(t => t.id === taskId ? { ...t, done: !t.done, doneDate: !t.done ? todayStr() : null } : t),
+          }));
+        };
+
+        const catColors = { study: T.accent, review: T.blue || T.accent, 'exam-prep': T.orange, 'exam-day': T.red, project: T.purple, break: T.dim, class: T.blue };
+
+        return (
+          <div style={{ marginBottom: 16 }}>
+            {/* Progress banner */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: T.panel, border: `1px solid ${T.border}` }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: fs(13), fontWeight: 700, color: T.text }}>{overallPct}% complete</span>
+                  <Badge color={statusColors[status]} bg={statusColors[status] + '22'}>{statusLabels[status]}</Badge>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: T.border, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${overallPct}%`, background: statusColors[status], borderRadius: 2, transition: 'width .3s' }} />
+                </div>
+                <div style={{ fontSize: fs(10), color: T.dim, marginTop: 4 }}>
+                  {Math.round(totalDoneMins / 60)}h / {Math.round(totalMins / 60)}h · {daysLeft} days left · need ~{dailyNeedHrs}h/day
+                </div>
+              </div>
             </div>
-          )}
-        </>}
-      </div>
+
+            {/* Course progress mini-bars */}
+            {(() => {
+              const courseProg = {};
+              const courseColors2 = [T.accent, T.blue || T.accent, T.purple, T.orange, T.red, '#4ecdc4', '#f7b731'];
+              for (const t of queue.filter(qt => qt.category !== 'break')) {
+                const k = t.course_code || 'Other';
+                if (!courseProg[k]) courseProg[k] = { total: 0, done: 0 };
+                courseProg[k].total++;
+                if (t.done) courseProg[k].done++;
+              }
+              return (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  {Object.entries(courseProg).map(([code, cp], ci) => {
+                    const cpct = cp.total > 0 ? Math.round(cp.done / cp.total * 100) : 0;
+                    const cc = courseColors2[ci % courseColors2.length];
+                    return (
+                      <div key={code} style={{ flex: '1 1 80px', minWidth: 80, background: T.card, border: `1px solid ${T.border}`, borderRadius: 6, padding: '5px 8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                          <span style={{ fontSize: fs(9), fontWeight: 700, color: T.text }}>{code}</span>
+                          <span style={{ fontSize: fs(8), color: T.dim }}>{cpct}%</span>
+                        </div>
+                        <div style={{ height: 3, borderRadius: 2, background: T.input, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${cpct}%`, background: cc, borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Today's target */}
+            <div style={{ fontSize: fs(11), fontWeight: 600, color: T.soft, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+              <span>TODAY — {Math.round(dailyTargetMins / 60 * 10) / 10}h planned</span>
+              <span style={{ color: T.dim }}>{todayQ.filter(t => t.done).length}/{todayQ.filter(t => !t.done || (t.done && t.doneDate === todayStr())).length} done</span>
+            </div>
+
+            {/* Today's tasks — includes context (recent done) + active + newly done */}
+            {todayQ.map((t, i) => {
+              const color = catColors[t.category] || T.accent;
+              const isNext = !t.done && i === todayQ.findIndex(x => !x.done);
+              const isDoneOlderDay = t.done && t.doneDate && t.doneDate !== todayStr();
+              const isExpanded = expandedTaskId === t.id;
+              const hasTimer = activeTimerId === t.id;
+              const timerMins = Math.floor(timerRemaining / 60);
+              const timerSecs = timerRemaining % 60;
+
+              // "Why this task" context
+              const totalCourseUnits = queue.filter(qt => qt.course_code === t.course_code && qt.category !== 'break').length;
+              const doneUnits = queue.filter(qt => qt.course_code === t.course_code && qt.done && qt.category !== 'break').length;
+              const unitIdx = queue.filter(qt => qt.course_code === t.course_code && qt.category !== 'break').findIndex(qt => qt.id === t.id) + 1;
+
+              return (
+                <div key={t.id} style={{ marginBottom: isDoneOlderDay ? 2 : 6 }}>
+                  {/* Main task row */}
+                  <div onClick={() => !isDoneOlderDay && setExpandedTaskId(isExpanded ? null : t.id)} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: isDoneOlderDay ? '6px 14px' : '10px 14px',
+                    borderRadius: isExpanded ? '8px 8px 0 0' : 8, transition: 'all .12s', cursor: isDoneOlderDay ? 'default' : 'pointer',
+                    background: hasTimer ? `${color}18` : t.done ? `${T.card}88` : isNext ? `${color}11` : T.card,
+                    border: `1px solid ${hasTimer ? color + '55' : t.done ? T.border : isNext ? color + '44' : T.border}`,
+                    borderLeft: `3px solid ${t.done ? T.dim : color}`,
+                    borderBottom: isExpanded ? 'none' : undefined,
+                    opacity: isDoneOlderDay ? 0.35 : t.done ? 0.6 : 1,
+                  }}>
+                    {/* Checkbox */}
+                    <div onClick={(e) => { e.stopPropagation(); if (!t.done) { if (hasTimer) stopTimer(); toggleQueueTask(t.id); } }} style={{ width: isDoneOlderDay ? 16 : 20, height: isDoneOlderDay ? 16 : 20, borderRadius: 5, border: `2px solid ${t.done ? T.accent : T.border}`, background: t.done ? T.accentD : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: t.done ? 'default' : 'pointer' }}>
+                      {t.done && <Ic.Check s={isDoneOlderDay ? 9 : 12} />}
+                    </div>
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: fs(isDoneOlderDay ? 11 : 13), fontWeight: 600, color: t.done ? T.dim : T.text, textDecoration: t.done ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {isNext && !hasTimer && <span style={{ color, marginRight: 6 }}>▶</span>}
+                        {t.title}
+                      </div>
+                      {!t.done && !isExpanded && (t.subtitle || t.notes) && <div style={{ fontSize: fs(10), color: T.soft, marginTop: 2, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.subtitle || t.notes?.split('\n')[0]}</div>}
+                      {/* Why this task — compact context */}
+                      {!t.done && !isDoneOlderDay && !isExpanded && t.course_code && (
+                        <div style={{ fontSize: fs(8), color: T.dim, marginTop: 2 }}>Task {unitIdx} of {totalCourseUnits} in {t.course_code} · {doneUnits} completed</div>
+                      )}
+                    </div>
+                    {/* Timer display (when active) */}
+                    {hasTimer && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        <span style={{ fontSize: fs(14), fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: timerRemaining <= 60 ? T.red : color, minWidth: 50, textAlign: 'right' }}>
+                          {timerMins}:{String(timerSecs).padStart(2, '0')}
+                        </span>
+                        <button onClick={(e) => { e.stopPropagation(); pauseTimer(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: timerPaused ? T.accent : T.dim, fontSize: fs(12), padding: 2 }}>{timerPaused ? '▶' : '⏸'}</button>
+                        <button onClick={(e) => { e.stopPropagation(); stopTimer(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.dim, fontSize: fs(10), padding: 2 }}>✕</button>
+                      </div>
+                    )}
+                    {/* Duration + category + undo (hidden when timer active) */}
+                    {!hasTimer && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{ fontSize: fs(isDoneOlderDay ? 9 : 10), color: T.dim, fontFamily: "'JetBrains Mono', monospace" }}>{minsToStr(t.estimatedMins || 60)}</span>
+                        {!isDoneOlderDay && <Badge color={color} bg={color + '22'}>{t.category}</Badge>}
+                        {t.done && (
+                          <button onClick={(e) => { e.stopPropagation(); toggleQueueTask(t.id); }} style={{ padding: '2px 8px', borderRadius: 4, border: `1px solid ${T.orange}55`, background: 'transparent', color: T.orange, fontSize: fs(9), cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>Undo</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expanded detail panel */}
+                  {isExpanded && !isDoneOlderDay && (
+                    <div style={{ padding: '10px 14px 12px', background: T.panel, border: `1px solid ${t.done ? T.border : isNext ? color + '44' : T.border}`, borderTop: 'none', borderLeft: `3px solid ${t.done ? T.dim : color}`, borderRadius: '0 0 8px 8px' }}>
+                      {/* Why this task — detailed */}
+                      {t.course_code && (
+                        <div style={{ fontSize: fs(9), color, fontWeight: 600, marginBottom: 6 }}>
+                          Unit {t.unitNumber} · Task {unitIdx} of {totalCourseUnits} in {t.course_code} ({t.course_name}) · {doneUnits} done · {totalCourseUnits - doneUnits} remaining
+                        </div>
+                      )}
+                      {/* Topics */}
+                      {t.topics?.length > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          <div style={{ fontSize: fs(9), fontWeight: 700, color: T.dim, marginBottom: 2 }}>TOPICS</div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {t.topics.map((topic, ti) => <span key={ti} style={{ fontSize: fs(9), padding: '2px 8px', borderRadius: 10, background: `${color}15`, color: T.soft, border: `1px solid ${color}22` }}>{topic}</span>)}
+                          </div>
+                        </div>
+                      )}
+                      {/* Objective */}
+                      {t.objectives && (
+                        <div style={{ marginBottom: 6 }}>
+                          <div style={{ fontSize: fs(9), fontWeight: 700, color: T.dim, marginBottom: 2 }}>OBJECTIVE</div>
+                          <div style={{ fontSize: fs(10), color: T.text, lineHeight: 1.4 }}>{t.objectives}</div>
+                        </div>
+                      )}
+                      {/* Study instructions */}
+                      {t.notes && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: fs(9), fontWeight: 700, color: T.dim, marginBottom: 2 }}>STUDY GUIDE</div>
+                          <div style={{ fontSize: fs(10), color: T.soft, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{t.notes}</div>
+                        </div>
+                      )}
+                      {/* Action buttons */}
+                      {!t.done && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                          {!hasTimer ? (
+                            <button onClick={(e) => { e.stopPropagation(); startTimer(t.id, t.estimatedMins || 60); }} style={{ padding: '5px 14px', borderRadius: 6, border: `1px solid ${color}`, background: `${color}22`, color, fontSize: fs(10), cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              ▶ Start Timer ({minsToStr(t.estimatedMins || 60)})
+                            </button>
+                          ) : (
+                            <button onClick={(e) => { e.stopPropagation(); stopTimer(); toggleQueueTask(t.id); }} style={{ padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.accent}`, background: T.accentD, color: T.accent, fontSize: fs(10), cursor: 'pointer', fontWeight: 600 }}>
+                              ✓ Mark Complete
+                            </button>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); if (!t.done) toggleQueueTask(t.id); }} style={{ padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.accent}`, background: T.accentD, color: T.accent, fontSize: fs(10), cursor: 'pointer', fontWeight: 600 }}>
+                            ✓ Done
+                          </button>
+                        </div>
+                      )}
+                      {t.done && (
+                        <button onClick={(e) => { e.stopPropagation(); toggleQueueTask(t.id); }} style={{ padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.orange}55`, background: 'transparent', color: T.orange, fontSize: fs(10), cursor: 'pointer', fontWeight: 600 }}>Undo</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Work ahead — only visible when ALL today's tasks are done */}
+            {(() => {
+              const allTodayDone = todayQ.length > 0 && todayQ.every(t => t.done);
+              if (!allTodayDone || aheadQ.length === 0) return null;
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 8px', padding: '8px 12px', borderRadius: 8, background: `${T.accent}11`, border: `1px solid ${T.accent}33` }}>
+                    <span style={{ fontSize: fs(11), color: T.accent, fontWeight: 600 }}>Daily target met!</span>
+                    <span style={{ fontSize: fs(10), color: T.dim }}>Keep going to get ahead, or take a break.</span>
+                  </div>
+                  <div style={{ fontSize: fs(10), fontWeight: 600, color: T.dim, marginBottom: 6 }}>WORK AHEAD</div>
+                  {aheadQ.map(t => {
+                    const color = catColors[t.category] || T.accent;
+                    return (
+                      <div key={t.id} onClick={() => toggleQueueTask(t.id)} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', marginBottom: 3,
+                        borderRadius: 8, cursor: 'pointer', background: T.input, border: `1px solid ${T.border}`,
+                        borderLeft: `3px solid ${color}44`,
+                      }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 4, border: `1.5px solid ${T.border}`, flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: fs(12), color: T.soft, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
+                        <span style={{ fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono', monospace" }}>{minsToStr(t.estimatedMins || 60)}</span>
+                        <Badge color={color} bg={color + '22'}>{t.category}</Badge>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
+
+            {/* Daily summary — all tasks done */}
+            {todayQ.length > 0 && todayQ.every(t => t.done) && (
+              <div style={{ margin: '16px 0', padding: '16px 20px', borderRadius: 10, background: `linear-gradient(135deg, ${T.accentD}, ${T.purpleD})`, border: `1px solid ${T.accent}33`, textAlign: 'center' }}>
+                <div style={{ fontSize: fs(16), fontWeight: 800, color: T.text, marginBottom: 4 }}>Daily Target Complete!</div>
+                <div style={{ fontSize: fs(11), color: T.soft, marginBottom: 8 }}>
+                  You studied ~{Math.round(todayQ.reduce((s, t) => s + (t.estimatedMins || 0), 0) / 60 * 10) / 10}h today
+                  {' '}across {[...new Set(todayQ.filter(t => t.course_code).map(t => t.course_code))].length} course{[...new Set(todayQ.filter(t => t.course_code).map(t => t.course_code))].length !== 1 ? 's' : ''}
+                </div>
+                <div style={{ fontSize: fs(10), color: statusColors[status] }}>
+                  {status === 'ahead' ? 'You\'re ahead of pace — great momentum!' : status === 'on-track' ? 'Right on track to meet your target date.' : status === 'behind' ? `Slightly behind — ${dailyNeedHrs}h/day to catch up.` : `At risk — consider extending your target date or increasing daily hours.`}
+                </div>
+                {aheadQ.length > 0 && <div style={{ fontSize: fs(10), color: T.dim, marginTop: 6 }}>Want to get ahead? {aheadQ.length} more tasks available below.</div>}
+              </div>
+            )}
+
+            {/* ── Completed History ── */}
+            {(() => {
+              const doneTasks = queue.filter(t => t.done && t.category !== 'break');
+              if (doneTasks.length === 0) return null;
+              // Exclude tasks already shown in todayQ
+              const todayIds = new Set(todayQ.map(t => t.id));
+              const historyTasks = doneTasks.filter(t => !todayIds.has(t.id));
+              if (historyTasks.length === 0) return null;
+
+              // Group by doneDate
+              const byDate = {};
+              for (const t of historyTasks) {
+                const dt = t.doneDate || 'Unknown';
+                if (!byDate[dt]) byDate[dt] = [];
+                byDate[dt].push(t);
+              }
+              const sortedDates = Object.keys(byDate).sort().reverse();
+
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}
+                    onClick={() => setData(d => ({ ...d, _showHistory: !d._showHistory }))}>
+                    <span style={{ fontSize: fs(11), fontWeight: 700, color: T.soft }}>Completed ({historyTasks.length})</span>
+                    <span style={{ fontSize: fs(9), color: T.dim }}>{data._showHistory ? '▾ hide' : '▸ show'}</span>
+                  </div>
+                  {data._showHistory && sortedDates.map(dt => (
+                    <div key={dt} style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: fs(9), fontWeight: 600, color: T.dim, marginBottom: 4, textTransform: 'uppercase' }}>
+                        {dt === todayStr() ? 'Today' : (() => { try { return new Date(dt + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); } catch (_) { return dt; } })()}
+                        {' '}({byDate[dt].length} tasks · {minsToStr(byDate[dt].reduce((s, t) => s + (t.estimatedMins || 60), 0))})
+                      </div>
+                      {byDate[dt].map(t => {
+                        const color = catColors[t.category] || T.accent;
+                        return (
+                          <div key={t.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', marginBottom: 2,
+                            borderRadius: 6, background: T.card, border: `1px solid ${T.border}`,
+                            borderLeft: `3px solid ${T.dim}`, opacity: 0.55,
+                          }}>
+                            <div style={{ width: 16, height: 16, borderRadius: 4, background: T.accentD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Ic.Check s={10} />
+                            </div>
+                            <span style={{ flex: 1, fontSize: fs(11), color: T.dim, textDecoration: 'line-through', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
+                            <span style={{ fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono',monospace" }}>{minsToStr(t.estimatedMins || 60)}</span>
+                            <button onClick={(e) => { e.stopPropagation(); toggleQueueTask(t.id); }} style={{ padding: '2px 8px', borderRadius: 4, border: `1px solid ${T.orange}55`, background: 'transparent', color: T.orange, fontSize: fs(9), cursor: 'pointer', fontWeight: 600 }}>Undo</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
 
       {/* Category filter (day view) */}
-      {view==="day" && tasks.length > 0 && (
+      {view==="day" && tasks.length > 0 && !(data.taskQueue?.length > 0 && data.taskQueue.some(t => !t.done) && isToday) && (
         <div style={{display:"flex",gap:4,marginBottom:12,flexWrap:"wrap"}}>
           <button className="sf-chip" onClick={()=>setCatFilter("all")} style={{padding:"5px 12px",borderRadius:7,border:"none",fontSize:fs(11),fontWeight:catFilter==="all"?700:400,cursor:"pointer",background:catFilter==="all"?T.accentD:"transparent",color:catFilter==="all"?T.accent:T.dim}}>All ({tasks.length})</button>
           {Object.entries(CAT).filter(([k])=>tasks.some(t=>t.category===k)).map(([k,v])=>(
@@ -654,10 +1174,30 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         </div>
       )}
 
+      {/* Timeline/List toggle (day view only) */}
+      {view === 'day' && filtered.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+          <div style={{ display: 'flex', borderRadius: 6, border: `1px solid ${T.border}`, overflow: 'hidden' }}>
+            <button onClick={() => setDayView('timeline')} style={{ padding: '4px 10px', fontSize: fs(9), fontWeight: dayView === 'timeline' ? 700 : 400, border: 'none', cursor: 'pointer', background: dayView === 'timeline' ? T.accentD : 'transparent', color: dayView === 'timeline' ? T.accent : T.dim }}>Timeline</button>
+            <button onClick={() => setDayView('list')} style={{ padding: '4px 10px', fontSize: fs(9), fontWeight: dayView === 'list' ? 700 : 400, border: 'none', cursor: 'pointer', background: dayView === 'list' ? T.accentD : 'transparent', color: dayView === 'list' ? T.accent : T.dim }}>List</button>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       {view==="week" ? renderWeekView() : (
-        filtered.length===0 ? <div style={{padding:"50px 0",textAlign:"center"}}><div style={{fontSize:fs(40),marginBottom:12,opacity:.3}}>\📋</div><p style={{color:T.dim,fontSize:fs(13)}}>{catFilter!=="all"?"No tasks in this category":"No tasks for this day"}</p></div>
-        : <>
+        filtered.length===0 ? <div style={{padding:"50px 0",textAlign:"center"}}><div style={{fontSize:fs(40),marginBottom:12,opacity:.3}}>📋</div><p style={{color:T.dim,fontSize:fs(13)}}>{catFilter!=="all"?"No tasks in this category":"No tasks for this day"}</p></div>
+        : dayView === 'timeline' ? (
+          <DayTimeline
+            tasks={filtered}
+            date={date}
+            now={now}
+            currentId={currentId}
+            onToggle={toggleTask}
+            onEdit={openEdit}
+            onDelete={deleteTask}
+          />
+        ) : <>
           {manualOrder && (
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
               <span style={{fontSize:fs(10),color:T.dim}}>Custom order active</span>
@@ -687,6 +1227,28 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
           </div>
         </div>
       )}
+
+      {/* End-of-day shift prompt — show when today has undone tasks and it's past the last task's end time */}
+      {isToday && view === 'day' && (() => {
+        const undoneTasks = tasks.filter(t => !t.done && t.category !== 'break' && !t._ghost);
+        if (undoneTasks.length === 0) return null;
+        const lastEnd = undoneTasks.reduce((max, t) => { const e = parseTime(t.endTime); return e ? Math.max(max, e.mins) : max; }, 0);
+        if (now < lastEnd) return null; // Not past the end of the day yet
+        return (
+          <div className="fade" style={{ background: T.orangeD, border: `1px solid ${T.orange}33`, borderRadius: 12, padding: 14, marginTop: 12, marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: fs(13), fontWeight: 600, color: T.orange }}>{undoneTasks.length} task{undoneTasks.length !== 1 ? 's' : ''} not completed today</div>
+                <div style={{ fontSize: fs(11), color: T.soft, marginTop: 2 }}>Shift them to the next available days?</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn small onClick={() => handleShiftDay(date)}>Shift Forward</Btn>
+                <Btn small v="ghost" onClick={() => toast('Tasks will remain on today.', 'info')}>Keep Here</Btn>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showAdd&&<Modal title={editId?"Edit Task":"Add Task"} onClose={()=>setShowAdd(false)}>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>

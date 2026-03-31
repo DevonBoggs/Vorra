@@ -92,6 +92,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
   const isAnth = isAnthProvider(profile);
   dlog('api','api',`Calling: ${profile.name} (${profile.model})`, {provider:isAnth?"anthropic":"openai",msgs:messages.length,hasImg:!!imageData});
   const headers = getAuthHeaders(profile);
+  const signal = getBgState().abortCtrl?.signal; // Use existing abort controller for cancellation
 
   const toolSet = toolOverride || TOOLS;
   const toolSetOAI = toolOverride
@@ -114,31 +115,94 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
 
   const quirks = getProviderQuirks(profile);
 
+  // Detect thinking/reasoning models that need special parameters
+  const isThinking = (profile?.model || '').match(/thinking|think|r1\b|qwq|reasoner|glm-5\.1|glm-5(?!.*turbo)/i);
+
   let body;
   if (quirks.noToolSupport) {
-    // Provider does not support tool calling — omit tools entirely
     body = isAnth
-      ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: processedMessages }
-      : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...processedMessages] };
+      ? { model: profile.model, max_tokens: maxTokens, stream: false, system: systemPrompt, messages: processedMessages }
+      : { model: profile.model, max_tokens: maxTokens, stream: false, messages: [{ role: "system", content: systemPrompt }, ...processedMessages] };
   } else if (isAnth) {
-    body = { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: processedMessages, tools: toolSet };
+    body = { model: profile.model, max_tokens: maxTokens, stream: false, system: systemPrompt, messages: processedMessages, tools: toolSet };
   } else {
-    body = { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...processedMessages], tools: toolSetOAI };
-    if (quirks.requireToolChoice) body.tool_choice = "auto";
+    body = { model: profile.model, max_tokens: maxTokens, stream: false, messages: [{ role: "system", content: systemPrompt }, ...processedMessages], tools: toolSetOAI, tool_choice: "auto" };
+  }
+  // Z.AI/Zhipu thinking models: enable reasoning via the `thinking` parameter
+  if (isThinking && (profile?.provider === 'zai' || (profile?.baseUrl || '').includes('z.ai') || (profile?.baseUrl || '').includes('bigmodel.cn'))) {
+    body.thinking = { type: 'enabled' };
   }
 
+  const bodyStr = JSON.stringify(body);
+  const bodyKB = Math.round(bodyStr.length / 1024 * 10) / 10;
+  const msgCount = processedMessages.length;
+  const toolCount = quirks.noToolSupport ? 0 : (toolSet?.length || 0);
+  const sysLen = Math.round((systemPrompt || '').length / 1024 * 10) / 10;
+  const userLen = Math.round(processedMessages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0) / 1024 * 10) / 10;
+  dlog('api','api',`Sending ${bodyKB}KB non-streaming request`);
+  bgLog({ type: 'text', content: `📡 Request: ${bodyKB}KB total (system: ${sysLen}KB, messages: ${userLen}KB, ${msgCount} msg, ${toolCount} tools, max_tokens: ${maxTokens})` });
+  bgLog({ type: 'text', content: `🔗 ${profile.name} → ${profile.model} (non-streaming)` });
+
   let res;
-  try { res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
-    dlog('api','api',`Response: HTTP ${res.status}`);
-    setApiStatus(res.ok, res.status);
-  } catch(e) {
-    setApiStatus(false, 0, e.message);
-    dlog('error','api',`Network error: ${e.message}`,{url:profile.baseUrl}); throw new Error(`Network error: ${e.message}`);
+  const fetchStart = Date.now();
+  // Thinking models need more time — they reason internally before outputting
+  const isThinkingModel = (profile?.model || '').match(/thinking|think|r1\b|qwq|reasoner|glm-5\.1|glm-5(?!.*turbo)/i);
+  const FETCH_TIMEOUT_MS = isThinkingModel ? 1800000 : 180000; // 30 min for thinking (Z.AI recommends 50min), 3 min for others
+  // Show elapsed time every 10s while waiting
+  const fetchTimer = setInterval(() => {
+    const elapsed = Math.round((Date.now() - fetchStart) / 1000);
+    bgLog({ type: 'text', content: `⏳ Still waiting... ${elapsed}s elapsed${isThinkingModel ? ' (thinking model — may take longer)' : ''}` });
+  }, 10000);
+
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s backoff
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const fetchTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Provider did not respond within ${FETCH_TIMEOUT_MS / 1000}s. The model may be overloaded or the request too large (${bodyKB}KB). Try a different model or reduce course count.`)), FETCH_TIMEOUT_MS)
+      );
+      res = await Promise.race([fetch(profile.baseUrl, { method: "POST", headers, body: bodyStr, signal }), fetchTimeout]);
+      const fetchMs = Date.now() - fetchStart;
+      dlog('api','api',`Response: HTTP ${res.status} in ${fetchMs}ms`);
+
+      // Retry on 429 (rate limit) or 529 (overloaded) with backoff
+      if ((res.status === 429 || res.status === 529) && attempt < MAX_RETRIES) {
+        let errText = '';
+        try { errText = await res.text(); } catch (_) {}
+        const delay = RETRY_DELAYS[attempt] || 30000;
+        bgLog({ type: 'text', content: `⚠️ Rate limited (${res.status}) — retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES})` });
+        dlog('warn','api',`Rate limited (${res.status}), retry ${attempt + 1} in ${delay}ms: ${errText.slice(0, 200)}`);
+        await new Promise(r => setTimeout(r, delay));
+        if (signal?.aborted) { clearInterval(fetchTimer); throw new Error('Cancelled'); }
+        continue;
+      }
+
+      clearInterval(fetchTimer);
+      bgLog({ type: 'text', content: `📥 Response received: HTTP ${res.status} (${Math.round(fetchMs / 1000)}s)` });
+      setApiStatus(res.ok, res.status);
+      break; // Success or non-retryable error — exit loop
+    } catch(e) {
+      if (attempt === MAX_RETRIES || e.message === 'Cancelled') {
+        clearInterval(fetchTimer);
+        if (e.name === 'AbortError' || e.message === 'Cancelled') { dlog('info','api','Non-streaming call aborted by user'); throw new Error('Cancelled'); }
+        const fetchMs = Date.now() - fetchStart;
+        setApiStatus(false, 0, e.message);
+        dlog('error','api',`Network error after ${fetchMs}ms: ${e.message}`,{url:profile.baseUrl});
+        bgLog({ type: 'error', content: `❌ Failed after ${Math.round(fetchMs / 1000)}s: ${sanitizeErrorText(e.message)}` });
+        throw new Error(`Network error: ${sanitizeErrorText(e.message)}`);
+      }
+      // Retry on network errors too
+      const delay = RETRY_DELAYS[attempt] || 30000;
+      bgLog({ type: 'text', content: `⚠️ Network error — retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES})` });
+      await new Promise(r => setTimeout(r, delay));
+      if (signal?.aborted) { clearInterval(fetchTimer); throw new Error('Cancelled'); }
+    }
   }
 
   // If image was attached and we got a 400, retry without the image
   if (!res.ok && imageData && (res.status === 400 || res.status === 422)) {
     dlog('warn','api',`Got ${res.status} with image attached — retrying without image (model may not support vision)`);
+    bgLog({ type: 'text', content: `⚠️ HTTP ${res.status} with image — retrying without image...` });
     const plainMsgs = messages; // original messages without image
     let retryBody;
     if (quirks.noToolSupport) {
@@ -156,18 +220,34 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
     } catch(e) { setApiStatus(false, 0, e.message); throw new Error(`Retry failed: ${e.message}`); }
   }
 
-  if (!res.ok) { const t = await res.text(); dlog('error','api',`API error ${res.status}`,t.slice(0,500)); throw new Error(`API ${res.status}: ${sanitizeErrorText(t)}`); }
+  if (!res.ok) {
+    const t = await res.text();
+    dlog('error','api',`API error ${res.status}`,t.slice(0,500));
+    bgLog({ type: 'error', content: `API ${res.status}: ${sanitizeErrorText(t)}` });
+    throw new Error(`API ${res.status}: ${sanitizeErrorText(t)}`);
+  }
 
   // Read as text first to handle truncated/empty responses
   let rawText;
-  try { rawText = await res.text(); } catch(e) { dlog('error','api','Failed to read response body',e.message); throw new Error(`Failed to read response: ${e.message}`); }
+  try { rawText = await res.text(); } catch(e) {
+    dlog('error','api','Failed to read response body',e.message);
+    bgLog({ type: 'error', content: `Failed to read response body: ${e.message}` });
+    throw new Error(`Failed to read response: ${e.message}`);
+  }
+  const rawKB = Math.round(rawText.length / 1024 * 10) / 10;
   dlog('debug','api',`Response body: ${rawText.length} chars`);
-  if (!rawText || rawText.trim().length === 0) { dlog('error','api','Empty response body'); throw new Error('API returned an empty response. The model may have timed out or returned nothing.'); }
+  bgLog({ type: 'text', content: `📦 Response body: ${rawKB}KB (${rawText.length} chars)` });
+  if (!rawText || rawText.trim().length === 0) {
+    dlog('error','api','Empty response body');
+    bgLog({ type: 'error', content: 'Empty response — model returned nothing' });
+    throw new Error('API returned an empty response. The model may have timed out or returned nothing.');
+  }
 
   let data;
   try { data = JSON.parse(rawText); }
   catch(e) {
     dlog('error','api',`JSON parse failed (${rawText.length} chars)`, rawText.slice(0, 500));
+    bgLog({ type: 'error', content: `Invalid JSON response (${rawKB}KB). First 150 chars: ${rawText.slice(0, 150)}` });
     throw new Error(`Invalid JSON from API (${rawText.length} chars). Response may have been truncated. First 200 chars: ${sanitizeErrorText(rawText)}`);
   }
 
@@ -175,11 +255,13 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
   if (isAnth) {
     const text = safeArr(data.content).filter(b => b.type === "text").map(b => b.text).join("");
     const toolCalls = safeArr(data.content).filter(b => b.type === "tool_use").map(b => ({ id: b.id, name: b.name, input: b.input }));
+    bgLog({ type: 'text', content: `🔍 Parsed: ${text.length} chars text, ${toolCalls.length} tool calls, stop=${data.stop_reason}` });
     return { text, toolCalls, stopReason: data.stop_reason };
   } else {
     const msg = data.choices?.[0]?.message;
     if (!msg) {
       dlog('warn','api','No message in response', JSON.stringify(data).slice(0,500));
+      bgLog({ type: 'error', content: `No message in response. Keys: ${Object.keys(data).join(', ')}. ${data.error ? `Error: ${JSON.stringify(data.error).slice(0,150)}` : ''}` });
       // Some models return content differently — try to extract text
       const fallbackText = data.output?.text || data.result || "";
       return { text: fallbackText || "(Model returned no message)", toolCalls: [], stopReason: "stop" };
@@ -211,6 +293,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
         return { id: tc.id, name: tc.function?.name || 'unknown', input: repaired || {} };
       }
     });
+    bgLog({ type: 'text', content: `🔍 Parsed: ${text.length} chars text, ${toolCalls.length} tool calls, finish=${finishReason}${msg.content ? '' : ' (no content)'}${toolCalls.length > 0 ? ` [${toolCalls.map(tc => `${tc.name}(${Math.round(JSON.stringify(tc.input).length/1024*10)/10}KB)`).join(', ')}]` : ''}` });
     return { text, toolCalls, stopReason: finishReason };
   }
 }
@@ -259,21 +342,57 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
     if (quirks.requireToolChoice) body.tool_choice = "auto";
   }
 
+  const bodyStr = JSON.stringify(body);
+  const bodyKB = Math.round(bodyStr.length / 1024 * 10) / 10;
+  const streamMsgCount = processedMessages.length;
+  const streamToolCount = quirks.noToolSupport ? 0 : (toolSet?.length || 0);
+  dlog('api','api',`Sending ${bodyKB}KB request to ${profile.baseUrl}`);
+  bgLog({ type: 'text', content: `📡 Request: ${bodyKB}KB total (${streamMsgCount} msg, ${streamToolCount} tools, max_tokens: ${maxTokens}, streaming)` });
+  bgLog({ type: 'text', content: `🔗 ${profile.name} → ${profile.model}` });
+  const fetchStart = Date.now();
+
+  // Show elapsed time while waiting for initial response
+  const FETCH_TIMEOUT_MS = 180000; // 3 minutes max for initial HTTP response
+  const fetchTimer = setInterval(() => {
+    const elapsed = Math.round((Date.now() - fetchStart) / 1000);
+    bgLog({ type: 'text', content: `⏳ Still waiting... ${elapsed}s elapsed` });
+  }, 10000);
+
   let res;
   try {
-    res = await fetch(profile.baseUrl, { method:"POST", headers, body:JSON.stringify(body), signal });
-    dlog('api','api',`Stream response: HTTP ${res.status}`); setApiStatus(res.ok, res.status);
+    // Race fetch against a timeout — prevents infinite hangs when provider never responds
+    const fetchTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Provider did not respond within ${FETCH_TIMEOUT_MS / 1000}s. The model may be overloaded or the request too large (${bodyKB}KB). Try a different model.`)), FETCH_TIMEOUT_MS)
+    );
+    res = await Promise.race([fetch(profile.baseUrl, { method:"POST", headers, body:bodyStr, signal }), fetchTimeout]);
+    clearInterval(fetchTimer);
+    const fetchMs = Date.now() - fetchStart;
+    dlog('api','api',`Stream response: HTTP ${res.status} in ${fetchMs}ms`);
+    bgLog({ type: 'text', content: `📥 Response received: HTTP ${res.status} (${Math.round(fetchMs / 1000)}s)` });
+    setApiStatus(res.ok, res.status);
   } catch(e) {
+    clearInterval(fetchTimer);
     if (e.name === 'AbortError') { dlog('info','api','Stream aborted by user'); throw new Error('Cancelled'); }
+    const fetchMs = Date.now() - fetchStart;
     setApiStatus(false, 0, e.message);
-    dlog('error','api',`Stream fetch failed: ${e.message}`);
-    throw new Error(`Network error: ${e.message}`);
+    dlog('error','api',`Stream fetch failed after ${fetchMs}ms: ${e.message}`);
+    bgLog({ type: 'error', content: `❌ Failed after ${Math.round(fetchMs / 1000)}s: ${sanitizeErrorText(e.message)}` });
+    throw new Error(`Network error: ${sanitizeErrorText(e.message)}`);
   }
 
   if (!res.ok) {
+    clearInterval(fetchTimer);
+    // Read error body for diagnostics
+    let errText = '';
+    try { errText = await res.text(); } catch (_) {}
+    const errMsg = `API ${res.status}: ${sanitizeErrorText(errText)}`;
+    dlog('warn','api',`Stream error: ${errMsg}`);
     // If streaming fails (some endpoints don't support it), fall back to non-streaming
-    dlog('warn','api',`Stream not supported (HTTP ${res.status}), falling back`);
-    return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride, maxTokens);
+    if (res.status === 400 || res.status === 422) {
+      dlog('warn','api',`Streaming may not be supported (HTTP ${res.status}), falling back`);
+      return callAIWithTools(profile, systemPrompt, messages, imageData, toolOverride, maxTokens);
+    }
+    throw new Error(errMsg);
   }
 
   // Parse SSE stream
@@ -384,6 +503,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   }).filter(tc => tc.name);
 
   dlog('api','api',`Stream complete: ${text.length} chars, ${toolCalls.length} tools, stop=${stopReason}`);
+  bgLog({ type: 'text', content: `🔍 Stream: ${text.length} chars text, ${toolCalls.length} tool calls, stop=${stopReason}${text.length === 0 && toolCalls.length === 0 ? ' ⚠️ EMPTY RESPONSE' : ''}${toolCalls.length > 0 ? ` [${toolCalls.map(tc => `${tc.name}(${Math.round(JSON.stringify(tc.input).length/1024*10)/10}KB)`).join(', ')}]` : ''}` });
   if (stopReason === "length") dlog('warn','api','Stream was TRUNCATED (stop=length)');
 
   return { text, toolCalls, stopReason };
@@ -393,6 +513,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
 export async function continueAfterTools(profile, systemPrompt, messages, toolCalls, toolResults, maxTokens = 16384, toolOverride = null) {
   const isAnth = isAnthProvider(profile);
   const headers = getAuthHeaders(profile);
+  const signal = getBgState().abortCtrl?.signal;
 
   const toolSet = toolOverride || TOOLS;
   const toolSetOAI = toolOverride
@@ -416,11 +537,20 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
   }
 
   const body = isAnth
-    ? { model: profile.model, max_tokens: maxTokens, system: systemPrompt, messages: extendedMessages, tools: toolSet }
-    : { model: profile.model, max_tokens: maxTokens, messages: [{ role: "system", content: systemPrompt }, ...extendedMessages], tools: toolSetOAI };
+    ? { model: profile.model, max_tokens: maxTokens, stream: false, system: systemPrompt, messages: extendedMessages, tools: toolSet }
+    : { model: profile.model, max_tokens: maxTokens, stream: false, messages: [{ role: "system", content: systemPrompt }, ...extendedMessages], tools: toolSetOAI };
 
   dlog('api','api','Continuing after tool results');
-  const res = await fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
+  const isThinkingModel = (profile?.model || '').match(/thinking|think|r1\b|qwq|reasoner|glm-5\.1|glm-5(?!.*turbo)/i);
+  const CONTINUE_TIMEOUT_MS = isThinkingModel ? 1800000 : 180000;
+  let res;
+  try {
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error(`Continue timed out after ${CONTINUE_TIMEOUT_MS / 1000}s`)), CONTINUE_TIMEOUT_MS));
+    res = await Promise.race([fetch(profile.baseUrl, { method: "POST", headers, body: JSON.stringify(body), signal }), timeout]);
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Cancelled');
+    throw e;
+  }
   dlog('api','api',`Continue response: HTTP ${res.status}`); setApiStatus(res.ok, res.status);
   if (!res.ok) { const t = await res.text(); dlog('error','api',`Continue error ${res.status}`,t.slice(0,500)); throw new Error(`API ${res.status}: ${sanitizeErrorText(t)}`); }
 

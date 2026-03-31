@@ -547,7 +547,7 @@ export default function App() {
               {page === "calendar" && <CalendarPage date={date} setDate={setDate} tasks={data.tasks || {}} setPage={setPage} Btn={Btn} data={data} />}
               {page === "chat" && <StudyChatPage data={data} setData={setData} profile={profile} Btn={Btn} />}
               {page === "quiz" && <PracticeExamPage data={data} setData={setData} profile={profile} Btn={Btn} Label={Label} />}
-              {page === "report" && <WeeklyReportPage data={data} Btn={Btn} />}
+              {page === "report" && <WeeklyReportPage data={data} Btn={Btn} setPage={setPage} />}
               {page === "settings" && <SettingsPage data={data} setData={setData} setPage={setPage} Btn={Btn} />}
             </div>
           </main>

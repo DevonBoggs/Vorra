@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **8.0.0**.
+Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **8.2.0**.
 
 ## Tech Stack
 
@@ -10,68 +10,85 @@ Vorra is an AI-powered study & life planner — an Electron desktop app for mana
 - **Build**: Vite 6 (dev server on port 5173)
 - **Desktop**: Electron 35 (main process in `electron/main.js`)
 - **Styling**: Vanilla CSS + inline styles with theme token system (Dark, Light, Warm, Mono, Ocean)
-- **Data**: localStorage persistence (10MB Electron limit), SQLite backend built but not wired for primary data
+- **Data**: SQLite primary (better-sqlite3) + localStorage fallback. Dual-write for reliability.
 - **Package Manager**: npm
 - **Platform**: Windows (NSIS installer via electron-builder)
+- **Updates**: electron-updater with GitHub Releases
 
 ## Project Structure
 
 ```
 vorra/
+├── electron/
+│   ├── main.js            # Electron main process, splash screen, local HTTP server (port 19532), auto-updater, IPC handlers
+│   ├── preload.js          # contextBridge: window.vorra API (db, backup, notify, updates, platform)
+│   ├── database.js         # SQLite wrapper (better-sqlite3, WAL mode)
+│   ├── backup.js           # Auto-backup system with crash recovery
+│   └── splash.html         # Branded splash screen (frameless, animated)
 ├── src/
-│   ├── App.jsx                    # App shell, sidebar nav, routing, shortcuts
-│   ├── main.jsx                   # React root with error boundary
-│   ├── streams.js                 # YouTube & SomaFM stream data
+│   ├── App.jsx             # App shell (~800 lines): sidebar, routing, shortcuts, update banner, What's New modal, session restore
+│   ├── main.jsx            # React root with error boundary
+│   ├── streams.js          # YouTube (100 streams) & SomaFM (44 stations) catalog
 │   ├── pages/
-│   │   ├── Dashboard/DegreeDashboard.jsx
-│   │   ├── Courses/MyCoursesPage.jsx
-│   │   ├── Planner/StudyPlannerPage.jsx
-│   │   ├── Daily/DailyPage.jsx
-│   │   ├── Calendar/CalendarPage.jsx, MiniCal.jsx
-│   │   ├── Chat/StudyChatPage.jsx
-│   │   ├── Quiz/PracticeExamPage.jsx
-│   │   ├── Report/WeeklyReportPage.jsx
-│   │   ├── Settings/SettingsPage.jsx
-│   │   └── Ambient/AmbientPage.jsx
+│   │   ├── Dashboard/DegreeDashboard.jsx     # Hero zone, progress rings, course bars, exam readiness, streak
+│   │   ├── Courses/MyCoursesPage.jsx         # Course management, AI enrichment, degree plan parser
+│   │   ├── Planner/StudyPlannerPage.jsx      # AI lesson plan generation, queue conversion, availability editor
+│   │   ├── Daily/DailyPage.jsx               # Queue-based daily tasks, timer, overdue detection, carry-forward
+│   │   ├── Calendar/CalendarPage.jsx         # Month/Week/Day views, heatmap, exam markers
+│   │   ├── Calendar/MiniCal.jsx              # Sidebar mini calendar
+│   │   ├── Chat/StudyChatPage.jsx            # 4-mode AI tutor (Socratic/Quiz/Plan/Coach), thinking blocks
+│   │   ├── Quiz/PracticeExamPage.jsx         # Test/Study modes, competency scoring, FSRS, historical review
+│   │   ├── Report/WeeklyReportPage.jsx       # Hero ring, study dots, velocity bars, exam trends
+│   │   ├── Settings/SettingsPage.jsx         # AI profiles, themes, font scaling, university profile
+│   │   └── Ambient/AmbientPage.jsx           # Study radio, quick focus presets, custom presets, sleep timer
 │   ├── components/
-│   │   ├── ui/          # Btn, Badge, Modal, Label, PillGroup, etc.
-│   │   ├── icons/       # Icon components + Spin animation
-│   │   ├── course/      # CourseDetail (pill-button section viewer)
-│   │   ├── planner/     # WeeklyAvailabilityEditor, CommitmentEditor
-│   │   ├── widgets/     # Dashboard widgets
-│   │   └── MediaPlayer/ # Study radio player + visualizer
+│   │   ├── ui/             # Btn, Badge, Modal, Label, PillGroup, CommandPalette, OnboardingWizard, etc.
+│   │   ├── icons/          # SVG icon library (100+ icons including Vorra logo, provider logos, preset icons)
+│   │   ├── course/         # CourseDetail (pill-button section viewer)
+│   │   ├── daily/          # DayTimeline, FocusMode, AIAssistBar, NowStrip, ProgressHeader
+│   │   ├── planner/        # WeeklyAvailabilityEditor, CommitmentEditor
+│   │   ├── widgets/        # Dashboard widgets (Progress, Streak, Task, Timer, Upcoming, Courses)
+│   │   └── MediaPlayer/    # Sidebar media player + genre-aware visualizer
 │   ├── systems/
-│   │   ├── api.js       # AI provider integration, buildSystemPrompt, runAILoop
-│   │   ├── storage.js   # localStorage load/save, INIT schema, migrations
-│   │   ├── background.js # Background task system (survives navigation)
-│   │   ├── timer.js, focus.js, audio.js, youtube.js
-│   │   ├── notifications.js, shortcuts.js, breakpoint.js
-│   │   ├── debug.js, toast.js
-│   │   └── spaced-repetition.js  # FSRS-4.5 engine (built, not yet wired to planner)
+│   │   ├── api.js          # AI provider integration: buildSystemPrompt (with selectedCourseId optimization), fmtCtx/fmtCtxSlim, callAIWithTools, callAIStream, runAILoop, thinking extraction
+│   │   ├── storage.js      # Dual-write (SQLite + localStorage), INIT schema, migrations, crash recovery
+│   │   ├── background.js   # Background task system (survives navigation)
+│   │   ├── timer.js        # Study session timer with countdown/count-up
+│   │   ├── focus.js        # Focus pulse check-in system
+│   │   ├── audio.js        # SomaFM playback + Web Audio API (16-band frequency data)
+│   │   ├── youtube.js      # YouTube multi-stream playback, health checks, postMessage with origin validation
+│   │   ├── undoStack.js    # Memory-only undo/redo stack (max 10 snapshots)
+│   │   ├── spaced-repetition.js  # FSRS-4.5 engine (built, wiring to exams in progress)
+│   │   ├── shortcuts.js    # Keyboard shortcut registration
+│   │   ├── breakpoint.js   # Responsive breakpoint system
+│   │   ├── notifications.js, debug.js, toast.js, electron-bridge.js
+│   │   └── ...
 │   ├── constants/
-│   │   ├── tools.js             # AI tool schemas, PROVIDER_QUIRKS
+│   │   ├── tools.js        # AI tool schemas (7 tools), PROVIDER_QUIRKS per provider
+│   │   ├── nav.js          # Navigation items grouped (Study/Tools), keyboard shortcuts
 │   │   ├── universityProfiles.js # School presets (WGU, SNHU, ASU, Purdue)
 │   │   ├── lifeTemplates.js     # 11 schedule presets for study planner
-│   │   ├── categories.js, nav.js
-│   │   └── ...
+│   │   └── categories.js   # Task categories with colors
 │   ├── utils/
-│   │   ├── toolExecution.js     # AI tool handler (add_tasks, generate_study_plan, etc.)
-│   │   ├── courseHelpers.js     # Shared section data, completeness, health indicators
-│   │   ├── availabilityCalc.js  # Weekly availability math, feasibility, derivation
-│   │   ├── planCalculations.js  # Legacy study plan math
-│   │   ├── jsonRepair.js, helpers.js
+│   │   ├── studyQueue.js   # lessonPlanToQueue, populateToday, computeProgress (SPI, velocity)
+│   │   ├── toolExecution.js # AI tool handler with course matching, dedup, validation
+│   │   ├── courseHelpers.js # Section data, completeness checks, health indicators
+│   │   ├── availabilityCalc.js  # Weekly availability math, effective hours per day
+│   │   ├── courseLifecycle.js    # Course progress, task pulling, ghost placeholders
+│   │   ├── gapAnalysis.js       # Plan health: content coverage, day gaps, Jaccard similarity
+│   │   ├── scheduleShift.js     # Cascading task redistribution
+│   │   ├── jsonRepair.js, helpers.js, csvImport.js, icsExport.js, courseSchema.js, planCalculations.js
 │   │   └── ...
 │   └── styles/
-│       ├── tokens.js    # Theme system (useTheme, fs)
-│       └── *.css
-├── electron/
-│   ├── main.js          # Electron main process, local HTTP server (port 19532)
-│   ├── database.js      # SQLite wrapper (better-sqlite3)
-│   ├── preload.js       # contextBridge for window.vorra API
-│   └── backup.js        # Auto-backup system
-├── dist/                # Vite build output
-├── index.html           # Entry point
-└── CLAUDE.md            # This file
+│       ├── tokens.js       # Theme system: 5 themes, fs() with 12px floor, useTheme hook
+│       └── global.css       # Reset, form controls, animations, prefers-reduced-motion
+├── build/                   # Installer assets (icon.ico)
+├── package.json             # Dependencies + electron-builder config with GitHub publish
+├── vite.config.js           # Vite build configuration
+├── start.bat                # Silent Windows launcher (calls start.vbs)
+├── start.vbs                # VBS launcher: no console window, auto-rebuild
+├── setup.bat / setup.ps1    # Windows setup scripts
+└── CLAUDE.md                # This file
 ```
 
 ## Commands
@@ -82,56 +99,48 @@ npm run build            # Production build to dist/
 npm run electron:dev     # Dev mode: Vite + Electron together
 npm run electron:build   # Production: build + package installer
 npm start                # Run Electron from built files
-start.bat                # Smart launcher: detects changes, rebuilds, runs Electron
+start.bat                # Silent launcher: no console, auto-rebuild, runs Electron
 ```
 
 ## Architecture Notes
 
-- **Modular structure** — pages, components, systems, constants, and utils are separated into dedicated files
-- **App.jsx** is the shell (~500 lines) — sidebar nav, routing, keyboard shortcuts, command palette
-- **No routing library** — uses `usePageNav()` hook with internal state
-- **Electron main process** runs a local HTTP server (port 19532) with no-cache headers for development
-- **Context isolation is ON**, Node integration is OFF
-- **All user data** stored in localStorage via the `data` object (persisted through `save()`/`load()`)
-- **plannerConfig** — new weekly availability system with per-day time windows, commitments, study modes
-- **planHistory** — records of each AI plan generation for progress tracking
-- **pendingPlan** — persisted in `data` to survive navigation (prevents orphaned tasks)
+### Study System (Queue Model)
+- AI generates a **lesson plan** per course (via `create_lesson_plan` tool)
+- `lessonPlanToQueue()` converts units into an **ordered task queue**
+- Student works through tasks at their own pace — no fixed calendar dates
+- `populateToday()` slices the queue into daily buckets based on available hours
+- `computeProgress()` tracks SPI, velocity, estimated finish date
+- Legacy tools (`generate_study_plan`, `create_schedule_outline`) are deprecated
 
-## Key Features
+### App Shell (App.jsx)
+- ~800 lines: sidebar nav, routing, keyboard shortcuts, command palette
+- Three-zone sidebar: fixed top (logo + status), scrollable middle (nav + calendar), fixed bottom (AI + media)
+- Update banner for auto-updater (available → downloading → ready)
+- What's New modal on version upgrade
+- Session restore (last page + window bounds)
 
-- Course management with 35+ fields per course, AI enrichment with 14 section categories
-- My Courses: single-page flow (import → enrich → view), selective section regeneration, data health indicators
-- Study Planner: weekly availability timeline editor with drag/resize, life templates, study modes (sequential/parallel/hybrid), pacing styles, block styles, feasibility stats with school-model-aware buffer
-- AI study plan generation with exam prep ramps, spaced review, difficulty ramping, technique guidance
-- Plan progress tracking with nudge system (catch-up suggestions)
-- Degree plan parser (extracts courses from screenshots via vision AI)
-- Study Radio (44 SomaFM + 50 YouTube streams)
-- Practice exam generator with AI
-- Study timer with Pomodoro, focus tracking
-- Study Chat with per-course context
-- Multiple themes (Dark, Light, Warm, Mono, Ocean)
-- University profile system (WGU, SNHU, ASU Online, Purdue Global presets)
-- AI disclaimers across 5 surfaces (first-run modal, course detail, practice exam, study planner, chat)
+### AI Context System
+- `buildSystemPrompt(data, ctx, selectedCourseId)` — selected course gets full `fmtCtx()` enrichment (all 18+ fields), others get `fmtCtxSlim()` one-liner
+- `buildContext()` in StudyChatPage — runtime stats only (no enrichment duplication): queue progress, today's tasks, exam history, lesson plans, study stats
+- 7 AI tools defined in `constants/tools.js`, all documented in the system prompt
+- `PROVIDER_QUIRKS` handles per-provider differences (streaming, tool support, max loops)
+- Thinking content extracted from `<think>` tags and `reasoning_content` field
 
-## Study Planner Features
+### Data Persistence
+- **SQLite** (primary): `%AppData%/vorra/vorra.db` via better-sqlite3 with WAL mode
+- **localStorage** (fallback): `vorra-v1` key, 10MB Electron limit
+- **Dual-write**: every save writes to both for redundancy
+- **Crash recovery**: `-prev` backup key in localStorage
+- **Auto-backup**: on startup (deferred 3s after window shows)
+- **INIT schema**: defines all fields with defaults — new fields auto-populate on load
 
-- **Weekly Availability Editor**: interactive timeline with drag-to-move, edge-resize, 15-min snap
-- **Keyboard shortcuts**: Ctrl+Z/Y undo/redo, Delete/Backspace to remove, arrow keys to nudge, Escape to deselect, click-to-select with visual highlight
-- **Right-click context menus**: on empty space, study blocks, commitment blocks, day labels, time axis header
-- **11 Life Templates**: 9-to-5 Worker, Night Shift, Parent, Full-Time Student, Part-Time Worker, Freelancer, Healthcare (12h), Remote Worker, Career Changer, Retail/Service, Blank Slate
-- **Study Modes**: Sequential (WGU), Parallel (SNHU/ASU), Hybrid interleaving
-- **Pacing Styles**: Steady, Wave, Sprint/Rest
-- **Block Styles**: Standard (60-90m), Pomodoro (25m), Sprint (50m)
-- **Feasibility Dashboard**: 5 stat cards (Total Hours, Weekly Pace, Est. Finish, Daily Need, Buffer/Acceleration/Weekly Slack), school-model-aware
-- **AI Prompt Enhancements**: pre-assessment focus, exam prep ramp-down, post-exam recovery, session-relative difficulty scheduling, study technique guidance, spaced review, fatigue management
-- **Study Preferences**: exam day strategy (light review/no study/normal/intensive), hard material timing (first/middle/last window), weekend intensity, per-course exam dates with date-based prep ramps
-- **Generation Pipeline**: week-by-week with thinking-model chunking (3-day chunks), per-week timeout (3/5/8 min by model type), stall detection, catch-up hours, JSON-text fallback for no-tool providers (ClewdR)
-- **Plan Review Dashboard**: course breakdown bars, weekly load chart, quality checks (overloaded days, utilization), conflict detection with existing calendar, motivational finish-line projection
-- **Collapsible Week Cards**: expand/collapse with animation, per-week accept/reject toggles, mini day-load indicators, course color borders, staggered fade-in
-- **Task Editing**: hover-reveal delete, inline time/title editing (click to edit), course filter pills to isolate by course
-- **Safety**: discard confirmation dialog, undo after confirm (15-second window), partial week confirmation
-- **Plan Progress Tracker**: overall bar, this-week/today metrics, catch-up nudge system
-- **Daily Page Banner**: inline plan progress visible during study sessions
+### Electron Main Process
+- **Splash screen**: frameless 420x320 window, shown immediately, destroyed on `ready-to-show`
+- **Local HTTP server**: port 19532, bound to 127.0.0.1, serves dist/ files
+- **YouTube proxy**: `/yt-proxy?v=VIDEO_ID` with referrer-policy headers
+- **Auto-updater**: electron-updater with GitHub Releases, silent check every 4 hours
+- **Security**: nodeIntegration OFF, contextIsolation ON, no eval/remote module
+- **Session restore**: window bounds saved to SQLite on close
 
 ## Code Style
 
@@ -141,7 +150,8 @@ start.bat                # Smart launcher: detects changes, rebuilds, runs Elect
 - **2-space indentation**
 - **Inline styles** with theme tokens (`T.accent`, `T.card`, `T.border`, etc.)
 - **camelCase** for variables/functions, **PascalCase** for components
-- **`fs()`** for responsive font scaling
+- **`fs()`** for responsive font scaling (12px minimum floor, default 115% scale)
+- **`safeArr()`** for safe array operations on potentially undefined data
 
 ## Development Guidelines
 
@@ -149,6 +159,9 @@ start.bat                # Smart launcher: detects changes, rebuilds, runs Elect
 2. **Test builds** — run `npm run build` after changes to catch issues early
 3. **Electron security** — never enable nodeIntegration, keep contextIsolation on
 4. **No secrets in code** — API keys come from user input, never hardcoded
-5. **localStorage limits** — 10MB in Electron; chatHistories is the fastest-growing data
-6. **Theme compatibility** — ensure UI works across all 5 themes
-7. **No-cache headers** — Electron's local server sends no-cache headers to prevent stale assets
+5. **Theme compatibility** — ensure UI works across all 5 themes
+6. **Font scaling** — all text must use `fs()` which enforces the 12px minimum
+7. **Queue model** — daily tasks come from `taskQueue`, not `data.tasks` (legacy). Use `create_lesson_plan` not `generate_study_plan`
+8. **Context optimization** — selected course gets full enrichment, others get slim summary. Don't duplicate enrichment between `fmtCtx` and `buildContext`
+9. **Safe rendering** — never use `dangerouslySetInnerHTML`. Use React component-based rendering for AI-generated content
+10. **postMessage validation** — always check `e.origin` in message event listeners

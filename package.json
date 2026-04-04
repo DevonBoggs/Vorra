@@ -1,6 +1,6 @@
 {
   "name": "vorra",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "description": "AI-powered study & life planner for managing courses, goals, habits, and focus sessions",
   "author": "Devon Boggs",
   "license": "MIT",
@@ -28,13 +28,23 @@
     "directories": {
       "output": "release"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "DevonBoggs",
+      "repo": "Vorra"
+    },
     "win": {
       "target": "nsis",
-      "icon": "public/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": true,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": false,
+      "shortcutName": "Vorra",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
     },
     "files": [
       "dist/**/*",

@@ -83,7 +83,7 @@ let _themeSubs = [];
 let _fontScale = 115; // 115% base scale for readability (modern UX: 14-16px body text)
 
 export function fs(px) {
-  return Math.round(px * _fontScale / 100);
+  return Math.max(12, Math.round(px * _fontScale / 100));
 }
 
 export function setFontScale(scale) {

@@ -239,6 +239,40 @@ export default function App() {
   // First-run onboarding wizard (replaces standalone AI disclaimer)
   const [showOnboarding, setShowOnboarding] = useState(() => !data.onboardingComplete && !localStorage.getItem('vorra-ai-ack'));
 
+  // What's New detection
+  const appVersion = window.vorra?.platform?.appVersion || require('../package.json')?.version || '8.1.0';
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  useEffect(() => {
+    if (data.lastSeenVersion && data.lastSeenVersion !== appVersion && data.onboardingComplete) {
+      setShowWhatsNew(true);
+    }
+  }, [loaded]);
+  const dismissWhatsNew = () => { setShowWhatsNew(false); setData(d => ({ ...d, lastSeenVersion: appVersion })); };
+
+  // Session restore — navigate to last page on startup
+  useEffect(() => {
+    if (loaded && data.lastSession?.page && data.onboardingComplete && !showOnboarding) {
+      setPage(data.lastSession.page);
+    }
+    // Save version on first load
+    if (loaded && !data.lastSeenVersion) setData(d => ({ ...d, lastSeenVersion: appVersion }));
+  }, [loaded]);
+
+  // Save current page as last session
+  useEffect(() => {
+    if (loaded && page) setData(d => ({ ...d, lastSession: { ...d.lastSession, page } }));
+  }, [page]);
+
+  // Update banner state
+  const [updateInfo, setUpdateInfo] = useState(null); // { version, releaseNotes, status: 'available'|'downloading'|'ready' }
+  const [updateProgress, setUpdateProgress] = useState(0);
+  useEffect(() => {
+    if (!window.vorra?.updates) return;
+    window.vorra.updates.onAvailable((info) => setUpdateInfo({ ...info, status: 'available' }));
+    window.vorra.updates.onProgress((pct) => { setUpdateProgress(pct); setUpdateInfo(prev => prev ? { ...prev, status: 'downloading' } : null); });
+    window.vorra.updates.onReady((info) => setUpdateInfo({ ...info, status: 'ready' }));
+  }, []);
+
   // Inject dynamic CSS
   useCssInjection(T);
 
@@ -346,7 +380,15 @@ export default function App() {
     }
   }, [timer.running, audioIndicator.playing, ytStreams.length]);
 
-  if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: T.bg, color: T.accent, fontSize: 24, fontWeight: 800 }}>Loading...</div>;
+  if (!loaded) return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: T.bg, gap: 16 }}>
+      <Ic.Logo s={48} />
+      <div style={{ fontSize: fs(14), color: T.soft, fontWeight: 600 }}>Loading your workspace...</div>
+      <div style={{ width: 120, height: 3, borderRadius: 2, background: T.input, overflow: "hidden" }}>
+        <div style={{ width: "40%", height: "100%", background: `linear-gradient(90deg, ${T.accent}, ${T.blue})`, borderRadius: 2, animation: "slide 1.4s ease-in-out infinite" }} />
+      </div>
+    </div>
+  );
 
   return (
     <ErrorBoundary>
@@ -612,6 +654,62 @@ export default function App() {
 
         {/* ══ MAIN CONTENT ═════════════════════════════════════════ */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          {/* Update banner */}
+          {updateInfo && (
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10, padding: "0 20px" }}>
+              <div style={{ maxWidth: 700, margin: "8px auto", display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderRadius: 10, background: T.card, border: `1px solid ${T.accent}33`, boxShadow: `0 4px 20px rgba(0,0,0,.3)` }}>
+                <Ic.IcInfo s={16} c={T.accent} />
+                <div style={{ flex: 1, fontSize: fs(12) }}>
+                  {updateInfo.status === 'available' && <span>Vorra <strong>v{updateInfo.version}</strong> is available</span>}
+                  {updateInfo.status === 'downloading' && <span>Downloading update... {updateProgress}%</span>}
+                  {updateInfo.status === 'ready' && <span>Update ready — will install on close</span>}
+                </div>
+                {updateInfo.status === 'downloading' && (
+                  <div style={{ width: 80, height: 4, borderRadius: 2, background: T.input, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${updateProgress}%`, background: T.accent, borderRadius: 2, transition: "width .3s" }} />
+                  </div>
+                )}
+                {updateInfo.status === 'available' && <Btn small v="primary" onClick={() => { window.vorra?.updates?.download(); setUpdateInfo(prev => ({ ...prev, status: 'downloading' })); }}>Download</Btn>}
+                {updateInfo.status === 'ready' && <Btn small v="primary" onClick={() => window.vorra?.updates?.install()}>Restart Now</Btn>}
+                <button onClick={() => setUpdateInfo(null)} style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", padding: 4 }}><Ic.IcX s={12} /></button>
+              </div>
+            </div>
+          )}
+
+          {/* What's New modal */}
+          {showWhatsNew && (
+            <div style={{ position: "fixed", inset: 0, zIndex: 9990, background: "rgba(0,0,0,.6)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={dismissWhatsNew}>
+              <div className="pop-in" onClick={e => e.stopPropagation()} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 18, padding: "28px 32px", maxWidth: 480, width: "90%", maxHeight: "70vh", overflow: "auto", boxShadow: `0 24px 60px rgba(0,0,0,.5)` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                  <Ic.Logo s={36} />
+                  <div>
+                    <div style={{ fontSize: fs(18), fontWeight: 800 }}>What's New in v{appVersion}</div>
+                    <div style={{ fontSize: fs(11), color: T.dim }}>Updated from v{data.lastSeenVersion}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                  {[
+                    { icon: "🔒", title: "Security & Stability", desc: "XSS protection, memory leak fixes, and safer data handling" },
+                    { icon: "📝", title: "Practice Exam Overhaul", desc: "Persistent exams, historical review, test/study modes, competency scoring" },
+                    { icon: "🎯", title: "AI Context Engine", desc: "Full course enrichment in chat, queue-aware daily tasks, exam history integration" },
+                    { icon: "📊", title: "Weekly Report Redesign", desc: "Hero ring, study day dots, velocity trends, exam score charts" },
+                    { icon: "🎵", title: "Study Radio Upgrade", desc: "Genre-aware visualizer, quick focus presets, custom presets" },
+                    { icon: "✨", title: "Visual Polish", desc: "New Vorra icon, sidebar redesign, 12px minimum fonts, WCAG contrast fixes" },
+                  ].map((item, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, padding: "8px 12px", borderRadius: 8, background: T.bg2 }}>
+                      <span style={{ fontSize: fs(16), flexShrink: 0 }}>{item.icon}</span>
+                      <div>
+                        <div style={{ fontSize: fs(13), fontWeight: 700, color: T.text }}>{item.title}</div>
+                        <div style={{ fontSize: fs(11), color: T.soft }}>{item.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Btn v="primary" onClick={dismissWhatsNew} style={{ width: "100%" }}>Got it</Btn>
+              </div>
+            </div>
+          )}
+
           {/* AmbientPage persists across page switches */}
           <div style={page === "ambient" ? { position: "absolute", inset: 0, zIndex: 2, overflow: "auto", padding: sideCollapsed ? bp.padCol : bp.pad } : { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", pointerEvents: "none" }}>
             <AmbientPage Btn={Btn} />

@@ -34,6 +34,8 @@ export const INIT = {
   activeExam: null, // persisted in-progress exam state
   termHistory: [],
   dashboardWidgets: null,
+  lastSeenVersion: null, // for What's New detection
+  lastSession: { page: 'dashboard' }, // session restore
 };
 
 // ── Storage size monitoring ──

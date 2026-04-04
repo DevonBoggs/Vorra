@@ -1,12 +1,25 @@
+# Dependencies & build output
 node_modules/
 dist/
 release/
 .vite/
-.claude/
+
+# Environment & secrets
 .env
 .env.*
+
+# Local IDE/tool config
+.claude/
+.vscode/
+
+# Build artifacts
 *.exe
+*.log
 _launcher.cs
 setup-log.txt
 start-log.txt
-*.log
+build-log.txt
+
+# OS files
+Thumbs.db
+.DS_Store

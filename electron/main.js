@@ -8,6 +8,7 @@ const backup = require('./backup');
 
 
 let mainWindow;
+let splashWindow;
 let localServer;
 let db;
 let isShuttingDown = false;
@@ -195,15 +196,44 @@ window.addEventListener('message',e=>{
   });
 }
 
+// ── Splash Screen ──────────────────────────────────────────────
+function createSplash() {
+  const ver = require('../package.json').version || '8.0.0';
+  splashWindow = new BrowserWindow({
+    width: 420, height: 320,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    center: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'), { query: { v: ver } });
+  splashWindow.on('closed', () => { splashWindow = null; });
+}
+
+// ── Main Window ────────────────────────────────────────────────
 function createWindow() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-  // Scale window to 80% of screen, with sensible bounds
   const ww = Math.min(Math.max(Math.round(sw * 0.8), 1100), 2200);
   const wh = Math.min(Math.max(Math.round(sh * 0.85), 700), 1600);
-  
+
+  // Restore saved window bounds if available
+  let savedBounds = null;
+  try {
+    const raw = database.getValue('vorra-window-bounds');
+    if (raw) savedBounds = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch (_) {}
+
   mainWindow = new BrowserWindow({
-    width: ww, height: wh, minWidth: 1000, minHeight: 700,
-    title: `Vorra v${require('../package.json').version || '7.3.0'}`,
+    width: savedBounds?.width || ww,
+    height: savedBounds?.height || wh,
+    x: savedBounds?.x,
+    y: savedBounds?.y,
+    minWidth: 1000, minHeight: 700,
+    show: false, // Hidden until ready — splash covers this
+    title: `Vorra v${require('../package.json').version || '8.0.0'}`,
     backgroundColor: '#060a11',
     webPreferences: {
       nodeIntegration: false,
@@ -211,6 +241,30 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     autoHideMenuBar: true,
+  });
+
+  // Save window bounds on close for session restore
+  mainWindow.on('close', () => {
+    try {
+      const bounds = mainWindow.getBounds();
+      database.setValue('vorra-window-bounds', JSON.stringify(bounds));
+    } catch (_) {}
+  });
+
+  // Show main window when ready, destroy splash
+  mainWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.destroy();
+      splashWindow = null;
+    }
+    mainWindow.show();
+    mainWindow.focus();
+
+    // Deferred startup tasks (after window is visible)
+    setTimeout(() => {
+      try { backup.autoBackup(database); } catch (_) {}
+      setupAutoUpdater();
+    }, 3000);
   });
 
   // Strip X-Frame-Options for YouTube (for chat iframe)
@@ -311,10 +365,52 @@ function registerIpcHandlers() {
 
   // Platform channel (sync for immediate access in preload)
   ipcMain.on('platform:version', (event) => {
-    event.returnValue = require('../package.json').version || '7.3.0';
+    event.returnValue = require('../package.json').version || '8.0.0';
+  });
+
+  // Update channels
+  ipcMain.handle('update:check', () => {
+    if (!app.isPackaged) return { available: false };
+    try { const { autoUpdater } = require('electron-updater'); return autoUpdater.checkForUpdates(); }
+    catch (_) { return { available: false }; }
+  });
+  ipcMain.handle('update:download', () => {
+    try { const { autoUpdater } = require('electron-updater'); return autoUpdater.downloadUpdate(); }
+    catch (_) {}
+  });
+  ipcMain.handle('update:install', () => {
+    try { const { autoUpdater } = require('electron-updater'); autoUpdater.quitAndInstall(); }
+    catch (_) {}
   });
 
   console.log('[Vorra] IPC handlers registered');
+}
+
+// ── Auto-Updater (electron-updater) ─────────────────────────
+function setupAutoUpdater() {
+  if (!app.isPackaged) return; // Skip in dev mode
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+      if (mainWindow) mainWindow.webContents.send('update:available', { version: info.version, releaseNotes: info.releaseNotes || '', releaseDate: info.releaseDate || '' });
+    });
+    autoUpdater.on('download-progress', (progress) => {
+      if (mainWindow) { mainWindow.setProgressBar(progress.percent / 100); mainWindow.webContents.send('update:progress', Math.round(progress.percent)); }
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      if (mainWindow) { mainWindow.setProgressBar(-1); mainWindow.webContents.send('update:ready', { version: info.version, releaseNotes: info.releaseNotes || '' }); }
+    });
+    autoUpdater.on('error', (err) => { console.error('[Vorra:Update] Error:', err.message); });
+
+    // Check after 15 seconds, then every 4 hours
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 15000);
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
+  } catch (err) {
+    console.log('[Vorra:Update] electron-updater not available:', err.message);
+  }
 }
 
 // Single instance lock — prevent duplicate launches that orphan processes
@@ -332,21 +428,40 @@ if (!gotLock) {
 }
 
 app.whenReady().then(async () => {
-  app.userAgentFallback = CHROME_UA;
+  const t0 = Date.now();
+  console.log(`[Vorra] app.ready: ${Date.now() - t0}ms`);
 
-  // Initialize SQLite database
-  db = database.initDB();
-  registerIpcHandlers();
-
-  // Auto-backup on startup
   try {
-    backup.autoBackup(database);
-  } catch (err) {
-    console.error('[Vorra] Startup auto-backup failed:', err.message);
-  }
+    // Show splash immediately
+    createSplash();
+    app.userAgentFallback = CHROME_UA;
 
-  await startLocalServer();
-  createWindow();
+    // Initialize database
+    db = database.initDB();
+    console.log(`[Vorra] Database initialized: ${Date.now() - t0}ms`);
+
+    registerIpcHandlers();
+
+    // Start local server
+    await startLocalServer();
+    console.log(`[Vorra] Server started: ${Date.now() - t0}ms`);
+
+    // Create main window (hidden, shows on ready-to-show which destroys splash)
+    createWindow();
+    console.log(`[Vorra] Window created: ${Date.now() - t0}ms`);
+  } catch (err) {
+    console.error('[Vorra] CRITICAL startup error:', err);
+    // Destroy splash if it's still showing
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
+    const { dialog } = require('electron');
+    dialog.showErrorBox(
+      'Vorra Failed to Start',
+      `An error occurred during startup:\n\n${err.message}\n\n` +
+      `Try reinstalling the application. Your study data is preserved in:\n` +
+      `${app.getPath('userData')}`
+    );
+    app.quit();
+  }
 });
 
 // Ensure clean shutdown on all exit paths

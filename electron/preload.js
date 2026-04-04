@@ -34,4 +34,14 @@ contextBridge.exposeInMainWorld('vorra', {
     show: (title, body, options) => ipcRenderer.invoke('notify:show', title, body, options),
     setBadge: (count) => ipcRenderer.invoke('notify:badge', count),
   },
+
+  // Updates
+  updates: {
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install'),
+    onAvailable: (cb) => { ipcRenderer.on('update:available', (_, info) => cb(info)); },
+    onProgress: (cb) => { ipcRenderer.on('update:progress', (_, pct) => cb(pct)); },
+    onReady: (cb) => { ipcRenderer.on('update:ready', (_, info) => cb(info)); },
+  },
 });

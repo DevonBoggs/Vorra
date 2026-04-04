@@ -93,9 +93,14 @@ Write-Host "   =================================================================
 Write-Host ""
 
 Log "Launching"
-Start-Process -FilePath $electronExe -ArgumentList "`"$root`""
+Start-Process -FilePath $electronExe -ArgumentList "`"$root`"" -WindowStyle Normal
 
-for ($i = 3; $i -ge 1; $i--) {
-    Write-Host "`r   Closing in $i...  " -Fore DarkGray -NoNewline; Start-Sleep 1
-}
-Write-Host ""
+# Hide the console window immediately after launch
+try {
+    Add-Type -Name Win32 -Namespace Native -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();'
+    $hwnd = [Native.Win32]::GetConsoleWindow()
+    if ($hwnd -ne [IntPtr]::Zero) { [Native.Win32]::ShowWindow($hwnd, 0) | Out-Null }
+} catch {}
+
+# Brief delay to ensure Electron process is started, then exit cleanly
+Start-Sleep -Milliseconds 500

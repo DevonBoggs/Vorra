@@ -199,14 +199,16 @@ window.addEventListener('message',e=>{
 // ── Splash Screen ──────────────────────────────────────────────
 function createSplash() {
   const ver = require('../package.json').version || '8.0.0';
+  const splashIconPath = path.join(__dirname, '..', 'build', 'icon.png');
   splashWindow = new BrowserWindow({
     width: 420, height: 320,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
-    skipTaskbar: true,
+    skipTaskbar: false,
     center: true,
+    icon: fs.existsSync(splashIconPath) ? splashIconPath : undefined,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   splashWindow.loadFile(path.join(__dirname, 'splash.html'), { query: { v: ver } });
@@ -226,14 +228,19 @@ function createWindow() {
     if (raw) savedBounds = typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch (_) {}
 
+  // App icon — use build/icon.png for dev, packaged app uses build/icon.ico from electron-builder
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+  const hasIcon = fs.existsSync(iconPath);
+
   mainWindow = new BrowserWindow({
     width: savedBounds?.width || ww,
     height: savedBounds?.height || wh,
     x: savedBounds?.x,
     y: savedBounds?.y,
     minWidth: 1000, minHeight: 700,
-    show: false, // Hidden until ready — splash covers this
-    title: `Vorra v${require('../package.json').version || '8.0.0'}`,
+    show: false,
+    title: `Vorra v${require('../package.json').version || '8.2.0'}`,
+    icon: hasIcon ? iconPath : undefined,
     backgroundColor: '#060a11',
     webPreferences: {
       nodeIntegration: false,

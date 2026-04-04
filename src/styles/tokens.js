@@ -9,7 +9,7 @@ export const THEMES = {
     name: "Dark",
     bg: "#060a11", bg2: "#0b1120", panel: "#0f1629", card: "#131c30", cardH: "#182240",
     input: "#162035", border: "#1c2d4a", borderL: "#253a5e",
-    text: "#e4eaf4", soft: "#8b9dc3", dim: "#4a5e80", faint: "#283854",
+    text: "#e4eaf4", soft: "#8b9dc3", dim: "#6b82a8", faint: "#283854",
     accent: "#22d3a0", accentD: "#22d3a018", accentM: "#22d3a033",
     blue: "#38bdf8", blueD: "#38bdf818",
     purple: "#a78bfa", purpleD: "#a78bfa18",
@@ -51,7 +51,7 @@ export const THEMES = {
     name: "Mono",
     bg: "#0a0a0a", bg2: "#141414", panel: "#1a1a1a", card: "#1e1e1e", cardH: "#262626",
     input: "#1a1a1a", border: "#333333", borderL: "#444444",
-    text: "#e0e0e0", soft: "#999999", dim: "#666666", faint: "#444444",
+    text: "#e0e0e0", soft: "#999999", dim: "#808080", faint: "#444444",
     accent: "#ffffff", accentD: "#ffffff18", accentM: "#ffffff33",
     blue: "#bbbbbb", blueD: "#bbbbbb18",
     purple: "#aaaaaa", purpleD: "#aaaaaa18",
@@ -65,7 +65,7 @@ export const THEMES = {
     name: "Ocean",
     bg: "#0a1628", bg2: "#0f1d32", panel: "#132440", card: "#162a4a", cardH: "#1a3358",
     input: "#132440", border: "#1e3a5f", borderL: "#2a4a70",
-    text: "#e0ecff", soft: "#7da8d4", dim: "#4a7aaa", faint: "#2a4a70",
+    text: "#e0ecff", soft: "#7da8d4", dim: "#6a94be", faint: "#2a4a70",
     accent: "#00d4aa", accentD: "#00d4aa18", accentM: "#00d4aa33",
     blue: "#4fc3f7", blueD: "#4fc3f718",
     purple: "#b39ddb", purpleD: "#b39ddb18",
@@ -80,7 +80,7 @@ export const THEMES = {
 // ── Theme State (pub/sub) ──────────────────────────────────────────
 let _activeTheme = "dark";
 let _themeSubs = [];
-let _fontScale = 100;
+let _fontScale = 115; // 115% base scale for readability (modern UX: 14-16px body text)
 
 export function fs(px) {
   return Math.round(px * _fontScale / 100);

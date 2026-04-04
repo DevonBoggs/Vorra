@@ -317,11 +317,11 @@ export function computeProgress(queue, options = {}) {
     }
   }
 
-  // Estimated finish date (velocity-based)
+  // Estimated finish date (velocity-based, clamped to prevent Infinity)
   const velocityMinsPerDay = doneTasks.length > 0 && startDate
     ? doneMins / Math.max(1, diffDays(startDate, today))
-    : weeklyHours * 60 / 7;
-  const daysToFinish = velocityMinsPerDay > 0 ? Math.ceil(remainingMins / velocityMinsPerDay) : 999;
+    : (weeklyHours || 28) * 60 / 7; // fallback to 4h/day if weeklyHours is 0/undefined
+  const daysToFinish = velocityMinsPerDay > 0 ? Math.min(9999, Math.ceil(remainingMins / velocityMinsPerDay)) : 999;
   const estFinishDate = (() => {
     const d = new Date(today + 'T12:00:00');
     d.setDate(d.getDate() + daysToFinish);

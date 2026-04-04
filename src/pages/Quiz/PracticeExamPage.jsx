@@ -13,7 +13,12 @@ import { buildSystemPrompt, callAIWithTools, isAnthProvider, getAuthHeaders, set
 import { safeArr } from "../../utils/toolExecution.js";
 import { Badge } from "../../components/ui/Badge.jsx";
 
-const PRESETS = { quick: { label: 'Quick Check', count: 10, mins: 15 }, practice: { label: 'Practice Set', count: 25, mins: 40 }, full: { label: 'Full Simulation', count: 50, mins: 90 } };
+const PRESETS = {
+  quick: { label: 'Quick Check', count: 10, mins: 15 },
+  practice: { label: 'Practice Set', count: 25, mins: 40 },
+  full: { label: 'Full Simulation', count: 50, mins: 90 },
+  custom: { label: 'Custom', count: 10, mins: 0 },
+};
 
 const PracticeExamPage = ({ data, setData, profile, Btn, Label }) => {
   const T = useTheme();
@@ -24,24 +29,44 @@ const PracticeExamPage = ({ data, setData, profile, Btn, Label }) => {
   const [examMode, setExamMode] = useState('test'); // 'test' | 'study'
   const [preset, setPreset] = useState('quick');
   const [count, setCount] = useState(10);
+  const [customCount, setCustomCount] = useState(15);
+  const [customMins, setCustomMins] = useState(30);
   const [difficulty, setDifficulty] = useState('adaptive');
   const [focusArea, setFocusArea] = useState('all'); // 'all' | 'weak' | specific topic
+  const [showAnswers, setShowAnswers] = useState(false); // post-exam answer reveal toggle
 
-  // Exam state
-  const [questions, setQuestions] = useState([]);
-  const [answers, setAnswers] = useState({});
-  const [flagged, setFlagged] = useState({});
+  // Restore active exam from persisted state (survives page navigation)
+  const saved = data.activeExam;
+  const [questions, setQuestions] = useState(saved?.questions || []);
+  const [answers, setAnswers] = useState(saved?.answers || {});
+  const [flagged, setFlagged] = useState(saved?.flagged || {});
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [examAbort, setExamAbort] = useState(null);
-  const [examTime, setExamTime] = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
+  const [examTime, setExamTime] = useState(saved?.examTime || 0);
+  const [timerActive, setTimerActive] = useState(!!saved?.questions?.length);
   const [currentQ, setCurrentQ] = useState(0);
-  const [showFeedback, setShowFeedback] = useState(false); // Study mode per-Q feedback
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showPreSubmit, setShowPreSubmit] = useState(false);
-  const [reviewFilter, setReviewFilter] = useState('all'); // 'all' | 'incorrect' | 'flagged'
+  const [reviewFilter, setReviewFilter] = useState('all');
+  const [reviewingExam, setReviewingExam] = useState(null);
   const timerRef = useRef(null);
   const qRefs = useRef({});
+
+  // Restore course selection from saved exam
+  useEffect(() => {
+    if (saved?.courseId && saved.courseId !== selCourse) setSelCourse(saved.courseId);
+    if (saved?.examMode) setExamMode(saved.examMode);
+  }, []);
+
+  // Persist exam state whenever it changes (survives navigation)
+  useEffect(() => {
+    if (questions.length > 0 && !submitted) {
+      setData(d => ({ ...d, activeExam: { courseId: selCourse, questions, answers, flagged, examTime, examMode, startedAt: saved?.startedAt || new Date().toISOString() } }));
+    } else if (submitted || questions.length === 0) {
+      if (data.activeExam) setData(d => ({ ...d, activeExam: null }));
+    }
+  }, [questions, answers, flagged, examTime, submitted]);
 
   const course = data.courses?.find(c => c.id === selCourse);
   const hasExam = questions.length > 0;
@@ -55,7 +80,10 @@ const PracticeExamPage = ({ data, setData, profile, Btn, Label }) => {
   }, [timerActive]);
 
   // Preset sync
-  useEffect(() => { if (PRESETS[preset]) setCount(PRESETS[preset].count); }, [preset]);
+  useEffect(() => {
+    if (preset === 'custom') { setCount(customCount); }
+    else if (PRESETS[preset]) { setCount(PRESETS[preset].count); }
+  }, [preset, customCount]);
 
   // Adaptive difficulty from history
   const adaptiveDifficulty = useMemo(() => {
@@ -84,6 +112,8 @@ const PracticeExamPage = ({ data, setData, profile, Btn, Label }) => {
     const controller = new AbortController();
     setExamAbort(controller);
     setLoading(true); setSubmitted(false); setAnswers({}); setFlagged({}); setExamTime(0); setCurrentQ(0); setShowFeedback(false); setShowPreSubmit(false); setReviewFilter('all');
+    // Persist generation state so sidebar can show it
+    setData(d => ({ ...d, examGenerating: { courseId: selCourse, courseName: course?.name, startedAt: new Date().toISOString() } }));
     toast("Generating practice exam...", "info");
 
     const diff = adaptiveDifficulty;
@@ -134,13 +164,24 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
       const body = isAnth
         ? { model: profile.model, max_tokens: 16384, stream: false, system: sys, messages: [{ role: 'user', content: `Generate ${count} practice questions for ${course.name}` }] }
         : { model: profile.model, max_tokens: 16384, stream: false, messages: [{ role: 'system', content: sys }, { role: 'user', content: `Generate ${count} practice questions for ${course.name}` }] };
+      dlog('info', 'exam', `Sending ${count} question request to ${profile.name} (${profile.model})`);
       const res = await fetch(profile.baseUrl, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal });
       setApiStatus(res.ok, res.status);
+      dlog('info', 'exam', `Response: HTTP ${res.status}`);
+      if (!res.ok) { const errText = await res.text().catch(() => ''); dlog('error', 'exam', `API error: ${errText.slice(0, 300)}`); throw new Error(`API ${res.status}: ${errText.slice(0, 100)}`); }
       const rawText = await res.text();
-      let rd; try { rd = JSON.parse(rawText); } catch (_) { throw new Error('Bad response'); }
+      dlog('debug', 'exam', `Raw response: ${rawText.length} chars, first 200: ${rawText.slice(0, 200)}`);
+      let rd; try { rd = JSON.parse(rawText); } catch (_) { dlog('error', 'exam', `Failed to parse response JSON: ${rawText.slice(0, 300)}`); throw new Error('Bad response — could not parse API response as JSON'); }
       let text = isAnth ? safeArr(rd.content).filter(b => b.type === 'text').map(b => b.text).join('') : (rd.choices?.[0]?.message?.content || '');
+      dlog('info', 'exam', `Extracted text: ${text.length} chars`);
       text = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(text);
+      // Try direct parse first, then extract JSON array from preamble text
+      let parsed;
+      try { parsed = JSON.parse(text); } catch (_) {
+        const arrMatch = text.match(/\[[\s\S]*\]/);
+        if (arrMatch) { try { parsed = JSON.parse(arrMatch[0]); } catch (_2) {} }
+        if (!parsed) throw new Error('Could not parse questions from AI response. Try a different model.');
+      }
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Normalize questions
         const normalized = parsed.map(q => ({
@@ -154,12 +195,18 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
         }));
         setQuestions(normalized);
         setTimerActive(true);
+        // Immediately persist to data so it survives if the user navigated away during generation
+        setData(d => ({ ...d, activeExam: { courseId: selCourse, questions: normalized, answers: {}, flagged: {}, examTime: 0, examMode, startedAt: new Date().toISOString() } }));
         toast(`${normalized.length} questions generated!`, 'success');
       } else throw new Error('No questions returned');
     } catch (e) {
-      if (e.name !== 'AbortError') { dlog('error', 'api', `Exam gen failed: ${e.message}`); toast(`Failed: ${e.message}`, 'error'); }
+      if (e.name !== 'AbortError') {
+        dlog('error', 'api', `Exam gen failed: ${e.message}`);
+        toast(`Failed: ${e.message}`, 'error');
+      }
     }
     setLoading(false); setExamAbort(null);
+    setData(d => ({ ...d, examGenerating: null }));
   };
 
   // Handle answer for single-choice
@@ -215,6 +262,12 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
         date: todayStr(), timestamp: new Date().toISOString(),
         score: correctCount / questions.length, correctCount, totalQuestions: questions.length,
         difficulty: adaptiveDifficulty, timeSeconds: examTime, mode: examMode, topicScores,
+        // Store questions + answers for historical review
+        savedQuestions: questions.map((q, i) => ({
+          question: q.question, options: q.options, correct: q.correct,
+          explanation: q.explanation, topic: q.topic, difficulty: q.difficulty,
+          type: q.type, userAnswer: answers[i] ?? null,
+        })),
       }],
     }));
   };
@@ -242,6 +295,7 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
   // Filtered questions for review
   const filteredQs = useMemo(() => {
     if (reviewFilter === 'incorrect') return questions.map((q, i) => ({ q, i })).filter(({ i }) => !isCorrect(i));
+    if (reviewFilter === 'correct') return questions.map((q, i) => ({ q, i })).filter(({ i }) => isCorrect(i));
     if (reviewFilter === 'flagged') return questions.map((q, i) => ({ q, i })).filter(({ i }) => flagged[i]);
     return questions.map((q, i) => ({ q, i }));
   }, [reviewFilter, questions, answers, flagged, submitted]);
@@ -287,38 +341,63 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
             ))}
           </div>
 
-          {/* Presets + config */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {/* Presets */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
             {Object.entries(PRESETS).map(([k, v]) => (
               <button key={k} onClick={() => setPreset(k)} style={{
-                flex: 1, padding: '10px 8px', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
+                flex: k === 'custom' ? '1 1 100%' : 1, padding: '10px 8px', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
                 border: `1.5px solid ${preset === k ? T.accent : T.border}`,
                 background: preset === k ? T.accentD : T.card, color: preset === k ? T.accent : T.soft,
                 fontSize: fs(11), fontWeight: preset === k ? 700 : 500, transition: 'all .12s',
-              }}>{v.label}<br /><span style={{ fontSize: fs(9), color: T.dim }}>{v.count}q · {v.mins}min</span></button>
+              }}>
+                {v.label}
+                {k !== 'custom' && <><br /><span style={{ fontSize: fs(9), color: T.dim }}>{v.count}q{examMode === 'test' ? ` · ${v.mins}min` : ''}</span></>}
+                {k === 'custom' && <><br /><span style={{ fontSize: fs(9), color: T.dim }}>Set your own questions{examMode === 'test' ? ' & time' : ''}</span></>}
+              </button>
             ))}
           </div>
 
+          {/* Custom preset inputs */}
+          {preset === 'custom' && (
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <Label>Questions</Label>
+                <input type="number" min="1" max="100" value={customCount} onChange={e => setCustomCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} style={{ width: '100%', padding: '8px 10px', fontSize: fs(12) }} />
+              </div>
+              {examMode === 'test' && (
+                <div style={{ flex: 1 }}>
+                  <Label>Time Limit (min)</Label>
+                  <input type="number" min="1" max="300" value={customMins} onChange={e => setCustomMins(Math.max(1, Math.min(300, Number(e.target.value) || 1)))} style={{ width: '100%', padding: '8px 10px', fontSize: fs(12) }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Config — locked for standard presets, editable for custom */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-            <div style={{ flex: 1 }}>
-              <Label>Questions</Label>
-              <input type="number" min="5" max="70" value={count} onChange={e => setCount(Number(e.target.value))} style={{ width: '100%', padding: '8px 10px', fontSize: fs(12) }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Label>Difficulty</Label>
-              <select value={difficulty} onChange={e => setDifficulty(e.target.value)} style={{ width: '100%', padding: '8px 10px', fontSize: fs(12) }}>
-                <option value="adaptive">Adaptive (based on history)</option>
-                <option value="easy">Easy</option>
-                <option value="mixed">Mixed</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
+            {preset === 'custom' && (
+              <div style={{ flex: 1 }}>
+                <Label>Difficulty</Label>
+                <select value={difficulty} onChange={e => setDifficulty(e.target.value)} style={{ width: '100%', padding: '8px 10px', fontSize: fs(12) }}>
+                  <option value="adaptive">Adaptive (based on history)</option>
+                  <option value="easy">Easy</option>
+                  <option value="mixed">Mixed</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+            )}
+            {preset !== 'custom' && (
+              <div style={{ flex: 1, opacity: 0.6 }}>
+                <Label>Difficulty</Label>
+                <div style={{ padding: '8px 10px', fontSize: fs(12), background: T.input, borderRadius: 10, border: `1.5px solid ${T.border}`, color: T.dim }}>Adaptive</div>
+              </div>
+            )}
             <div style={{ flex: 1 }}>
               <Label>Focus</Label>
               <select value={focusArea} onChange={e => setFocusArea(e.target.value)} style={{ width: '100%', padding: '8px 10px', fontSize: fs(12) }}>
                 <option value="all">All Topics</option>
                 <option value="weak">Weak Areas Only</option>
-                {safeArr(course.topicBreakdown).map((t, i) => <option key={i} value={t.topic}>{t.topic}</option>)}
+                {safeArr(course?.topicBreakdown).map((t, i) => <option key={i} value={t.topic}>{t.topic}</option>)}
               </select>
             </div>
           </div>
@@ -374,29 +453,147 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
                   return <Badge color={trend === 'improving' ? T.accent : trend === 'declining' ? T.red : T.dim} bg={trend === 'improving' ? T.accentD : trend === 'declining' ? T.redD : T.input}>{trend === 'improving' ? 'Improving' : trend === 'declining' ? 'Declining' : 'Stable'}</Badge>;
                 })()}
               </div>
-              {/* SVG trend line */}
-              {history.length >= 3 && (() => {
+              {/* SVG trend chart with axes */}
+              {history.length >= 2 && (() => {
                 const pts = history.slice(0, 10).reverse();
-                const w = 280, h = 60, pad = 8;
-                const points = pts.map((p, i) => ({ x: pad + (i / (pts.length - 1)) * (w - 2 * pad), y: pad + (1 - p.score) * (h - 2 * pad) }));
-                const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                const cW = 440, cH = 120, pL = 34, pR = 22, pT = 10, pB = 26;
+                const plotW = cW - pL - pR, plotH = cH - pT - pB;
+                const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
                 return (
-                  <svg width={w} height={h} style={{ marginBottom: 8 }}>
-                    <line x1={pad} x2={w - pad} y1={pad + (1 - 0.8) * (h - 2 * pad)} y2={pad + (1 - 0.8) * (h - 2 * pad)} stroke={T.accent} strokeDasharray="3,3" opacity={0.3} />
-                    <path d={line} fill="none" stroke={T.accent} strokeWidth={2} />
-                    {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={3} fill={pts[i].score >= 0.8 ? T.accent : pts[i].score >= 0.6 ? T.orange : T.red} />)}
-                  </svg>
+                  <div style={{ marginBottom: 8 }}>
+                    <svg viewBox={`0 0 ${cW} ${cH}`} style={{ display: 'block', width: '100%', height: 'auto', maxHeight: 140 }}>
+                      {/* Y-axis labels + gridlines */}
+                      {yTicks.map(v => {
+                        const y = pT + (1 - v) * plotH;
+                        return <g key={v}>
+                          <text x={pL - 4} y={y + 3} textAnchor="end" fontSize={9} fill={T.dim}>{Math.round(v * 100)}%</text>
+                          <line x1={pL} x2={pL + plotW} y1={y} y2={y} stroke={T.border} strokeWidth={0.5} />
+                        </g>;
+                      })}
+                      {/* 80% passing threshold */}
+                      <line x1={pL} x2={pL + plotW} y1={pT + (1 - 0.8) * plotH} y2={pT + (1 - 0.8) * plotH} stroke={T.accent} strokeDasharray="4,3" opacity={0.4} />
+                      <text x={pL + plotW + 2} y={pT + (1 - 0.8) * plotH + 3} fontSize={8} fill={T.accent} opacity={0.6}>pass</text>
+                      {/* Score line */}
+                      <path d={pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${pL + i / Math.max(1, pts.length - 1) * plotW} ${pT + (1 - p.score) * plotH}`).join(' ')} fill="none" stroke={T.accent} strokeWidth={2} />
+                      {/* Score dots */}
+                      {pts.map((p, i) => (
+                        <circle key={i} cx={pL + i / Math.max(1, pts.length - 1) * plotW} cy={pT + (1 - p.score) * plotH} r={4}
+                          fill={p.score >= 0.8 ? T.accent : p.score >= 0.6 ? T.orange : T.red} stroke={T.card} strokeWidth={1.5} />
+                      ))}
+                      {/* X-axis date labels */}
+                      {pts.map((p, i) => {
+                        if (pts.length > 4 && i > 0 && i < pts.length - 1 && i !== Math.floor(pts.length / 2)) return null;
+                        return <text key={i} x={pL + i / Math.max(1, pts.length - 1) * plotW} y={cH - 4} textAnchor="middle" fontSize={8} fill={T.dim}>{p.date?.slice(5)}</text>;
+                      })}
+                    </svg>
+                  </div>
                 );
               })()}
-              {history.slice(0, 6).map(h => (
-                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 6, background: T.input, fontSize: fs(10), marginBottom: 3 }}>
-                  <span style={{ color: T.dim, minWidth: 62 }}>{h.date}</span>
-                  <span style={{ fontWeight: 700, color: h.score >= 0.8 ? T.accent : h.score >= 0.6 ? T.orange : T.red, minWidth: 36 }}>{Math.round(h.score * 100)}%</span>
+              {history.slice(0, 8).map(h => (
+                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 8, background: T.input, fontSize: fs(11), marginBottom: 4, cursor: h.savedQuestions ? 'pointer' : 'default', transition: 'border-color .15s', border: `1px solid ${reviewingExam?.id === h.id ? T.accent + '44' : 'transparent'}` }}
+                  onClick={() => h.savedQuestions && setReviewingExam(reviewingExam?.id === h.id ? null : h)}
+                  onMouseEnter={e => { if (h.savedQuestions) e.currentTarget.style.borderColor = T.accent + '33'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = reviewingExam?.id === h.id ? T.accent + '44' : 'transparent'; }}>
+                  <span style={{ color: T.dim, minWidth: 65 }}>{h.date}</span>
+                  <span style={{ fontWeight: 700, color: h.score >= 0.8 ? T.accent : h.score >= 0.6 ? T.orange : T.red, minWidth: 38 }}>{Math.round(h.score * 100)}%</span>
                   <span style={{ color: T.dim }}>{h.correctCount}/{h.totalQuestions}</span>
                   <Badge color={h.difficulty === 'hard' ? T.red : h.difficulty === 'easy' ? T.accent : T.orange} bg={h.difficulty === 'hard' ? T.redD : h.difficulty === 'easy' ? T.accentD : T.orangeD}>{h.difficulty}</Badge>
-                  <span style={{ color: T.dim, marginLeft: 'auto' }}>{fmtTime(h.timeSeconds)}</span>
+                  <span style={{ color: T.dim }}>{fmtTime(h.timeSeconds)}</span>
+                  {h.savedQuestions && <span style={{ marginLeft: 'auto', fontSize: fs(10), color: T.accent, fontWeight: 600 }}>{reviewingExam?.id === h.id ? 'Hide' : 'Review'}</span>}
+                  {!h.savedQuestions && <span style={{ marginLeft: 'auto', fontSize: fs(9), color: T.dim, fontStyle: 'italic' }}>no data</span>}
                 </div>
               ))}
+
+              {/* Historical exam review panel */}
+              {reviewingExam?.savedQuestions && (() => {
+                const qs = reviewingExam.savedQuestions;
+                const incorrectCount = qs.filter(sq => sq.userAnswer !== sq.correct).length;
+                const correctCount = qs.filter(sq => sq.userAnswer === sq.correct).length;
+                const scorePctH = Math.round(reviewingExam.score * 100);
+                const scoreColor = scorePctH >= 80 ? T.accent : scorePctH >= 60 ? T.orange : T.red;
+                return (
+                <div style={{ marginTop: 16 }}>
+                  {/* Score summary card */}
+                  <div style={{ background: `linear-gradient(135deg, ${scoreColor}10, ${T.card})`, border: `1.5px solid ${scoreColor}33`, borderRadius: 14, padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: fs(12), color: T.dim, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Historical Exam Review</div>
+                        <div style={{ fontSize: fs(18), fontWeight: 800, color: T.text }}>{reviewingExam.courseName || 'Unknown'}</div>
+                        <div style={{ fontSize: fs(12), color: T.dim, marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          <span>{reviewingExam.date}</span>
+                          <span style={{ fontWeight: 700, color: scoreColor }}>{scorePctH}%</span>
+                          <span>{reviewingExam.correctCount}/{reviewingExam.totalQuestions} correct</span>
+                          <span>{reviewingExam.difficulty}</span>
+                          {reviewingExam.timeSeconds > 0 && <span>{Math.floor(reviewingExam.timeSeconds / 60)}:{String(reviewingExam.timeSeconds % 60).padStart(2, '0')}</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {[
+                          { key: 'all', label: 'All', count: qs.length, color: T.blue },
+                          { key: 'incorrect', label: 'Incorrect', count: incorrectCount, color: T.red },
+                          { key: 'correct', label: 'Correct', count: correctCount, color: T.accent },
+                        ].map(f => (
+                          <button key={f.key} onClick={() => setReviewFilter(f.key)} style={{
+                            padding: '5px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: reviewFilter === f.key ? f.color : T.input,
+                            color: reviewFilter === f.key ? '#fff' : T.dim,
+                            fontSize: fs(11), fontWeight: 600, transition: 'all .12s',
+                          }}>{f.label} ({f.count})</button>
+                        ))}
+                        <button onClick={() => setReviewingExam(null)} style={{ padding: '5px 14px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.soft, fontSize: fs(11), cursor: 'pointer', fontWeight: 600 }}>Close</button>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Questions */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {reviewingExam.savedQuestions
+                      .map((sq, idx) => ({ sq, idx }))
+                      .filter(({ sq }) => {
+                        if (reviewFilter === 'incorrect') return sq.userAnswer !== sq.correct;
+                        if (reviewFilter === 'correct') return sq.userAnswer === sq.correct;
+                        return true;
+                      })
+                      .map(({ sq, idx }) => {
+                        const wasCorrect = sq.userAnswer === sq.correct;
+                        return (
+                          <div key={idx} style={{ background: T.bg2, border: `1px solid ${wasCorrect ? T.accent + '33' : T.red + '33'}`, borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
+                              <span style={{ fontSize: fs(12), fontWeight: 700, color: wasCorrect ? T.accent : T.red, flexShrink: 0, minWidth: 24 }}>
+                                {wasCorrect ? '✓' : '✗'} Q{idx + 1}
+                              </span>
+                              <span style={{ fontSize: fs(14), color: T.text, lineHeight: 1.6, fontWeight: 600 }}>{sq.question}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 32 }}>
+                              {safeArr(sq.options).map((opt, oi) => {
+                                const isUserPick = sq.userAnswer === oi;
+                                const isCorrectOpt = sq.correct === oi;
+                                const bg = isCorrectOpt ? T.accentD : isUserPick && !wasCorrect ? T.redD : 'transparent';
+                                const border = isCorrectOpt ? T.accent + '44' : isUserPick && !wasCorrect ? T.red + '44' : T.border;
+                                return (
+                                  <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 6, background: bg, border: `1px solid ${border}`, fontSize: fs(11) }}>
+                                    <span style={{ fontWeight: 700, color: isCorrectOpt ? T.accent : isUserPick ? T.red : T.dim, minWidth: 16 }}>
+                                      {String.fromCharCode(65 + oi)}
+                                    </span>
+                                    <span style={{ color: T.text }}>{opt}</span>
+                                    {isCorrectOpt && <span style={{ marginLeft: 'auto', fontSize: fs(9), color: T.accent, fontWeight: 700 }}>CORRECT</span>}
+                                    {isUserPick && !wasCorrect && <span style={{ marginLeft: 'auto', fontSize: fs(9), color: T.red, fontWeight: 700 }}>YOUR ANSWER</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {sq.explanation && (
+                              <div style={{ marginTop: 8, marginLeft: 32, padding: '6px 10px', borderRadius: 6, background: `${T.blue}08`, borderLeft: `3px solid ${T.blue}44`, fontSize: fs(11), color: T.soft, lineHeight: 1.5 }}>
+                                {sq.explanation}
+                              </div>
+                            )}
+                            {sq.topic && <div style={{ marginTop: 4, marginLeft: 32, fontSize: fs(10), color: T.dim }}>Topic: {sq.topic}</div>}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+                );
+              })()}
             </div>
           )}
         </>
@@ -466,6 +663,22 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
             </div>
           </div>
 
+          {/* Show answers toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 10 }}>
+            <span style={{ fontSize: fs(12), fontWeight: 600, color: T.text }}>Show Correct Answers</span>
+            <button onClick={() => setShowAnswers(!showAnswers)} style={{
+              width: 44, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none',
+              background: showAnswers ? T.accent : T.input, position: 'relative', transition: 'background .2s',
+            }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: showAnswers ? 23 : 3, transition: 'left .2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+              }} />
+            </button>
+          </div>
+
           {/* Topic breakdown */}
           {topicBreakdown.length > 0 && (
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 16px', marginBottom: 10 }}>
@@ -496,14 +709,23 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
           )}
 
           {/* Review filter */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-            {['all', 'incorrect', 'flagged'].map(f => (
-              <button key={f} onClick={() => setReviewFilter(f)} style={{
-                padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                background: reviewFilter === f ? T.accent : T.input, color: reviewFilter === f ? '#fff' : T.dim,
-                fontSize: fs(10), fontWeight: reviewFilter === f ? 700 : 500,
-              }}>{f === 'all' ? `All (${questions.length})` : f === 'incorrect' ? `Incorrect (${questions.filter((_, i) => !isCorrect(i)).length})` : `Flagged (${Object.keys(flagged).filter(k => flagged[k]).length})`}</button>
-            ))}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+            {['all', 'incorrect', 'correct', 'flagged'].map(f => {
+              const counts = {
+                all: questions.length,
+                incorrect: questions.filter((_, i) => !isCorrect(i)).length,
+                correct: questions.filter((_, i) => isCorrect(i)).length,
+                flagged: Object.keys(flagged).filter(k => flagged[k]).length,
+              };
+              return (
+                <button key={f} onClick={() => setReviewFilter(f)} style={{
+                  padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  background: reviewFilter === f ? (f === 'incorrect' ? T.red : f === 'correct' ? T.accent : T.blue) : T.input,
+                  color: reviewFilter === f ? '#fff' : T.dim,
+                  fontSize: fs(10), fontWeight: reviewFilter === f ? 700 : 500,
+                }}>{f.charAt(0).toUpperCase() + f.slice(1)} ({counts[f]})</button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -525,22 +747,26 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
       {/* Questions */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {(submitted ? filteredQs : questions.map((q, i) => ({ q, i }))).map(({ q, i: qi }) => {
-          const showResult = submitted || (examMode === 'study' && showFeedback && answers[qi] !== undefined);
+          const showResult = (submitted && showAnswers) || (examMode === 'study' && showFeedback && answers[qi] !== undefined);
           const correct = isCorrect(qi);
           return (
-            <div key={qi} ref={el => qRefs.current[qi] = el} style={{ background: T.card, border: `1.5px solid ${showResult ? (correct ? T.accent : T.red) + '44' : T.border}`, borderRadius: 14, padding: '16px 18px', marginBottom: 10, boxShadow: showResult && correct ? `0 0 16px ${T.accent}10` : 'none' }}>
-              {/* Question header */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: showResult ? (correct ? T.accentD : T.redD) : T.input, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(11), fontWeight: 800, color: showResult ? (correct ? T.accent : T.red) : T.dim, flexShrink: 0, border: `1px solid ${showResult ? (correct ? T.accent : T.red) + '33' : T.border}` }}>{qi + 1}</div>
-                <div style={{ flex: 1, fontSize: fs(13), fontWeight: 600, color: T.text, lineHeight: 1.6 }}>{q.question}</div>
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  {q.type === 'multi-select' && <Badge color={T.purple} bg={T.purpleD}>Multi-Select</Badge>}
-                  {q.difficulty && <Badge color={q.difficulty === 'hard' ? T.red : q.difficulty === 'easy' ? T.accent : T.orange} bg={q.difficulty === 'hard' ? T.redD : q.difficulty === 'easy' ? T.accentD : T.orangeD}>{q.difficulty}</Badge>}
-                  {!submitted && <button onClick={() => setFlagged(f => ({ ...f, [qi]: !f[qi] }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: flagged[qi] ? T.orange : T.dim, fontSize: fs(14) }} title="Flag for review">{flagged[qi] ? '🚩' : '⚐'}</button>}
+            <div key={qi} ref={el => qRefs.current[qi] = el} style={{ background: T.card, border: `1.5px solid ${showResult ? (correct ? T.accent : T.red) + '44' : T.border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 12, boxShadow: showResult && correct ? `0 0 16px ${T.accent}10` : '0 1px 4px rgba(0,0,0,.08)' }}>
+              {/* Question zone — distinct background */}
+              <div style={{ padding: '14px 18px', background: `linear-gradient(135deg, ${showResult ? (correct ? T.accent : T.red) + '08' : T.bg2}, ${T.card})`, borderBottom: `1px solid ${T.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: showResult ? (correct ? T.accentD : T.redD) : T.input, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs(12), fontWeight: 800, color: showResult ? (correct ? T.accent : T.red) : T.soft, flexShrink: 0, border: `1.5px solid ${showResult ? (correct ? T.accent : T.red) + '33' : T.border}` }}>Q{qi + 1}</div>
+                  <div style={{ flex: 1, fontSize: fs(15), fontWeight: 600, color: T.text, lineHeight: 1.6 }}>{q.question}</div>
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                    {q.type === 'multi-select' && <Badge color={T.purple} bg={T.purpleD}>Multi-Select</Badge>}
+                    {q.difficulty && <Badge color={q.difficulty === 'hard' ? T.red : q.difficulty === 'easy' ? T.accent : T.orange} bg={q.difficulty === 'hard' ? T.redD : q.difficulty === 'easy' ? T.accentD : T.orangeD}>{q.difficulty}</Badge>}
+                    {!submitted && <button onClick={() => setFlagged(f => ({ ...f, [qi]: !f[qi] }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: flagged[qi] ? T.orange : T.dim, fontSize: fs(14) }} title="Flag for review">{flagged[qi] ? '🚩' : '⚐'}</button>}
+                  </div>
                 </div>
+                {q.topic && <div style={{ fontSize: fs(10), color: T.dim, marginTop: 6, marginLeft: 40 }}>Topic: {q.topic}</div>}
               </div>
-              {q.type === 'multi-select' && !showResult && <div style={{ fontSize: fs(9), color: T.orange, marginBottom: 6, fontWeight: 600 }}>Select ALL that apply</div>}
-              {/* Options */}
+              {/* Answer zone — separate visual area */}
+              <div style={{ padding: '12px 18px' }}>
+                {q.type === 'multi-select' && !showResult && <div style={{ fontSize: fs(10), color: T.orange, marginBottom: 8, fontWeight: 600 }}>Select ALL that apply</div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {safeArr(q.options).map((opt, oi) => {
                   const isMulti = q.type === 'multi-select';
@@ -572,7 +798,7 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
               {showResult && q.explanation && (
                 <div style={{ fontSize: fs(11), color: T.soft, marginTop: 10, padding: '10px 14px', background: `linear-gradient(135deg, ${T.input}, ${T.panel})`, borderRadius: 10, borderLeft: `3px solid ${T.accent}`, lineHeight: 1.6 }}>
                   💡 {q.explanation}
-                  {q.topic && <div style={{ fontSize: fs(9), color: T.dim, marginTop: 4 }}>Topic: {q.topic}{q.competency ? ` · Competency: ${q.competency}` : ''}</div>}
+                  {q.competency && <div style={{ fontSize: fs(9), color: T.dim, marginTop: 4 }}>Competency: {q.competency}</div>}
                 </div>
               )}
               {/* Study mode: next button */}
@@ -582,6 +808,7 @@ Respond ONLY with a JSON array. No markdown, no backticks, no preamble.`;
               {examMode === 'study' && showResult && qi === questions.length - 1 && !submitted && (
                 <button onClick={submitExam} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 6, border: `1px solid ${T.accent}`, background: T.accent, color: '#fff', fontSize: fs(10), fontWeight: 600, cursor: 'pointer' }}>Finish Exam</button>
               )}
+              </div>{/* close answer zone */}
             </div>
           );
         })}

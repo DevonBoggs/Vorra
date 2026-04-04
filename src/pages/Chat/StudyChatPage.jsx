@@ -13,6 +13,7 @@ import { useBgTask, bgSet, bgLog, bgClear, bgAbort, bgStream } from "../../syste
 import { executeTools, safeArr } from "../../utils/toolExecution.js";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { uid, todayStr, fileToBase64, diffDays, minsToStr } from "../../utils/helpers.js";
+import { getEffectiveHours } from "../../utils/availabilityCalc.js";
 import { getSTATUS_C, STATUS_L } from "../../constants/categories.js";
 import { hasCtx } from "../../utils/courseHelpers.js";
 
@@ -50,6 +51,41 @@ If they're ahead, encourage continued momentum or suggest a lighter day.
 Keep messages short and punchy. No lectures.`,
 };
 
+/* ── Collapsible Thinking Block ────────────────────────────── */
+const ThinkingBlock = ({ thinking, T }) => {
+  const [open, setOpen] = useState(false);
+  if (!thinking) return null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <button onClick={() => setOpen(!open)} style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6,
+        background: `${T.purple}15`, border: `1px solid ${T.purple}33`, cursor: 'pointer',
+        color: T.purple, fontSize: fs(10), fontWeight: 600, width: '100%',
+        transition: 'background .15s',
+      }} onMouseEnter={e => e.currentTarget.style.background = `${T.purple}25`}
+         onMouseLeave={e => e.currentTarget.style.background = `${T.purple}15`}>
+        <span style={{ fontSize: fs(12), transition: 'transform .2s', transform: open ? 'rotate(90deg)' : 'rotate(0)' }}>▶</span>
+        <span>Thinking</span>
+        <span style={{ marginLeft: 'auto', fontSize: fs(9), color: T.dim }}>{thinking.length > 500 ? `${Math.round(thinking.length / 100) / 10}k chars` : `${thinking.length} chars`}</span>
+      </button>
+      <div style={{
+        overflow: 'hidden', maxHeight: open ? 400 : 0, opacity: open ? 1 : 0,
+        transition: 'max-height .3s cubic-bezier(.4,0,.2,1), opacity .2s ease',
+      }}>
+        <div style={{
+          marginTop: 6, padding: '8px 12px', borderRadius: 6,
+          background: `${T.purple}08`, border: `1px solid ${T.purple}22`,
+          fontSize: fs(11), lineHeight: 1.5, color: T.soft,
+          maxHeight: 380, overflowY: 'auto', whiteSpace: 'pre-wrap',
+          fontFamily: "'JetBrains Mono', monospace", fontStyle: 'italic',
+        }}>
+          {thinking}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const StudyChatPage = ({ data, setData, profile, Btn }) => {
   const T = useTheme();
   const STATUS_C = getSTATUS_C(T);
@@ -65,6 +101,8 @@ export const StudyChatPage = ({ data, setData, profile, Btn }) => {
   const [concise, setConcise] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const messagesEnd = useRef(null);
+  const dataRef = useRef(data);
+  dataRef.current = data; // always points to latest data
   const fileRef = useRef(null);
 
   const course = data.courses?.find(c => c.id === selCourse);
@@ -82,43 +120,36 @@ export const StudyChatPage = ({ data, setData, profile, Btn }) => {
 
   // ── Build rich context ──
   const buildContext = () => {
-    // Course context
+    const sa = safeArr;
+
+    // ── SELECTED COURSE CONTEXT (runtime stats only — enrichment comes via fmtCtx in system prompt) ──
     let courseCtx = "No specific course selected — general study help.";
     if (course) {
-      courseCtx = `Active course: ${course.name} (${course.courseCode || "no code"})
-Credits: ${course.credits} CU | Difficulty: ${course.difficulty}/5 | Status: ${course.status} | Assessment: ${course.assessmentType || "unknown"}`;
-      if (safeArr(course.topicBreakdown).length > 0) courseCtx += `\nTopics: ${safeArr(course.topicBreakdown).map(t => `${t.topic} (${t.weight || "?"})`).join(", ")}`;
-      if (safeArr(course.competencies).length > 0) courseCtx += `\nCompetencies: ${safeArr(course.competencies).map(c => `${c.code || ""} ${c.title} (${c.weight || "?"})`).join("; ")}`;
-      if (safeArr(course.examTips).length > 0) courseCtx += `\nExam tips: ${safeArr(course.examTips).slice(0, 5).join("; ")}`;
-      if (safeArr(course.knownFocusAreas).length > 0) courseCtx += `\nFocus areas: ${safeArr(course.knownFocusAreas).join(", ")}`;
-      // NEW: Deep enrichment fields
-      if (course.studyStrategy) courseCtx += `\nStudy strategy: ${course.studyStrategy}`;
-      if (safeArr(course.quickWins).length > 0) courseCtx += `\nQuick wins: ${safeArr(course.quickWins).join("; ")}`;
-      if (safeArr(course.hardestConcepts).length > 0) courseCtx += `\nHardest concepts: ${safeArr(course.hardestConcepts).join("; ")}`;
-      if (safeArr(course.mnemonics).length > 0) courseCtx += `\nMnemonics: ${safeArr(course.mnemonics).map(m => `${m.concept}: ${m.mnemonic}`).join("; ")}`;
-      if (course.instructorTips) courseCtx += `\nInstructor tips: ${course.instructorTips}`;
-      if (course.communityInsights) courseCtx += `\nCommunity insights: ${course.communityInsights}`;
-      if (course.preAssessmentScore != null) courseCtx += `\nPre-assessment score: ${course.preAssessmentScore}%`;
-      if (safeArr(course.preAssessmentWeakAreas).length > 0) courseCtx += `\nWeak areas (pre-assessment): ${safeArr(course.preAssessmentWeakAreas).join(", ")}`;
-      if (course.examDate) courseCtx += `\nExam date: ${course.examDate} (${Math.max(0, diffDays(todayStr(), course.examDate))} days away)`;
-      // Study progress from sessions
+      courseCtx = `FOCUSED COURSE: ${course.name} (${course.courseCode || "no code"})`;
+      // Runtime computed stats not available in fmtCtx
       const courseStudiedMins = (data.studySessions || []).filter(s => s.course === course.name).reduce((s, x) => s + (x.mins || 0), 0);
       const courseEstHrs = course.averageStudyHours || 0;
       if (courseEstHrs > 0) courseCtx += `\nStudy progress: ${Math.round(courseStudiedMins / 6) / 10}h / ~${courseEstHrs}h (${Math.round(courseStudiedMins / 60 / courseEstHrs * 100)}%)`;
+      if (course.examDate) courseCtx += `\nExam date: ${course.examDate} (${Math.max(0, diffDays(todayStr(), course.examDate))} days away)`;
+      // Queue position for this course
+      const courseQueue = (data.taskQueue || []).filter(t => (t.course_code || '').toUpperCase() === (course.courseCode || '').toUpperCase() && t.category !== 'break');
+      const courseDone = courseQueue.filter(t => t.done).length;
+      if (courseQueue.length > 0) courseCtx += `\nQueue: ${courseDone}/${courseQueue.length} tasks done`;
+      const nextCourseTask = courseQueue.find(t => !t.done);
+      if (nextCourseTask) courseCtx += `\nNext task: ${nextCourseTask.title} (~${Math.round((nextCourseTask.estimatedMins || 60) / 60 * 10) / 10}h)`;
     }
 
-    // Task queue context
+    // ── TASK QUEUE ──
     const queue = data.taskQueue || [];
     let queueCtx = '';
     if (queue.length > 0) {
       const studyTasks = queue.filter(t => t.category !== 'break');
       const doneTasks = studyTasks.filter(t => t.done);
       const remainMins = studyTasks.filter(t => !t.done).reduce((s, t) => s + (t.estimatedMins || 60), 0);
-      const nextTasks = queue.filter(t => !t.done && t.category !== 'break').slice(0, 3);
+      const nextTasks = queue.filter(t => !t.done && t.category !== 'break').slice(0, 5);
       queueCtx = `\n\nSTUDY PLAN QUEUE:
 Progress: ${doneTasks.length}/${studyTasks.length} tasks complete (~${Math.round(remainMins / 60)}h remaining)`;
-      if (nextTasks.length > 0) queueCtx += `\nNext up: ${nextTasks.map(t => `${t.title} (${minsToStr(t.estimatedMins || 60)})`).join(', ')}`;
-      // Per-course queue progress
+      if (nextTasks.length > 0) queueCtx += `\nNext up:\n${nextTasks.map((t, i) => `  ${i + 1}. ${t.title} (${minsToStr(t.estimatedMins || 60)})`).join('\n')}`;
       const courseQ = {};
       for (const t of studyTasks) {
         const k = t.course_code || 'Other';
@@ -129,34 +160,99 @@ Progress: ${doneTasks.length}/${studyTasks.length} tasks complete (~${Math.round
       queueCtx += `\nPer-course: ${Object.entries(courseQ).map(([k, v]) => `${k}: ${v.done}/${v.total}`).join(', ')}`;
     }
 
-    // Lesson plan context
+    // ── LESSON PLANS (all courses, summarized) ──
     let lpCtx = '';
-    if (data.lessonPlan?.courses?.length > 0 && course) {
-      const lpc = data.lessonPlan.courses.find(c => (c.course_code || '').toUpperCase() === (course.courseCode || '').toUpperCase());
-      if (lpc?.units?.length > 0) {
-        lpCtx = `\n\nLESSON PLAN for ${lpc.course_code} (${lpc.units.length} units, ${lpc.total_hours}h):`;
-        lpCtx += `\n${lpc.units.map(u => `U${u.unit_number}: ${u.title} (${u.hours}h, ${u.type})`).join('\n')}`;
+    if (data.lessonPlan?.courses?.length > 0) {
+      lpCtx = '\n\nLESSON PLANS:';
+      for (const lpc of data.lessonPlan.courses) {
+        const isSelected = course && (lpc.course_code || '').toUpperCase() === (course.courseCode || '').toUpperCase();
+        if (isSelected && lpc.units?.length > 0) {
+          // Full detail for selected course
+          lpCtx += `\n${lpc.course_code} (${lpc.units.length} units, ${lpc.total_hours || '?'}h) — ACTIVE:`;
+          lpCtx += `\n${lpc.units.map(u => `  U${u.unit_number}: ${u.title} (${u.hours}h, ${u.type})`).join('\n')}`;
+        } else if (lpc.units?.length > 0) {
+          // Summary for other courses
+          lpCtx += `\n${lpc.course_code}: ${lpc.units.length} units, ${lpc.total_hours || '?'}h`;
+        }
       }
     }
 
-    // Calendar context
+    // ── TODAY'S TASKS (from queue + legacy calendar) ──
     const today = todayStr();
-    const todayTasks = safeArr(data.tasks?.[today]);
-    let calCtx = `\n\nCALENDAR: Today (${today}): ${todayTasks.length} tasks, ${todayTasks.filter(t => t.done).length} done`;
+    let calCtx = `\n\nTODAY (${today}):`;
 
-    // Session history
+    // Queue-based: tasks completed today + upcoming from queue (including breaks)
+    const queueDoneToday = queue.filter(t => t.done && t.doneDate === today);
+    const queueUpcoming = queue.filter(t => !t.done);
+    // Use plannerConfig for accurate daily hours, fall back to studyHoursPerDay
+    const todayDow = new Date(today + 'T12:00:00').getDay();
+    const dailyGoalHrs = data.plannerConfig ? (getEffectiveHours(data.plannerConfig, todayDow) || 4) : (data.studyHoursPerDay || 4);
+    const dailyGoalMins = dailyGoalHrs * 60;
+    let filledMins = 0;
+    const todayItems = [];
+    // Already done today
+    for (const t of queueDoneToday) {
+      todayItems.push(`  ✓ ${t.title} (${Math.round((t.actualMins || t.estimatedMins || 60) / 60 * 10) / 10}h) [${t.category}]`);
+      if (t.category !== 'break') filledMins += t.actualMins || t.estimatedMins || 60;
+    }
+    // Next up from queue to fill today's remaining hours
+    for (const t of queueUpcoming) {
+      if (t.category !== 'break' && filledMins >= dailyGoalMins) break;
+      todayItems.push(`  ○ ${t.title} (~${Math.round((t.estimatedMins || 60) / 60 * 10) / 10}h) [${t.category}]`);
+      if (t.category !== 'break') filledMins += t.estimatedMins || 60;
+    }
+    const studyDone = queueDoneToday.filter(t => t.category !== 'break').length;
+    const studyRemaining = todayItems.length - queueDoneToday.length;
+    calCtx += `\n${studyDone} study tasks done, ${studyRemaining} remaining (~${Math.round(filledMins / 60 * 10) / 10}h of ${dailyGoalHrs}h daily goal)`;
+    if (todayItems.length > 0) calCtx += `\n${todayItems.join('\n')}`;
+
+    // Also include legacy calendar tasks if any exist
+    const legacyTasks = sa(data.tasks?.[today]);
+    if (legacyTasks.length > 0) {
+      calCtx += `\nScheduled tasks: ${legacyTasks.map(t => `${t.time || '?'}-${t.endTime || '?'} ${t.done ? '✓' : '○'} ${t.title}`).join(', ')}`;
+    }
+
+    // ── EXAM HISTORY (filter out 0% entries — likely accidental submits) ──
+    let examCtx = '';
+    const examHistory = (data.examHistory || []).filter(e => e.score > 0);
+    if (examHistory.length > 0) {
+      examCtx = '\n\nPRACTICE EXAM HISTORY:';
+      const byCourse = {};
+      examHistory.forEach(e => {
+        const k = e.courseName || e.courseId || 'Unknown';
+        if (!byCourse[k]) byCourse[k] = [];
+        byCourse[k].push(e);
+      });
+      for (const [name, exams] of Object.entries(byCourse)) {
+        const sorted = exams.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+        const latest = sorted[sorted.length - 1];
+        const scores = sorted.slice(-5).map(e => Math.round(e.score * 100) + '%').join(' → ');
+        examCtx += `\n${name}: ${scores} (${sorted.length} attempt${sorted.length > 1 ? 's' : ''}, latest: ${Math.round(latest.score * 100)}%, ${latest.difficulty})`;
+        if (latest.topicScores) {
+          const weak = Object.entries(latest.topicScores).filter(([, v]) => v.total > 0 && v.correct / v.total < 0.7).map(([t, v]) => `${t}: ${Math.round(v.correct / v.total * 100)}%`);
+          if (weak.length > 0) examCtx += `\n  Weak topics: ${weak.join(', ')}`;
+        }
+      }
+    }
+
+    // ── SESSION + STUDY STATS ──
     const sessions = data.studySessions || [];
     const totalStudiedMins = sessions.reduce((s, x) => s + (x.mins || 0), 0);
     const streak = data.studyStreak || { currentStreak: 0, longestStreak: 0 };
     let sessionCtx = `\n\nSTUDY STATS: Total: ${Math.round(totalStudiedMins / 6) / 10}h | Streak: ${streak.currentStreak}d (best: ${streak.longestStreak}d)`;
-
-    // Planner context
     const pc = data.plannerConfig;
     if (pc) {
       sessionCtx += `\nStudy mode: ${pc.studyMode || 'sequential'} | Pacing: ${pc.pacingStyle || 'steady'}`;
     }
 
-    return courseCtx + queueCtx + lpCtx + calCtx + sessionCtx;
+    // ── PLAN HISTORY (recent) ──
+    const planHistory = data.planHistory || [];
+    if (planHistory.length > 0) {
+      const latest = planHistory[planHistory.length - 1];
+      sessionCtx += `\nLatest plan: ${new Date(latest.createdAt).toLocaleDateString()} | ${latest.taskCount || '?'} tasks, ${latest.plannedHours || '?'}h`;
+    }
+
+    return courseCtx + queueCtx + lpCtx + calCtx + examCtx + sessionCtx;
   };
 
   const sendMessage = async (overrideMsg) => {
@@ -176,7 +272,7 @@ Progress: ${doneTasks.length}/${studyTasks.length} tasks complete (~${Math.round
     const modePrompt = MODE_PROMPTS[chatMode] || MODE_PROMPTS.tutor;
     const conciseRule = concise ? '\n\nRESPONSE STYLE: Be brief. 2-3 sentences max unless the student asks for more. Use bullet points. Skip preamble and filler.' : '';
 
-    const sys = `${buildSystemPrompt(data, context)}
+    const sys = `${buildSystemPrompt(data, context, selCourse)}
 
 ${modePrompt}
 ${conciseRule}
@@ -199,20 +295,23 @@ CONTEXT-AWARE GUIDANCE:
     try {
       let resp = await callAIWithTools(profile, sys, apiMsgs, imageData);
       let fullText = "";
+      let thinkingText = "";
       let maxLoops = 5;
       while (maxLoops-- > 0) {
         if (controller.signal.aborted) break;
+        if (resp.thinking) thinkingText += (thinkingText ? "\n\n" : "") + resp.thinking;
         if (resp.text) fullText += (fullText ? " " : "") + resp.text;
         if (resp.toolCalls.length > 0) {
-          const results = executeTools(resp.toolCalls, data, setData);
+          const results = executeTools(resp.toolCalls, dataRef.current, setData);
           const toolSummary = results.map(r => `[${r.result}]`).join(" ");
           fullText += (fullText ? "\n\n" : "") + toolSummary;
           resp = await continueAfterTools(profile, sys, apiMsgs, resp.toolCalls, results);
         } else break;
       }
+      if (resp.thinking && !thinkingText.includes(resp.thinking)) thinkingText += (thinkingText ? "\n\n" : "") + resp.thinking;
       if (resp.text && !fullText.includes(resp.text)) fullText += (fullText ? "\n\n" : "") + resp.text;
 
-      const withReply = [...newMsgs, { role: "assistant", content: fullText }];
+      const withReply = [...newMsgs, { role: "assistant", content: fullText, thinking: thinkingText || undefined }];
       setData(d => ({ ...d, chatHistories: { ...d.chatHistories, [chatKey]: withReply } }));
     } catch (e) {
       if (e.name !== 'AbortError') setData(d => ({ ...d, chatHistories: { ...d.chatHistories, [chatKey]: [...newMsgs, { role: "assistant", content: `Error: ${e.message}` }] } }));
@@ -275,15 +374,35 @@ Format as a structured summary the AI can use as context for continuing the conv
   // Markdown rendering
   const renderMd = (text) => {
     if (!text) return null;
+    // Split on code blocks first (safe — rendered as plain text in <pre>)
     const parts = text.split(/(```[\s\S]*?```)/g);
-    return parts.map((part, i) => {
+    return parts.map((part, pi) => {
       if (part.startsWith("```")) {
         const code = part.replace(/^```\w*\n?/, "").replace(/```$/, "");
-        return <pre key={i} style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", fontSize: fs(11), fontFamily: "'JetBrains Mono',monospace", overflow: "auto", margin: "6px 0", whiteSpace: "pre-wrap" }}>{code}</pre>;
+        return <pre key={pi} style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", fontSize: fs(11), fontFamily: "'JetBrains Mono',monospace", overflow: "auto", margin: "6px 0", whiteSpace: "pre-wrap" }}>{code}</pre>;
       }
-      const escaped = part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const html = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;font-size:12px;font-family:JetBrains Mono,monospace">$1</code>');
-      return <span key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+      // Safe React-based inline formatting — NO dangerouslySetInnerHTML
+      // Split on bold (**text**) and inline code (`text`) patterns
+      const tokens = [];
+      const regex = /(\*\*.*?\*\*|`[^`]+`)/g;
+      let last = 0;
+      let match;
+      while ((match = regex.exec(part)) !== null) {
+        if (match.index > last) tokens.push({ type: 'text', value: part.slice(last, match.index) });
+        const m = match[0];
+        if (m.startsWith('**') && m.endsWith('**')) {
+          tokens.push({ type: 'bold', value: m.slice(2, -2) });
+        } else if (m.startsWith('`') && m.endsWith('`')) {
+          tokens.push({ type: 'code', value: m.slice(1, -1) });
+        }
+        last = match.index + m.length;
+      }
+      if (last < part.length) tokens.push({ type: 'text', value: part.slice(last) });
+      return <span key={pi}>{tokens.map((tok, ti) => {
+        if (tok.type === 'bold') return <strong key={ti}>{tok.value}</strong>;
+        if (tok.type === 'code') return <code key={ti} style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4, fontSize: fs(11), fontFamily: "'JetBrains Mono',monospace" }}>{tok.value}</code>;
+        return <span key={ti}>{tok.value}</span>;
+      })}</span>;
     });
   };
 
@@ -298,37 +417,71 @@ Format as a structured summary the AI can use as context for continuing the conv
   const quickActions = useMemo(() => {
     if (!course) return [
       { label: "What should I study?", prompt: "Based on my progress and schedule, what should I focus on right now?" },
-      { label: "Am I on track?", prompt: "Look at my study pace and schedule. Am I on track to finish on time?" },
-      { label: "Plan my week", prompt: "Help me plan my study schedule for this week." },
-      { label: "Priority order", prompt: "What order should I study my courses in and why?" },
+      { label: "Am I on track?", prompt: "Look at my study pace and schedule. Am I on track to finish on time? Give specific numbers." },
+      { label: "Plan my week", prompt: "Help me plan my study schedule for this week based on my queue and available hours." },
+      { label: "Priority order", prompt: "What order should I study my courses in and why? Consider prerequisites and difficulty." },
+      { label: "Degree overview", prompt: "Give me a snapshot of where I stand across all courses — hours remaining, courses started, estimated finish." },
+      { label: "What's due soon?", prompt: "Do I have any upcoming exams or deadlines? What should I be preparing for?" },
+      { label: "Study tips", prompt: "What are the most effective study strategies for my current courses and schedule?" },
+      { label: "Burnout check", prompt: "Based on my study patterns and pace, am I at risk of burnout? What should I adjust?" },
     ];
     const name = course.name;
+    const code = course.courseCode || '';
+    const isOA = (course.assessmentType || '').toLowerCase().includes('oa');
+    const isPA = (course.assessmentType || '').toLowerCase().includes('pa');
+    const weakAreas = safeArr(course.preAssessmentWeakAreas).join(', ') || 'the hardest topics';
     const actions = {
       tutor: [
-        { label: "Explain key concepts", prompt: `What are the most important concepts in ${name}? Help me understand them.` },
-        { label: "Simplify hardest topic", prompt: `What's the hardest topic in ${name}? Explain it with a simple analogy.` },
-        { label: "Compare & contrast", prompt: `What are the most confused concepts in ${name}? Show me the differences.` },
-        { label: "Memory tricks", prompt: `Give me mnemonics for the hardest facts in ${name}.` },
-        { label: "Real-world examples", prompt: `Give me real-world examples for each major concept in ${name}.` },
+        { label: "Explain key concepts", prompt: `What are the most important concepts in ${name}? Help me understand them one at a time.` },
+        { label: "Simplify hardest topic", prompt: `What's the hardest topic in ${name}? Explain it with a simple analogy a non-expert would understand.` },
+        { label: "Compare & contrast", prompt: `What are the most commonly confused concepts in ${name}? Show me a clear side-by-side comparison.` },
+        { label: "Memory tricks", prompt: `Give me effective mnemonics and memory aids for the key facts and concepts in ${name}.` },
+        { label: "Real-world examples", prompt: `Give me real-world examples for each major concept in ${name}. How are these used in actual practice?` },
+        { label: "Teach me from scratch", prompt: `Pretend I know nothing about ${name}. Start from the absolute basics and build up, step by step.` },
+        { label: "Explain like I'm 5", prompt: `Explain the core concept of ${name} in the simplest terms possible, like you're explaining to a child.` },
+        { label: "What's the big picture?", prompt: `How does everything in ${name} connect? Give me a high-level map of how all the topics relate to each other.` },
+        { label: "Common misconceptions", prompt: `What do students most commonly get wrong in ${name}? Help me avoid those mistakes.` },
+        { label: "Why does this matter?", prompt: `Why is ${name} important in the real world? How will I use this knowledge in my career?` },
+        { label: "Prerequisite check", prompt: `What should I already know before diving into ${name}? Test my prerequisite knowledge.` },
+        { label: "Create flashcards", prompt: `Create 10 flashcard-style Q&A pairs for the most important facts in ${name}. Front: question. Back: answer.` },
       ],
       quiz: [
         { label: "Quiz me (5 Q)", prompt: `Give me 5 practice questions for ${name}. Wait for my answer before revealing the correct one.` },
-        { label: "Scenario question", prompt: `Give me an application-level scenario question for ${name} matching the assessment format.` },
-        { label: "Rapid fire", prompt: `Ask me 10 rapid-fire questions about ${name}. Grade me at the end.` },
-        { label: "Weak area drill", prompt: `Quiz me specifically on my weak areas in ${name}: ${safeArr(course.preAssessmentWeakAreas).join(', ') || 'the hardest topics'}.` },
-        { label: "True or false", prompt: `Give me 10 true/false statements about ${name}. Include common misconceptions.` },
+        { label: "Quiz me (10 Q)", prompt: `Give me 10 practice questions for ${name} covering different topics. Grade me as I go.` },
+        { label: "Scenario question", prompt: `Give me an application-level scenario question for ${name} matching the ${isOA ? 'OA' : isPA ? 'PA' : 'assessment'} format.` },
+        { label: "Rapid fire", prompt: `Ask me 10 rapid-fire questions about ${name}. One at a time, quick pace. Grade me at the end.` },
+        { label: "Weak area drill", prompt: `Quiz me specifically on my weak areas in ${name}: ${weakAreas}. Focus on the topics I'm struggling with.` },
+        { label: "True or false", prompt: `Give me 10 true/false statements about ${name}. Include common misconceptions as traps.` },
+        { label: "Fill in the blank", prompt: `Give me 8 fill-in-the-blank questions for key definitions and concepts in ${name}.` },
+        { label: "Match concepts", prompt: `Give me a matching exercise: 8 terms on the left, 8 definitions on the right for ${name}. Let me match them.` },
+        { label: "Explain it back", prompt: `Ask me to explain a key concept from ${name} in my own words, then evaluate if my understanding is correct.` },
+        { label: "Multi-select practice", prompt: `Give me 5 "select ALL that apply" questions for ${name} — the hardest format. Grade strictly.` },
+        { label: "Exam simulation", prompt: `Simulate a mini-exam: 10 questions, mixed difficulty, timed feel. ${isOA ? 'Match OA format.' : isPA ? 'Focus on concepts I need for the PA.' : ''} Grade at the end with per-topic breakdown.` },
+        { label: "Competency check", prompt: `Test me on each competency area of ${name}. One question per competency. Tell me which ones I pass and which need work.` },
       ],
       plan: [
-        { label: "What's next?", prompt: "Based on my task queue and progress, what should I study next?" },
-        { label: "Am I on track?", prompt: "Am I on track to finish on time? What adjustments should I make?" },
-        { label: "Optimize my week", prompt: "Look at my schedule. Are there gaps? Am I spending too much time on anything?" },
-        { label: "Catch-up plan", prompt: "I've fallen behind. Give me a concrete catch-up plan for the next 3 days." },
+        { label: "What's next?", prompt: "Based on my task queue and progress, what should I study next and why?" },
+        { label: "Am I on track?", prompt: "Am I on track to finish on time? Show me the math — hours remaining vs days remaining vs daily pace." },
+        { label: "Optimize my week", prompt: "Look at my schedule and queue. Are there gaps? Am I spending too much or too little on any topic?" },
+        { label: "Catch-up plan", prompt: "I've fallen behind. Give me a concrete, specific catch-up plan for the next 3 days with exact tasks." },
+        { label: "When will I finish?", prompt: `At my current pace, when will I finish ${name}? And when will I finish all courses?` },
+        { label: "Rebalance courses", prompt: "Look at my time allocation across courses. Should I rebalance? Am I over-investing or under-investing anywhere?" },
+        { label: "Prep for exam", prompt: `Help me plan my ${isOA ? 'OA' : isPA ? 'PA' : 'assessment'} preparation for ${name}. When should I take the pre-assessment? When should I schedule the exam?` },
+        { label: "Weekend plan", prompt: "I have extra time this weekend. What should I focus on to make the most impact?" },
+        { label: "Daily breakdown", prompt: "Break down today's study plan into specific time blocks with topics and techniques for each block." },
+        { label: "Milestone check", prompt: `Where should I be this week according to the lesson plan milestones for ${name}? Am I ahead or behind?` },
       ],
       coach: [
-        { label: "Check my progress", prompt: "Give me honest, data-driven feedback on my study progress." },
-        { label: "Motivate me", prompt: `I'm losing motivation on ${name}. Give me a concrete micro-goal for the next 30 minutes.` },
-        { label: "I'm stuck", prompt: `I'm stuck on ${name} and frustrated. Help me break through with a different angle.` },
-        { label: "Celebrate wins", prompt: "What have I accomplished recently? Remind me how far I've come." },
+        { label: "Check my progress", prompt: "Give me honest, data-driven feedback on my study progress. Don't sugarcoat it — be direct." },
+        { label: "Motivate me", prompt: `I'm losing motivation on ${name}. Give me a concrete micro-goal for the next 30 minutes that I can definitely achieve.` },
+        { label: "I'm stuck", prompt: `I'm stuck on ${name} and frustrated. Help me break through — suggest a different approach or angle.` },
+        { label: "Celebrate wins", prompt: "What have I accomplished recently? Remind me how far I've come with specific numbers." },
+        { label: "Accountability check", prompt: "Hold me accountable. Did I hit my targets this week? What did I miss and what should I do about it?" },
+        { label: "Energy management", prompt: "Based on my schedule and study patterns, when are my best focus hours? How should I structure my day?" },
+        { label: "Overcome procrastination", prompt: "I keep putting off studying. Give me a specific, no-excuses plan to start in the next 5 minutes." },
+        { label: "Confidence boost", prompt: `Am I ready for the ${isOA ? 'OA' : isPA ? 'PA' : 'assessment'} in ${name}? Rate my readiness honestly and tell me what to do if I'm not ready.` },
+        { label: "Rest day?", prompt: "Should I take a rest day today? Based on my streak and recent study load, would a break help or hurt?" },
+        { label: "Weekly reflection", prompt: "Help me reflect on my study week. What went well? What didn't? What should I change next week?" },
       ],
     };
     return actions[chatMode] || actions.tutor;
@@ -350,12 +503,12 @@ Format as a structured summary the AI can use as context for continuing the conv
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role !== 'assistant') return [];
     const base = chatMode === 'quiz'
-      ? [{ label: "Next question", prompt: "Give me another question." }, { label: "Explain that answer", prompt: "Explain why that answer is correct in more detail." }]
+      ? [{ label: "Next question", prompt: "Give me another question." }, { label: "Explain why", prompt: "Explain why that answer is correct and why the others are wrong." }, { label: "Harder question", prompt: "Give me a harder question on the same topic." }, { label: "Different topic", prompt: "Switch to a different topic and quiz me." }]
       : chatMode === 'tutor'
-      ? [{ label: "Tell me more", prompt: "Can you explain that in more detail?" }, { label: "Give an example", prompt: "Can you give me a concrete example?" }, { label: "Quiz me on this", prompt: "Quiz me on what we just discussed." }]
+      ? [{ label: "Tell me more", prompt: "Can you explain that in more detail?" }, { label: "Give an example", prompt: "Can you give me a concrete, real-world example?" }, { label: "Quiz me on this", prompt: "Quiz me on what we just discussed to check my understanding." }, { label: "Simpler please", prompt: "That was too complex. Can you simplify it?" }]
       : chatMode === 'coach'
-      ? [{ label: "What's my next step?", prompt: "What should I do right now?" }, { label: "Set a goal", prompt: "Set me a specific study goal for today." }]
-      : [{ label: "Add to queue", prompt: "Add that to my study tasks." }, { label: "Show my schedule", prompt: "Show me what's on my schedule this week." }];
+      ? [{ label: "What's my next step?", prompt: "What exactly should I do right now? Be specific." }, { label: "Set a goal", prompt: "Set me a specific, measurable study goal for today." }, { label: "How am I doing?", prompt: "Give me a quick progress check with numbers." }]
+      : [{ label: "Show my schedule", prompt: "Show me what's on my schedule today and this week." }, { label: "Reschedule", prompt: "I need to adjust my plan. What can I move around?" }, { label: "What's realistic?", prompt: "Given my current pace, what can I realistically accomplish this week?" }];
     return base;
   }, [messages, loading, chatMode]);
 
@@ -431,15 +584,22 @@ Format as a structured summary the AI can use as context for continuing the conv
           {safeArr(course.preAssessmentWeakAreas).length > 0 && (
             <div style={{ fontSize: fs(9), color: T.orange, marginTop: 4 }}>Weak areas: {safeArr(course.preAssessmentWeakAreas).join(', ')}</div>
           )}
-          {/* Expandable context drawer */}
-          <button onClick={() => setShowContext(!showContext)} style={{ background: 'none', border: 'none', color: T.dim, fontSize: fs(8), cursor: 'pointer', marginTop: 2, padding: 0 }}>
-            {showContext ? '▾ Hide AI context' : '▸ What the AI knows'}
-          </button>
-          {showContext && (
-            <div style={{ fontSize: fs(9), color: T.dim, marginTop: 4, padding: '6px 8px', background: T.bg2, borderRadius: 6, whiteSpace: 'pre-wrap', maxHeight: 150, overflowY: 'auto', lineHeight: 1.4 }}>
-              {buildContext()}
-            </div>
-          )}
+        </div>
+      )}
+
+      {/* Expandable context drawer — always visible regardless of course selection */}
+      <button onClick={() => setShowContext(!showContext)} style={{ background: 'none', border: 'none', color: T.dim, fontSize: fs(10), cursor: 'pointer', marginBottom: 6, padding: '2px 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: fs(10), transition: 'transform .2s', transform: showContext ? 'rotate(90deg)' : 'rotate(0)', display: 'inline-block' }}>▶</span>
+        {showContext ? 'Hide AI context' : 'What the AI knows'}
+      </button>
+      {showContext && (
+        <div style={{ fontSize: fs(10), color: T.dim, marginBottom: 8, padding: '8px 12px', background: T.bg2, borderRadius: 8, whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto', lineHeight: 1.5, border: `1px solid ${T.border}` }}>
+          <div style={{ fontWeight: 700, color: T.soft, marginBottom: 4 }}>System Prompt (base):</div>
+          {buildSystemPrompt(data, '', selCourse)}
+          <div style={{ fontWeight: 700, color: T.soft, marginTop: 8, marginBottom: 4 }}>Mode: {chatMode}</div>
+          {MODE_PROMPTS[chatMode] || ''}
+          <div style={{ fontWeight: 700, color: T.soft, marginTop: 8, marginBottom: 4 }}>Per-message context:</div>
+          {buildContext()}
         </div>
       )}
 
@@ -502,6 +662,8 @@ Format as a structured summary the AI can use as context for continuing the conv
               border: m.role === "user" ? "none" : `1px solid ${T.border}`, whiteSpace: "pre-wrap",
             }}>
               {m.hasImage && <span style={{ fontSize: fs(10), opacity: .7 }}>📷 Image attached<br /></span>}
+              {/* Collapsible thinking block */}
+              {m.thinking && <ThinkingBlock thinking={m.thinking} T={T} />}
               {m.role === "assistant" ? renderMd(m.content) : m.content}
             </div>
           </div>

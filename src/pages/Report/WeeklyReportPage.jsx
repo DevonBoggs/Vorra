@@ -100,7 +100,7 @@ const WeeklyReportPage = ({ data, Btn, setPage }) => {
 
   // Exam history this week
   const weekExams = (data.examHistory || []).filter(h => week.dates.includes(h.date));
-  const recentExams = (data.examHistory || []).slice(-5);
+  const recentExams = (data.examHistory || []).filter(e => e.score > 0).slice(-5);
 
   // Week verdict
   const verdict = (() => {
@@ -155,7 +155,7 @@ const WeeklyReportPage = ({ data, Btn, setPage }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: fs(22), fontWeight: 800, marginBottom: 2 }}>Weekly Report</h1>
-          <p style={{ color: T.dim, fontSize: fs(16), margin: 0 }}>{week.monStr} — {week.sunStr}</p>
+          <p style={{ color: T.dim, fontSize: fs(13), margin: 0 }}>{week.monStr} — {week.sunStr}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Btn small v="ghost" onClick={() => setWeekOffset(w => w - 1)}>←</Btn>
@@ -165,54 +165,54 @@ const WeeklyReportPage = ({ data, Btn, setPage }) => {
       </div>
 
       {/* ═══ HERO ZONE ═══ */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '20px 24px', background: `linear-gradient(135deg, ${T.card}, ${T.panel})`, border: `1px solid ${T.border}`, borderRadius: 16, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '16px 20px', background: `linear-gradient(135deg, ${T.card}, ${T.panel})`, border: `1px solid ${T.border}`, borderRadius: 14, marginBottom: 14, flexWrap: 'wrap' }}>
         {/* Progress Ring */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <ProgressRing percent={overallPct} color={verdict.color} />
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: fs(22), fontWeight: 900, color: verdict.color }}>{overallPct}%</span>
-            <span style={{ fontSize: fs(16), color: T.dim }}>overall</span>
+            <span style={{ fontSize: fs(18), fontWeight: 900, color: verdict.color }}>{overallPct}%</span>
+            <span style={{ fontSize: fs(10), color: T.dim }}>overall</span>
           </div>
         </div>
         {/* Verdict + stats */}
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: fs(20), fontWeight: 800, color: verdict.color, marginBottom: 4 }}>{verdict.emoji} {verdict.label}</div>
-          <div style={{ fontSize: fs(16), color: T.text, marginBottom: 2 }}>{totalHrsThisWeek}h studied this week</div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: fs(16), fontWeight: 800, color: verdict.color, marginBottom: 4 }}>{verdict.emoji} {verdict.label}</div>
+          <div style={{ fontSize: fs(13), color: T.text, marginBottom: 2 }}>{totalHrsThisWeek}h studied this week</div>
           {hrsDelta !== 0 && (
-            <span style={{ fontSize: fs(16), fontWeight: 600, color: hrsDelta > 0 ? T.accent : T.orange, padding: '2px 8px', borderRadius: 4, background: (hrsDelta > 0 ? T.accent : T.orange) + '18' }}>
+            <span style={{ fontSize: fs(11), fontWeight: 600, color: hrsDelta > 0 ? T.accent : T.orange, padding: '2px 8px', borderRadius: 4, background: (hrsDelta > 0 ? T.accent : T.orange) + '18' }}>
               {hrsDelta > 0 ? '+' : ''}{hrsDelta}h vs last week
             </span>
           )}
-          <div style={{ fontSize: fs(16), color: T.dim, marginTop: 4 }}>{tasksThisWeek} tasks completed · {studyDays}/7 study days</div>
+          <div style={{ fontSize: fs(12), color: T.dim, marginTop: 4 }}>{tasksThisWeek} tasks completed · {studyDays}/7 study days</div>
         </div>
       </div>
 
       {/* ═══ STUDY DAYS DOTS ═══ */}
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 14, padding: '12px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+      <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 14, padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, flexWrap: 'wrap' }}>
         {byDay.map((d, i) => (
-          <div key={i} style={{ textAlign: 'center', flex: 1 }}>
+          <div key={i} style={{ textAlign: 'center', flex: '1 1 0', minWidth: 36 }}>
             <div style={{
-              width: 32, height: 32, borderRadius: '50%', margin: '0 auto 4px',
+              width: 34, height: 34, borderRadius: '50%', margin: '0 auto 4px',
               background: d.didStudy ? T.accent : 'transparent',
               border: `2px solid ${d.isToday ? T.accent : d.didStudy ? T.accent : T.border}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: d.didStudy ? '#fff' : T.dim, fontSize: fs(16), fontWeight: 700,
+              color: d.didStudy ? '#fff' : T.dim, fontSize: fs(12), fontWeight: 700,
               boxShadow: d.isToday ? `0 0 8px ${T.accent}44` : 'none',
             }}>
               {d.didStudy ? '✓' : d.dayNum}
             </div>
-            <div style={{ fontSize: fs(15), color: d.isToday ? T.accent : T.dim, fontWeight: d.isToday ? 700 : 500 }}>{d.dayName}</div>
-            {d.hrs > 0 && <div style={{ fontSize: fs(16), color: T.accent, fontWeight: 600 }}>{d.hrs}h</div>}
+            <div style={{ fontSize: fs(11), color: d.isToday ? T.accent : T.dim, fontWeight: d.isToday ? 700 : 500 }}>{d.dayName}</div>
+            {d.hrs > 0 && <div style={{ fontSize: fs(10), color: T.accent, fontWeight: 600 }}>{d.hrs}h</div>}
           </div>
         ))}
       </div>
 
       {/* ═══ KEY STATS (4 cards) ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
         {/* Hours */}
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-          <div style={{ fontSize: fs(20), fontWeight: 800, color: T.accent }}>{totalHrsThisWeek}h</div>
-          <div style={{ fontSize: fs(15), color: T.dim, marginBottom: 4 }}>studied</div>
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '10px 8px', textAlign: 'center', overflow: 'hidden' }}>
+          <div style={{ fontSize: fs(18), fontWeight: 800, color: T.accent }}>{totalHrsThisWeek}h</div>
+          <div style={{ fontSize: fs(11), color: T.dim, marginBottom: 4 }}>studied</div>
           {/* 4-week sparkline */}
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, justifyContent: 'center', height: 20 }}>
             {weekTrend.map((v, i) => {
@@ -222,30 +222,41 @@ const WeeklyReportPage = ({ data, Btn, setPage }) => {
           </div>
         </div>
         {/* Tasks */}
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-          <div style={{ fontSize: fs(20), fontWeight: 800, color: T.text }}>{tasksThisWeek}</div>
-          <div style={{ fontSize: fs(15), color: T.dim }}>tasks done</div>
-          {hasQueue && <div style={{ fontSize: fs(16), color: T.dim, marginTop: 2 }}>{queueDone.length}/{queueStudy.length} total</div>}
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '10px 8px', textAlign: 'center', overflow: 'hidden' }}>
+          <div style={{ fontSize: fs(18), fontWeight: 800, color: T.text }}>{tasksThisWeek}</div>
+          <div style={{ fontSize: fs(11), color: T.dim }}>tasks done</div>
+          {hasQueue && <div style={{ fontSize: fs(10), color: T.dim, marginTop: 2 }}>{queueDone.length}/{queueStudy.length} total</div>}
         </div>
         {/* Streak */}
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-          <div style={{ fontSize: fs(20), fontWeight: 800, color: streak.currentStreak >= 7 ? '#f59e0b' : streak.currentStreak >= 3 ? T.accent : T.dim }}>{streak.currentStreak}d</div>
-          <div style={{ fontSize: fs(15), color: T.dim }}>streak</div>
-          <div style={{ fontSize: fs(16), color: T.dim, marginTop: 2 }}>best: {streak.longestStreak || 0}d</div>
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '10px 8px', textAlign: 'center', overflow: 'hidden' }}>
+          <div style={{ fontSize: fs(18), fontWeight: 800, color: streak.currentStreak >= 7 ? '#f59e0b' : streak.currentStreak >= 3 ? T.accent : T.dim }}>{streak.currentStreak}d</div>
+          <div style={{ fontSize: fs(11), color: T.dim }}>streak</div>
+          <div style={{ fontSize: fs(10), color: T.dim, marginTop: 2 }}>best: {streak.longestStreak || 0}d</div>
         </div>
         {/* Exam readiness */}
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-          {recentExams.length > 0 ? (
-            <>
-              <div style={{ fontSize: fs(20), fontWeight: 800, color: recentExams[recentExams.length - 1].score >= 0.8 ? T.accent : recentExams[recentExams.length - 1].score >= 0.6 ? T.orange : T.red }}>
-                {Math.round(recentExams[recentExams.length - 1].score * 100)}%
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: '10px 8px', textAlign: 'center', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          {recentExams.length > 0 ? (() => {
+            const last = recentExams[recentExams.length - 1];
+            const color = last.score >= 0.8 ? T.accent : last.score >= 0.6 ? T.orange : T.red;
+            return <>
+              <div style={{ fontSize: fs(18), fontWeight: 800, color }}>{Math.round(last.score * 100)}%</div>
+              <div style={{ fontSize: fs(11), color: T.dim }}>last exam</div>
+              <div style={{ fontSize: fs(9), color: T.soft, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                {last.courseName || 'Unknown'}
               </div>
-              <div style={{ fontSize: fs(15), color: T.dim }}>last exam</div>
-            </>
-          ) : (
+              {/* Mini trend dots if 2+ exams */}
+              {recentExams.length >= 2 && (
+                <div style={{ display: 'flex', gap: 3, marginTop: 4, alignItems: 'flex-end', height: 16 }}>
+                  {recentExams.slice(-5).map((e, i) => (
+                    <div key={i} style={{ width: 4, borderRadius: 2, background: e.score >= 0.8 ? T.accent : e.score >= 0.6 ? T.orange : T.red, height: `${Math.max(4, e.score * 16)}px` }} />
+                  ))}
+                </div>
+              )}
+            </>;
+          })() : (
             <>
-              <div style={{ fontSize: fs(20), fontWeight: 800, color: T.dim }}>—</div>
-              <div style={{ fontSize: fs(15), color: T.dim }}>no exams yet</div>
+              <div style={{ fontSize: fs(18), fontWeight: 800, color: T.dim }}>—</div>
+              <div style={{ fontSize: fs(11), color: T.dim }}>no exams yet</div>
             </>
           )}
         </div>
@@ -260,7 +271,7 @@ const WeeklyReportPage = ({ data, Btn, setPage }) => {
             const color = PLAN_COLORS[i % PLAN_COLORS.length];
             return (
               <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span style={{ width: 50, fontSize: fs(16), fontWeight: 700, color: T.text }}>{code}</span>
+                <span style={{ minWidth: 55, fontSize: fs(14), fontWeight: 700, color: T.text, flexShrink: 0 }}>{code}</span>
                 <div style={{ flex: 1, height: 6, borderRadius: 3, background: T.input, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3, transition: 'width .5s' }} />
                 </div>
@@ -285,28 +296,52 @@ const WeeklyReportPage = ({ data, Btn, setPage }) => {
       )}
 
       {/* ═══ EXAM TREND ═══ */}
-      {recentExams.length >= 2 && (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
-          <div style={{ fontSize: fs(15), fontWeight: 700, color: T.text, marginBottom: 8 }}>Practice Exam Trend</div>
-          <svg width={280} height={50}>
-            {/* 80% threshold */}
-            <line x1={8} x2={272} y1={8 + (1 - 0.8) * 34} y2={8 + (1 - 0.8) * 34} stroke={T.accent} strokeDasharray="3,3" opacity={0.3} />
-            {/* Score line */}
-            {recentExams.length > 1 && (
-              <path d={recentExams.map((h, i) => `${i === 0 ? 'M' : 'L'} ${8 + i / (recentExams.length - 1) * 264} ${8 + (1 - h.score) * 34}`).join(' ')} fill="none" stroke={T.accent} strokeWidth={2} />
-            )}
-            {/* Dots */}
-            {recentExams.map((h, i) => (
-              <circle key={i} cx={8 + i / Math.max(1, recentExams.length - 1) * 264} cy={8 + (1 - h.score) * 34} r={3}
-                fill={h.score >= 0.8 ? T.accent : h.score >= 0.6 ? T.orange : T.red} />
-            ))}
-          </svg>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: fs(15), color: T.dim, marginTop: 2 }}>
-            <span>{recentExams[0]?.date}</span>
-            <span>{recentExams[recentExams.length - 1]?.date}</span>
+      {recentExams.length >= 2 && (() => {
+        const chartW = 500, chartH = 140, padL = 36, padR = 24, padT = 14, padB = 28;
+        const plotW = chartW - padL - padR, plotH = chartH - padT - padB;
+        const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
+        return (
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+            <div style={{ fontSize: fs(13), fontWeight: 700, color: T.text, marginBottom: 8 }}>Practice Exam Trend</div>
+            <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{ display: 'block', width: '100%', height: 'auto', maxHeight: 160 }}>
+              {/* Y-axis labels */}
+              {yTicks.map(v => {
+                const y = padT + (1 - v) * plotH;
+                return <g key={v}>
+                  <text x={padL - 4} y={y + 3} textAnchor="end" fontSize={9} fill={T.dim}>{Math.round(v * 100)}%</text>
+                  <line x1={padL} x2={padL + plotW} y1={y} y2={y} stroke={T.border} strokeWidth={0.5} />
+                </g>;
+              })}
+              {/* 80% passing threshold */}
+              <line x1={padL} x2={padL + plotW} y1={padT + (1 - 0.8) * plotH} y2={padT + (1 - 0.8) * plotH} stroke={T.accent} strokeDasharray="4,3" opacity={0.4} />
+              <text x={padL + plotW + 2} y={padT + (1 - 0.8) * plotH + 3} fontSize={8} fill={T.accent} opacity={0.6}>pass</text>
+              {/* Score line */}
+              <path d={recentExams.map((h, i) => `${i === 0 ? 'M' : 'L'} ${padL + i / (recentExams.length - 1) * plotW} ${padT + (1 - h.score) * plotH}`).join(' ')} fill="none" stroke={T.accent} strokeWidth={2} />
+              {/* Score dots */}
+              {recentExams.map((h, i) => (
+                <circle key={i} cx={padL + i / Math.max(1, recentExams.length - 1) * plotW} cy={padT + (1 - h.score) * plotH} r={4}
+                  fill={h.score >= 0.8 ? T.accent : h.score >= 0.6 ? T.orange : T.red} stroke={T.card} strokeWidth={1.5} />
+              ))}
+              {/* X-axis labels (dates) */}
+              {recentExams.map((h, i) => {
+                const x = padL + i / Math.max(1, recentExams.length - 1) * plotW;
+                // Only show first, last, and middle labels to avoid overlap
+                if (recentExams.length > 3 && i > 0 && i < recentExams.length - 1 && i !== Math.floor(recentExams.length / 2)) return null;
+                return <text key={i} x={x} y={chartH - 2} textAnchor="middle" fontSize={8} fill={T.dim}>{h.date?.slice(5)}</text>;
+              })}
+            </svg>
+            {/* Per-exam details */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              {recentExams.map((h, i) => (
+                <div key={i} style={{ fontSize: fs(9), color: T.dim, padding: '2px 6px', borderRadius: 4, background: T.input }}>
+                  <span style={{ fontWeight: 700, color: h.score >= 0.8 ? T.accent : h.score >= 0.6 ? T.orange : T.red }}>{Math.round(h.score * 100)}%</span>
+                  {' '}{h.courseName?.split(' – ')[0]?.split(' - ')[0] || '?'}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ NEXT STEP CTA ═══ */}
       {nextTask && (

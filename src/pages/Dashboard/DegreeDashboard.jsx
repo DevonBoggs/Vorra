@@ -8,507 +8,572 @@ import { toast } from "../../systems/toast.js";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { Btn } from "../../components/ui/Btn.jsx";
 import { safeArr } from "../../utils/toolExecution.js";
-import { WidgetGrid } from "../../components/widgets/WidgetGrid.jsx";
 import { hasCtx } from "../../utils/courseHelpers.js";
 import { CourseDetail } from "../../components/course/CourseDetail.jsx";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary.jsx";
+import { computeProgress } from "../../utils/studyQueue.js";
 
+/* ── SVG Progress Ring ───────────────────────────────────────── */
+const Ring = ({ pct, size = 80, stroke = 7, color, label, value, T }) => {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(Math.max(pct, 0), 100) / 100) * circ;
+  return (
+    <div style={{ textAlign: 'center', position: 'relative' }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={T.border} strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 1s ease' }} />
+      </svg>
+      <div style={{ position: 'absolute', top: 0, left: 0, width: size, height: size,
+        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: fs(18), fontWeight: 800, color }}>{value}</div>
+      </div>
+      <div style={{ fontSize: fs(12), color: T.dim, marginTop: 6, fontWeight: 600 }}>{label}</div>
+    </div>
+  );
+};
+
+/* ── 7-Day Velocity Bars (Sunday–Saturday) ───────────────────── */
+const WeekBars = ({ sessions, T }) => {
+  const today = new Date();
+  const todayDow = today.getDay(); // 0=Sun
+  const days = [];
+  for (let dow = 0; dow <= 6; dow++) {
+    const offset = dow - todayDow;
+    const d = new Date(today); d.setDate(d.getDate() + offset);
+    const ds = d.toISOString().split('T')[0];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const mins = (sessions || []).filter(s => s.date === ds).reduce((s, x) => s + (x.mins || 0), 0);
+    days.push({ day: dayNames[dow], mins, isToday: offset === 0, ds });
+  }
+  const maxMins = Math.max(...days.map(d => d.mins), 60);
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 56 }}>
+      {days.map((d, i) => (
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
+          <div style={{ width: '100%', maxWidth: 28, height: 40, borderRadius: 4, background: T.input,
+            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', overflow: 'hidden' }}>
+            <div style={{ width: '100%', borderRadius: 4,
+              height: `${Math.max(d.mins > 0 ? 8 : 0, (d.mins / maxMins) * 100)}%`,
+              background: d.isToday ? T.accent : d.mins > 0 ? T.blue : 'transparent',
+              transition: 'height .4s ease' }} />
+          </div>
+          <span style={{ fontSize: fs(10), color: d.isToday ? T.accent : T.dim, fontWeight: d.isToday ? 700 : 500 }}>{d.day}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── Study Days Dots (Sunday–Saturday) ───────────────────────── */
+const StudyDots = ({ sessions, T }) => {
+  const today = new Date();
+  const todayDow = today.getDay(); // 0=Sun
+  const dots = [];
+  for (let dow = 0; dow <= 6; dow++) {
+    const offset = dow - todayDow;
+    const d = new Date(today); d.setDate(d.getDate() + offset);
+    const ds = d.toISOString().split('T')[0];
+    const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const studied = (sessions || []).some(s => s.date === ds && s.mins > 0);
+    dots.push({ day: dayNames[dow], studied, isToday: offset === 0 });
+  }
+  const studyDays = dots.filter(d => d.studied).length;
+  return (
+    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
+      {dots.map((d, i) => (
+        <div key={i} style={{ textAlign: 'center' }}>
+          <div style={{ width: 26, height: 26, borderRadius: '50%',
+            background: d.studied ? T.accent : 'transparent',
+            border: `2px solid ${d.studied ? T.accent : d.isToday ? T.accent + '66' : T.border}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: d.studied ? '#fff' : T.dim, fontSize: fs(10), fontWeight: 700 }}>
+            {d.studied ? '✓' : ''}
+          </div>
+          <div style={{ fontSize: fs(9), color: d.isToday ? T.accent : T.dim, marginTop: 3, fontWeight: d.isToday ? 700 : 400 }}>{d.day}</div>
+        </div>
+      ))}
+      <div style={{ marginLeft: 12, fontSize: fs(13), fontWeight: 700, color: T.text }}>{studyDays}/7</div>
+    </div>
+  );
+};
+
+/* ── Main Dashboard ──────────────────────────────────────────── */
 const DegreeDashboard = ({ data, setData, setPage, setDate }) => {
   const T = useTheme();
   const STATUS_C = getSTATUS_C(T);
   const bp = useBreakpoint();
-  const [filter, setFilter] = useState("all");
-  const [showCheckin, setShowCheckin] = useState(false);
+  const [filter, setFilter] = useState('all');
   const [expanded, setExpanded] = useState({});
   const [alertsExpanded, setAlertsExpanded] = useState(false);
+
   const courses = data.courses || [];
   const sessions = data.studySessions || [];
-  const streak = data.studyStreak || { lastStudyDate:"", currentStreak:0, longestStreak:0 };
-  const totalCU = courses.reduce((s,c) => s + (c.credits||0), 0);
-  const doneCU = courses.filter(c => c.status === "completed").reduce((s,c) => s + (c.credits||0), 0);
-  const remainCU = totalCU - doneCU;
-  const daysLeft = data.targetDate ? Math.max(0, diffDays(todayStr(), data.targetDate)) : null;
-  const hrsPerDay = data.studyHoursPerDay || 4;
-  const activeCourses = courses.filter(c => c.status !== "completed");
-  const totalEstHrs = activeCourses.reduce((s,c) => s + (c.averageStudyHours > 0 ? c.averageStudyHours : ([0,20,35,50,70,100][c.difficulty||3]||50)), 0);
-  const earlyFinishWeeks = 0; // legacy compat
-  const exDates = safeArr(data.exceptionDates);
-  const rawDaysNeeded = hrsPerDay > 0 ? Math.ceil(totalEstHrs / hrsPerDay) : 0;
+  const streak = data.studyStreak || { lastStudyDate: '', currentStreak: 0, longestStreak: 0 };
+  const queue = data.taskQueue || [];
+  const examHistory = data.examHistory || [];
+  const activeCourses = courses.filter(c => c.status !== 'completed');
+  const completedCourses = courses.filter(c => c.status === 'completed');
+  const totalCU = courses.reduce((s, c) => s + (c.credits || 0), 0);
+  const doneCU = completedCourses.reduce((s, c) => s + (c.credits || 0), 0);
 
-  // Two-date system: targetCompletionDate = when student wants to finish, targetDate = term end
-  const goalDate = data.targetCompletionDate || data.targetDate || null;
-  const termEndDate = data.targetDate || null;
-  const daysToGoal = goalDate ? Math.max(0, diffDays(todayStr(), goalDate)) : null;
-  const daysToTermEnd = termEndDate ? Math.max(0, diffDays(todayStr(), termEndDate)) : null;
+  // Queue-based progress
+  const progress = useMemo(() => computeProgress(queue, {
+    targetDate: data.targetCompletionDate || data.targetDate,
+    startDate: data.studyStartDate,
+    weeklyHours: data.plannerConfig?.weeklyHours || (data.studyHoursPerDay || 4) * 7,
+  }), [queue, data.targetCompletionDate, data.targetDate, data.studyStartDate]);
 
-  // Actual scheduled hours from calendar
-  const allTaskDates = Object.keys(data.tasks || {});
-  const futureDatesWithTasks = allTaskDates.filter(d => d >= todayStr()).sort();
-  const scheduledStudyMins = futureDatesWithTasks.reduce((s, d) => {
-    return s + safeArr(data.tasks[d]).filter(t => STUDY_CATS.includes(t.category)).reduce((ms, t) => {
-      const st = parseTime(t.time), et = parseTime(t.endTime);
-      return ms + (st && et ? Math.max(0, et.mins - st.mins) : 0);
-    }, 0);
-  }, 0);
-  const scheduledHrs = Math.round(scheduledStudyMins / 6) / 10;
-  // Only count days that actually have study/exam tasks
-  const studyDatesWithTasks = futureDatesWithTasks.filter(d => safeArr(data.tasks[d]).some(t => STUDY_CATS.includes(t.category)));
-  const lastScheduledDate = studyDatesWithTasks.length > 0 ? studyDatesWithTasks[studyDatesWithTasks.length - 1] : null;
-  const scheduleFinish = lastScheduledDate;
+  // Today's study stats
+  const todayMins = sessions.filter(s => s.date === todayStr()).reduce((s, x) => s + (x.mins || 0), 0);
+  const todayHrs = Math.round(todayMins / 60 * 10) / 10;
+  const dailyGoalHrs = progress.dailyNeedHrs || (data.studyHoursPerDay || 4);
+  const todayPct = Math.min(100, Math.round((todayHrs / dailyGoalHrs) * 100));
 
-  // Global conflict scan — check all future dates for time overlaps
-  const globalConflicts = useMemo(() => {
-    let totalConflicts = 0;
-    const conflictDateList = [];
-    for (const d of futureDatesWithTasks) {
-      const dt = safeArr(data.tasks[d]).sort((a,b)=>(parseTime(a.time)?.mins??9999)-(parseTime(b.time)?.mins??9999));
-      let dayConflicts = 0;
-      for (let i=0; i<dt.length; i++) {
-        const as = parseTime(dt[i].time), ae = parseTime(dt[i].endTime);
-        if(!as||!ae) continue;
-        for (let j=i+1; j<dt.length; j++) {
-          const bs = parseTime(dt[j].time), be = parseTime(dt[j].endTime);
-          if(!bs||!be) continue;
-          if(as.mins < be.mins && ae.mins > bs.mins) { totalConflicts++; dayConflicts++; }
-        }
-      }
-      if (dayConflicts > 0) conflictDateList.push({date:d, count:dayConflicts});
+  // Today's tasks from queue
+  const todayStr_ = todayStr();
+  const todayQueueDone = queue.filter(t => t.done && t.doneDate === todayStr_ && t.category !== 'break').length;
+  const todayTarget = (() => {
+    let filled = 0;
+    let count = 0;
+    for (const t of queue) {
+      if (t.done && t.doneDate === todayStr_) { count++; continue; }
+      if (!t.done) { count++; filled += t.estimatedMins || 60; }
+      if (filled >= dailyGoalHrs * 60) break;
     }
-    return { totalConflicts, conflictDays: conflictDateList.length, dates: conflictDateList };
-  }, [data.tasks]);
-
-  // Two-date system: goalDate is the completion target
-  const effectiveTarget = goalDate; // alias for compat
-  const effectiveDaysLeft = daysToGoal;
-
-  // Study sessions stats
-  const todaySessions = sessions.filter(s => s.date === todayStr());
-  const todayMins = todaySessions.reduce((s,x) => s + (x.mins||0), 0);
-  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
-  const weekSessions = sessions.filter(s => new Date(s.date+"T12:00:00") >= weekAgo);
-  const weekMins = weekSessions.reduce((s,x) => s + (x.mins||0), 0);
-  const totalStudiedMins = sessions.reduce((s,x) => s + (x.mins||0), 0);
-
-  // Per-course studied hours
-  const courseHours = {};
-  sessions.forEach(s => {
-    const key = s.course || "Unlinked";
-    courseHours[key] = (courseHours[key]||0) + (s.mins||0);
-  });
-
-  // Velocity: avg hours/day over last 14 days
-  const twoWeeksAgo = new Date(); twoWeeksAgo.setDate(twoWeeksAgo.getDate()-14);
-  const recentSessions = sessions.filter(s => new Date(s.date+"T12:00:00") >= twoWeeksAgo);
-  const recentMins = recentSessions.reduce((s,x) => s + (x.mins||0), 0);
-  const avgHrsPerDay14 = Math.round((recentMins / 60 / 14) * 10) / 10;
-  const estDaysAtPace = avgHrsPerDay14 > 0 ? Math.ceil(totalEstHrs / avgHrsPerDay14) : null;
-
-  // Estimated finish date (pure study days from now, skipping exceptions)
-  const calcFinish = (hrs) => {
-    if (!hrs || hrs <= 0 || !data.studyStartDate) return null;
-    let d = new Date(Math.max(new Date(data.studyStartDate+"T12:00:00"), new Date())); let rem = rawDaysNeeded;
-    for (let i=0; i<rem+exDates.length+365 && rem>0; i++) { const ds=d.toISOString().split("T")[0]; if(!exDates.includes(ds)) rem--; d.setDate(d.getDate()+1); }
-    return d.toISOString().split("T")[0];
-  };
-  // Use blueprint finish date if available, otherwise linear estimate
-  const blueprintFinish = (() => {
-    if (!data.scheduleOutline?.weeks?.length) return null;
-    const outline = data.scheduleOutline;
-    const lastWeek = outline.weeks[outline.weeks.length - 1];
-    if (!lastWeek?.week_of) return null;
-    const d = new Date(lastWeek.week_of + 'T12:00:00');
-    d.setDate(d.getDate() + 6); // end of last week
-    return d.toISOString().split('T')[0];
+    return count;
   })();
-  const estFinish = blueprintFinish || calcFinish(hrsPerDay);
+  const todayTaskPct = todayTarget > 0 ? Math.min(100, Math.round((todayQueueDone / todayTarget) * 100)) : 0;
 
-  const tasks = data.tasks || {};
-  const today = todayStr();
+  // Next task from queue
+  const nextTask = queue.find(t => !t.done && t.category !== 'break');
 
-  // Study check-in prompt logic
-  useEffect(() => {
-    const lastCheckin = localStorage.getItem('ds-last-checkin');
-    if (lastCheckin !== todayStr() && sessions.length > 0 && streak.lastStudyDate && streak.lastStudyDate !== todayStr()) {
-      const timer = setTimeout(() => setShowCheckin(true), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, []);
+  // Time of day greeting
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
-  const logManualSession = (didStudy) => {
-    localStorage.setItem('ds-last-checkin', todayStr());
-    setShowCheckin(false);
-    if (didStudy) {
-      toast("Great job! Your streak continues.", "success");
-    } else {
-      toast("No worries \u2014 get back to it today!", "info");
-    }
-  };
+  // Week stats
+  const weekMins = (() => {
+    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+    return sessions.filter(s => new Date(s.date + 'T12:00:00') >= weekAgo).reduce((s, x) => s + (x.mins || 0), 0);
+  })();
+
+  // Status color/label
+  const statusColor = { ahead: T.accent, 'on-track': T.blue, behind: T.orange, 'at-risk': T.red }[progress.status] || T.dim;
+  const statusLabel = { ahead: 'Ahead of pace', 'on-track': 'On track', behind: 'Slightly behind', 'at-risk': 'At risk' }[progress.status] || '';
+
+  // Determine dashboard state
+  const isNewUser = courses.length === 0;
+  const isCompleting = activeCourses.length > 0 && completedCourses.length > 0 && progress.pct >= 80;
+  const hasQueue = queue.length > 0;
 
   // Course filter
-  const filtered = filter === "all" ? courses : courses.filter(c => c.status === filter);
+  const filtered = filter === 'all' ? courses : courses.filter(c => c.status === filter);
+
+  /* ── NEW USER STATE ──────────────────────────────────────── */
+  if (isNewUser) return (
+    <div className="fade" style={{ maxWidth: 600, margin: '60px auto', textAlign: 'center' }}>
+      <div style={{ marginBottom: 12 }}><Ic.Grad s={48} c={T.accent} /></div>
+      <h1 style={{ fontSize: fs(28), fontWeight: 800, marginBottom: 8 }}>Welcome to Vorra</h1>
+      <p style={{ fontSize: fs(15), color: T.soft, marginBottom: 32 }}>Set up your study command center in 3 steps</p>
+      {[
+        { label: 'Add your courses', desc: 'Import your degree plan or add courses manually', page: 'courses', Icon: Ic.Book, color: T.accent },
+        { label: 'Set your target date', desc: 'When do you want to finish your degree?', page: 'settings', Icon: Ic.IcCal, color: T.blue },
+        { label: 'Generate a study plan', desc: 'AI creates a lesson plan tailored to your schedule', page: 'planner', Icon: Ic.AI, color: T.purple },
+      ].map((step, i) => (
+        <div key={i} onClick={() => setPage(step.page)} style={{ display: 'flex', alignItems: 'center', gap: 16,
+          padding: '16px 20px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+          marginBottom: 10, cursor: 'pointer', textAlign: 'left', transition: 'border-color .2s' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = step.color}
+          onMouseLeave={e => e.currentTarget.style.borderColor = T.border}>
+          <step.Icon s={28} c={step.color} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: fs(15), fontWeight: 700, color: T.text }}>{i + 1}. {step.label}</div>
+            <div style={{ fontSize: fs(13), color: T.soft, marginTop: 2 }}>{step.desc}</div>
+          </div>
+          <span style={{ color: T.accent, fontSize: fs(16) }}>→</span>
+        </div>
+      ))}
+      <p style={{ fontSize: fs(12), color: T.dim, marginTop: 20 }}>Most students are ready in under 5 minutes.</p>
+    </div>
+  );
+
+  /* ── ACTIVE / COMPLETING USER STATE ──────────────────────── */
   return (
     <div className="fade">
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
-        <div><h1 style={{fontSize:fs(24),fontWeight:800,marginBottom:2}}>Degree Dashboard</h1><p style={{color:T.dim,fontSize:fs(13)}}>Your degree progress at a glance</p></div>
-        <Btn v="ai" onClick={()=>setPage("courses")}><Ic.Edit s={14}/> My Courses</Btn>
+
+      {/* ── 1. HERO ACTION ZONE ──────────────────────────────── */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+          <div>
+            <h1 style={{ fontSize: fs(26), fontWeight: 800, marginBottom: 4 }}>{greeting}</h1>
+            <p style={{ color: T.soft, fontSize: fs(14), margin: 0 }}>
+              {hasQueue
+                ? `${todayQueueDone}/${todayTarget} tasks today · ${todayHrs}h studied · ${streak.currentStreak > 0 ? `${streak.currentStreak}-day streak 🔥` : 'Start a streak today'}`
+                : `${activeCourses.length} active course${activeCourses.length !== 1 ? 's' : ''} · ${Math.round(progress.totalHrs || 0)}h estimated`
+              }
+            </p>
+          </div>
+          <Btn v="ghost" onClick={() => setPage('courses')} style={{ flexShrink: 0 }}><Ic.Edit s={14} /> My Courses</Btn>
+        </div>
+
+        {/* Completing state celebration */}
+        {isCompleting && (
+          <div className="fade" style={{ background: `linear-gradient(135deg, ${T.accentD}, ${T.purpleD})`, border: `1.5px solid ${T.accent}55`,
+            borderRadius: 14, padding: '16px 22px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: fs(16), fontWeight: 700 }}>🎉 Almost there!</div>
+              <div style={{ fontSize: fs(13), color: T.soft, marginTop: 2 }}>
+                {completedCourses.length} of {courses.length} courses complete · {progress.daysRemaining != null ? `${progress.daysRemaining} days left` : ''}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Welcome back banner */}
+        {(() => {
+          const daysSince = streak.lastStudyDate ? diffDays(streak.lastStudyDate, todayStr()) : null;
+          if (daysSince !== null && daysSince >= 3) return (
+            <div className="fade" style={{ background: `linear-gradient(135deg, ${T.accentD}, ${T.purpleD})`, border: `1.5px solid ${T.accent}55`,
+              borderRadius: 14, padding: '16px 22px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <div>
+                <div style={{ fontSize: fs(15), fontWeight: 700 }}>Welcome back!</div>
+                <div style={{ fontSize: fs(13), color: T.soft, marginTop: 2 }}>You've been away {daysSince} days. Pick up where you left off.</div>
+              </div>
+              <Btn small v="primary" onClick={() => setPage('daily')}>Start Studying →</Btn>
+            </div>
+          );
+          return null;
+        })()}
+
+        {/* Next task CTA — THE primary action */}
+        {nextTask && (
+          <div style={{ background: `linear-gradient(135deg, ${T.accentD}, ${T.accent}11)`, border: `1.5px solid ${T.accent}44`,
+            borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: fs(12), color: T.accent, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Next Up</div>
+              <div style={{ fontSize: fs(16), fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nextTask.title}</div>
+              <div style={{ fontSize: fs(12), color: T.soft, marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <span>~{Math.round((nextTask.estimatedMins || 60) / 60 * 10) / 10}h</span>
+                {nextTask.unitTitle && <span>Unit: {nextTask.unitTitle}</span>}
+                {nextTask.course_code && <Badge color={T.accent} bg={T.accentD}>{nextTask.course_code}</Badge>}
+              </div>
+            </div>
+            <Btn v="primary" onClick={() => { setDate(todayStr()); setPage('daily'); }}>Start Studying →</Btn>
+          </div>
+        )}
+
+        {/* No queue — prompt to generate plan */}
+        {!nextTask && hasQueue && (
+          <div style={{ background: T.card, border: `1px solid ${T.accent}44`, borderRadius: 14, padding: '18px 22px', textAlign: 'center' }}>
+            <div style={{ fontSize: fs(16), fontWeight: 700, marginBottom: 4 }}>🎉 All caught up!</div>
+            <div style={{ fontSize: fs(13), color: T.soft }}>You've completed all tasks in your queue.</div>
+            <Btn v="primary" onClick={() => setPage('planner')} style={{ marginTop: 12 }}>Generate New Plan</Btn>
+          </div>
+        )}
+
+        {!hasQueue && courses.length > 0 && (
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: '18px 22px', textAlign: 'center' }}>
+            <div style={{ fontSize: fs(16), fontWeight: 700, marginBottom: 4 }}>Ready to plan your studies?</div>
+            <div style={{ fontSize: fs(13), color: T.soft }}>Generate an AI lesson plan to get started.</div>
+            <Btn v="primary" onClick={() => setPage('planner')} style={{ marginTop: 12 }}>Open Study Planner →</Btn>
+          </div>
+        )}
+
+        {/* School profile nudge */}
+        {courses.length > 0 && !data.universityProfile?.name && (
+          <div style={{ padding: '10px 16px', borderRadius: 10, background: `linear-gradient(135deg, ${T.purpleD}, ${T.blueD})`,
+            border: `1px solid ${T.purple}33`, marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: fs(13), fontWeight: 700 }}>Set your school profile</div>
+              <div style={{ fontSize: fs(11), color: T.soft }}>Get personalized study recommendations for your institution.</div>
+            </div>
+            <Btn small v="ghost" onClick={() => setPage('settings')} style={{ flexShrink: 0 }}>Set Up →</Btn>
+          </div>
+        )}
       </div>
 
-      {/* Welcome Back Banner — returning user detection */}
-      {(() => {
-        const daysSinceLastStudy = streak.lastStudyDate ? diffDays(streak.lastStudyDate, todayStr()) : null;
-        if (daysSinceLastStudy !== null && daysSinceLastStudy >= 3) return (
-          <div className="fade" style={{background:`linear-gradient(135deg, ${T.accentD}, ${T.purpleD})`,border:`1.5px solid ${T.accent}55`,borderRadius:14,padding:"18px 22px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
-            <div>
-              <div style={{fontSize:fs(15),fontWeight:700,color:T.text}}>Welcome back!</div>
-              <div style={{fontSize:fs(12),color:T.soft,marginTop:2}}>You've been away {daysSinceLastStudy} days. Your plan may need adjusting.</div>
-            </div>
-            <Btn small v="primary" onClick={()=>setPage("planner")}>Replan from Today {"\u2192"}</Btn>
-          </div>
-        );
-        return null;
-      })()}
+      {/* ── 2. DAILY VITALS ──────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: bp.sm ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 20 }}>
+        {/* Left: Progress rings */}
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 16px',
+          display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}>
+          <Ring pct={todayPct} color={T.accent} label="Hours" value={`${todayHrs}h`} T={T} />
+          <Ring pct={todayTaskPct} color={T.blue} label="Tasks" value={`${todayQueueDone}`} T={T} />
+          <Ring pct={progress.pct} color={T.purple} label="Progress" value={`${progress.pct}%`} T={T} />
+        </div>
 
-      {/* Study Check-in Prompt */}
-      {showCheckin && !(streak.lastStudyDate && diffDays(streak.lastStudyDate, todayStr()) >= 3) && (
-        <div className="fade" style={{background:`linear-gradient(135deg, ${T.purpleD}, ${T.accentD})`,border:`1.5px solid ${T.purple}55`,borderRadius:14,padding:"16px 22px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
-          <div>
-            <div style={{fontSize:fs(14),fontWeight:700,color:T.text}}>Did you study yesterday?</div>
-            <div style={{fontSize:fs(11),color:T.soft}}>Keep your streak alive! Current: {streak.currentStreak} day{streak.currentStreak!==1?"s":""}</div>
+        {/* Right: Week bars + stats */}
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: fs(14), fontWeight: 700 }}>This Week</span>
+            <span style={{ fontSize: fs(13), color: T.accent, fontWeight: 700 }}>{Math.round(weekMins / 60 * 10) / 10}h</span>
           </div>
-          <div style={{display:"flex",gap:8}}>
-            <Btn small v="primary" onClick={()=>logManualSession(true)}>Yes!</Btn>
-            <Btn small v="ghost" onClick={()=>logManualSession(false)}>Not today</Btn>
+          <WeekBars sessions={sessions} T={T} />
+          <div style={{ marginTop: 12 }}>
+            <StudyDots sessions={sessions} T={T} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3. PACE STATUS BANNER ────────────────────────────── */}
+      {hasQueue && progress.daysRemaining != null && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 120, padding: '12px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: fs(22), fontWeight: 800, color: T.text }}>{progress.daysRemaining}</div>
+            <div style={{ fontSize: fs(12), color: T.dim }}>days left</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 120, padding: '12px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: fs(22), fontWeight: 800, color: T.text }}>{progress.dailyNeedHrs}h</div>
+            <div style={{ fontSize: fs(12), color: T.dim }}>needed / day</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 120, padding: '12px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: fs(22), fontWeight: 800, color: T.text }}>{progress.remainingHrs}h</div>
+            <div style={{ fontSize: fs(12), color: T.dim }}>remaining</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 120, padding: '12px 16px', background: T.card, border: `1px solid ${statusColor}44`, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: fs(16), fontWeight: 800, color: statusColor }}>{statusLabel}</div>
+            <div style={{ fontSize: fs(12), color: T.dim }}>SPI: {progress.spi}</div>
           </div>
         </div>
       )}
 
-      {/* School profile nudge — when courses exist but no profile is set */}
-      {courses.length > 0 && !data.universityProfile?.name && (
-        <div className="fade" style={{padding:"12px 18px",borderRadius:10,background:`linear-gradient(135deg, ${T.purpleD}, ${T.blueD})`,border:`1px solid ${T.purple}33`,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-          <div>
-            <div style={{fontSize:fs(12),fontWeight:700,color:T.text}}>Set your school profile</div>
-            <div style={{fontSize:fs(10),color:T.soft}}>Get personalized study recommendations tailored to your institution's grading system and assessment model.</div>
+      {/* ── 4. QUICK ACTIONS ─────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Practice Exam', Icon: Ic.Quiz, page: 'quiz', color: T.orange },
+          { label: 'Calendar', Icon: Ic.IcCal, page: 'calendar', color: T.blue },
+          { label: 'Study Chat', Icon: Ic.Chat, page: 'chat', color: T.purple },
+          { label: 'Weekly Report', Icon: Ic.Report, page: 'report', color: T.accent },
+          { label: 'Study Radio', Icon: Ic.Music, page: 'ambient', color: T.blue },
+        ].map(a => (
+          <button key={a.page} onClick={() => setPage(a.page)} style={{ flex: '1 1 0', minWidth: 90, padding: '12px 8px',
+            background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'border-color .2s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = a.color}
+            onMouseLeave={e => e.currentTarget.style.borderColor = T.border}>
+            <a.Icon s={20} c={a.color} />
+            <span style={{ fontSize: fs(11), color: T.soft, fontWeight: 600 }}>{a.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── 5. COURSE PROGRESS ───────────────────────────────── */}
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 18, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ fontSize: fs(16), fontWeight: 700, margin: 0 }}>Course Progress</h3>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {['all', 'not_started', 'in_progress', 'completed'].map(f => (
+              <button key={f} onClick={() => setFilter(f)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none',
+                fontSize: fs(11), fontWeight: f === filter ? 700 : 400, cursor: 'pointer',
+                background: f === filter ? T.accentD : 'transparent', color: f === filter ? T.accent : T.dim }}>
+                {f === 'all' ? 'All' : f === 'not_started' ? 'Not Started' : f === 'in_progress' ? 'In Progress' : 'Done'}
+              </button>
+            ))}
           </div>
-          <Btn small v="ghost" onClick={()=>setPage("settings")} style={{flexShrink:0}}>Set Up {"\u2192"}</Btn>
         </div>
-      )}
 
-      {/* Customizable Widget Grid */}
-      <WidgetGrid
-        widgets={data.dashboardWidgets}
-        data={data}
-        setData={setData}
-        setPage={setPage}
-        setDate={setDate}
-        Btn={Btn}
-      />
-
-      {/* Plan Health Widget */}
-      {(() => {
-        const lastPlan = (data.planHistory || []).slice(-1)[0];
-        if (!lastPlan) return null;
-        const planId = lastPlan.planId;
-        let done = 0, total = 0, totalMins = 0, doneMins = 0;
-        const today = todayStr();
-        for (const [dt, dayTasks] of Object.entries(data.tasks || {})) {
-          for (const t of safeArr(dayTasks)) {
-            if (t.planId !== planId) continue;
-            total++;
-            const st = parseTime(t.time), et = parseTime(t.endTime);
-            const mins = st && et ? Math.max(0, et.mins - st.mins) : 0;
-            totalMins += mins;
-            if (t.done) { done++; doneMins += mins; }
-          }
-        }
-        if (total === 0) return null;
-        const pct = Math.round((doneMins / totalMins) * 100);
-        const doneHrs = Math.round(doneMins / 60 * 10) / 10;
-        const totalHrs = Math.round(totalMins / 60 * 10) / 10;
-        const remainHrs = Math.round((totalMins - doneMins) / 60 * 10) / 10;
-        // Streak
-        let streak = 0;
-        const allDates = Object.keys(data.tasks || {}).filter(d => d <= today).sort().reverse();
-        for (const dt of allDates) {
-          const dayPlanTasks = safeArr(data.tasks[dt]).filter(t => t.planId === planId);
-          if (dayPlanTasks.length === 0) continue;
-          if (dayPlanTasks.some(t => t.done)) streak++;
-          else break;
-        }
-        return (
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <h3 style={{fontSize:fs(14),fontWeight:700,margin:0}}>Plan Health</h3>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                {streak > 0 && <Badge color={T.accent} bg={T.accentD}>{"\uD83D\uDD25"} {streak}d streak</Badge>}
-                <button onClick={()=>setPage("planner")} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",fontSize:fs(10),fontWeight:600,textDecoration:"underline"}}>View plan {"\u2192"}</button>
-              </div>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:fs(10),color:T.dim,marginBottom:4}}>
-              <span>{doneHrs}h / {totalHrs}h completed</span>
-              <span style={{fontWeight:700,color:pct>=80?T.accent:T.text}}>{pct}%</span>
-            </div>
-            <div style={{height:8,borderRadius:4,background:T.input,overflow:"hidden",marginBottom:8}}>
-              <div style={{height:"100%",width:`${pct}%`,borderRadius:4,background:`linear-gradient(90deg, ${T.accent}, ${T.blue})`,transition:"width .6s"}}/>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <div style={{flex:1,padding:"6px 10px",background:T.input,borderRadius:6,textAlign:"center"}}>
-                <div style={{fontSize:fs(14),fontWeight:700,color:T.text}}>{done}/{total}</div>
-                <div style={{fontSize:fs(9),color:T.dim}}>tasks done</div>
-              </div>
-              <div style={{flex:1,padding:"6px 10px",background:T.input,borderRadius:6,textAlign:"center"}}>
-                <div style={{fontSize:fs(14),fontWeight:700,color:T.accent}}>{remainHrs}h</div>
-                <div style={{fontSize:fs(9),color:T.dim}}>remaining</div>
-              </div>
-              <div style={{flex:1,padding:"6px 10px",background:T.input,borderRadius:6,textAlign:"center"}}>
-                <div style={{fontSize:fs(14),fontWeight:700,color:T.purple}}>{new Date(lastPlan.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
-                <div style={{fontSize:fs(9),color:T.dim}}>started</div>
-              </div>
-            </div>
+        {filtered.length === 0 ? (
+          <div style={{ padding: 20, textAlign: 'center', color: T.dim, fontSize: fs(13) }}>
+            No courses match this filter.{' '}
+            <span style={{ color: T.accent, cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setFilter('all')}>Show all</span>
           </div>
-        );
-      })()}
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {filtered.map(c => {
+              const cp = progress.courseProgress?.[c.courseCode] || {};
+              const totalHrs = Math.round((cp.total || 0) / 60 * 10) / 10;
+              const doneHrs = Math.round((cp.done || 0) / 60 * 10) / 10;
+              const pct = cp.total > 0 ? Math.round(cp.done / cp.total * 100) : 0;
+              const estHrs = c.averageStudyHours || ([0, 20, 35, 50, 70, 100][c.difficulty || 3] || 50);
+              const examDate = c.examDate;
+              const daysToExam = examDate ? Math.max(0, diffDays(todayStr(), examDate)) : null;
 
-      {/* Start Studying Card — next undone plan task today */}
-      {(() => {
-        const todayTasks = safeArr((data.tasks || {})[todayStr()]);
-        const nextTask = todayTasks.find(t => !t.done && t.planId);
-        if (!nextTask) return null;
-        const course = (data.courses || []).find(c => nextTask.title && (nextTask.title.toLowerCase().includes(c.name.toLowerCase().split(" \u2013 ")[0].split(" - ")[0]) || (c.courseCode && nextTask.title.toLowerCase().includes(c.courseCode.toLowerCase()))));
-        return (
-          <div style={{background:`linear-gradient(135deg, ${T.accentD}, ${T.accent}11)`,border:`1.5px solid ${T.accent}44`,borderRadius:12,padding:16,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:14}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:fs(13),fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nextTask.title}</div>
-              <div style={{fontSize:fs(11),color:T.soft,marginTop:3,display:"flex",alignItems:"center",gap:8}}>
-                {nextTask.time && <span>{nextTask.time}{nextTask.endTime ? ` \u2013 ${nextTask.endTime}` : ""}</span>}
-                {course && <Badge color={T.accent} bg={T.accentD}>{course.courseCode || course.name.slice(0,20)}</Badge>}
-              </div>
-            </div>
-            <Btn v="primary" onClick={()=>{setDate(todayStr());setPage("daily")}}>Start Studying {"\u2192"}</Btn>
+              return (
+                <div key={c.id} style={{ background: T.bg2, borderRadius: 10, overflow: 'hidden',
+                  border: `1px solid ${expanded[c.id] ? T.accent + '44' : T.border}`, transition: 'border-color .2s' }}>
+                  <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+                    onClick={() => setExpanded(e => ({ ...e, [c.id]: !e[c.id] }))}>
+                    <div style={{ width: 4, height: 36, borderRadius: 2, background: STATUS_C[c.status] || T.dim, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                        <span style={{ fontSize: fs(14), fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                        <Badge color={STATUS_C[c.status] || T.dim} bg={(STATUS_C[c.status] || T.dim) + '22'}>{STATUS_L[c.status] || c.status}</Badge>
+                        {c.assessmentType && <Badge color={T.dim} bg={T.input}>{c.assessmentType}</Badge>}
+                        {daysToExam != null && daysToExam <= 30 && (
+                          <Badge color={daysToExam <= 7 ? T.red : daysToExam <= 14 ? T.orange : T.blue}
+                            bg={(daysToExam <= 7 ? T.red : daysToExam <= 14 ? T.orange : T.blue) + '22'}>
+                            Exam in {daysToExam}d
+                          </Badge>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, height: 7, borderRadius: 4, background: T.input, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4,
+                            background: pct >= 80 ? T.accent : pct >= 40 ? T.blue : T.orange, transition: 'width .6s' }} />
+                        </div>
+                        <span style={{ fontSize: fs(12), fontWeight: 700, color: pct >= 80 ? T.accent : T.text, minWidth: 40, textAlign: 'right' }}>{pct}%</span>
+                        <span style={{ fontSize: fs(11), color: T.dim, minWidth: 70, textAlign: 'right' }}>{doneHrs}h / {totalHrs || estHrs}h</span>
+                      </div>
+                      <div style={{ fontSize: fs(11), color: T.dim, marginTop: 4, display: 'flex', gap: 10 }}>
+                        <span>{c.credits || 0} CU</span>
+                        <span>{'★'.repeat(c.difficulty || 0)}{'☆'.repeat(5 - (c.difficulty || 0))}</span>
+                        {cp.tasksDone != null && <span>{cp.tasksDone}/{cp.tasks} tasks</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: fs(12), color: T.dim, transition: 'transform .2s', transform: expanded[c.id] ? 'rotate(180deg)' : 'rotate(0)', flexShrink: 0 }}>▼</span>
+                  </div>
+                  {expanded[c.id] && (
+                    <div style={{ padding: '0 16px 14px', borderTop: `1px solid ${T.border}` }}>
+                      <ErrorBoundary><CourseDetail c={c} /></ErrorBoundary>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        );
-      })()}
+        )}
+      </div>
 
-      {/* Collapsible Alert Banners */}
+      {/* ── 6. ALERTS ────────────────────────────────────────── */}
       {(() => {
         const alerts = [];
+        const tasks = data.tasks || {};
+        const today = todayStr();
 
-        // Global Schedule Conflicts
-        if (globalConflicts.totalConflicts > 0) {
-          alerts.push(
-            <div key="conflicts" style={{padding:"12px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,marginBottom:8}}>
-              <div style={{fontSize:fs(11),color:T.red,fontWeight:700,marginBottom:8}}>{'\u26A0\uFE0F'} {globalConflicts.totalConflicts} time overlap{globalConflicts.totalConflicts>1?"s":""} across {globalConflicts.conflictDays} day{globalConflicts.conflictDays>1?"s":""}</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {globalConflicts.dates.slice(0,10).map(cd => (
-                  <button key={cd.date} onClick={()=>{setDate(cd.date);setPage("daily")}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(10),fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                    {new Date(cd.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})} <span style={{opacity:0.7}}>({cd.count})</span>
-                  </button>
-                ))}
-                {globalConflicts.dates.length > 10 && <span style={{fontSize:fs(9),color:T.red,alignSelf:"center"}}>+{globalConflicts.dates.length-10} more days</span>}
-              </div>
-            </div>
-          );
-        }
-
-        // Finish date past term end
-        if (estFinish && data.targetDate && estFinish > data.targetDate) {
-          alerts.push(
-            <div key="finish-past" style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:8}}>
-              {"\ud83d\udea8"} At {hrsPerDay}h/day, estimated finish ({new Date(estFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}) is past your term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}). <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust study plan</span>
-            </div>
-          );
-        }
-
-        // Velocity Warning
-        if (avgHrsPerDay14 > 0 && avgHrsPerDay14 < hrsPerDay) {
-          alerts.push(
-            <div key="velocity" style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:8}}>
-              {'\u26A0\uFE0F'} Your 14-day average ({avgHrsPerDay14}h/day) is below your target ({hrsPerDay}h/day).
-              {estDaysAtPace && ` At current pace, you need ~${estDaysAtPace} days to finish.`}
-              {effectiveDaysLeft!=null && estDaysAtPace && estDaysAtPace > effectiveDaysLeft && <span style={{fontWeight:700}}> That's {estDaysAtPace - effectiveDaysLeft} days past your target completion date.</span>}
-            </div>
-          );
-        }
-
-        // Hours/day config warning
-        if (hrsPerDay < 2 && totalEstHrs > 0) {
-          alerts.push(
-            <div key="low-hours" style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:8}}>
-              {'\u26A0\uFE0F'} Hours/day is set to {hrsPerDay}h {'\u2014'} this is very low. At this pace, {totalEstHrs}h of coursework would take {rawDaysNeeded} study days. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("planner")}>Adjust in Study Planner</span>
-            </div>
-          );
-        }
-
-        // Schedule Coverage
-        if (scheduledHrs > 0 && totalEstHrs > 0 && scheduledHrs < totalEstHrs * 0.9) {
-          alerts.push(
-            <div key="coverage" style={{padding:"10px 14px",borderRadius:10,background:T.blueD,border:`1px solid ${T.blue}33`,fontSize:fs(11),color:T.blue,marginBottom:8}}>
-              {"\ud83d\udcc5"} Your calendar has {scheduledHrs}h of study scheduled but courses need ~{totalEstHrs}h total. {Math.round(scheduledHrs/totalEstHrs*100)}% coverage{lastScheduledDate ? ` \u2014 last scheduled day: ${new Date(lastScheduledDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}` : ""}.
-              {scheduledHrs < totalEstHrs * 0.5 && " Consider regenerating your study plan in Study Planner to fill in the remaining weeks."}
-            </div>
-          );
-        }
-
-        // On Track / Behind indicators
-        const projectedFinish = scheduleFinish || estFinish;
-        if (projectedFinish && effectiveTarget) {
-          const source = scheduleFinish ? "schedule" : "estimate";
-          const finishLabel = new Date(projectedFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
-          if (projectedFinish > effectiveTarget && data.targetDate && projectedFinish <= data.targetDate) {
-            alerts.push(
-              <div key="behind-goal" style={{padding:"10px 14px",borderRadius:10,background:T.orangeD,border:`1px solid ${T.orange}33`,fontSize:fs(11),color:T.orange,marginBottom:8}}>
-                {'\u26A0\uFE0F'} {source==="schedule"?"Schedule runs":"Estimated finish"} through {finishLabel} {'\u2014'} past your target completion but before term end ({new Date(data.targetDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}).
-              </div>
-            );
-          } else if (projectedFinish > (data.targetDate || effectiveTarget)) {
-            alerts.push(
-              <div key="behind-term" style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:8}}>
-                {"\ud83d\udea8"} {source==="schedule"?"Schedule extends":"Estimated finish"} to {finishLabel} {"\u2014"} {diffDays(data.targetDate || effectiveTarget, projectedFinish)} days PAST your term end date! Increase study hours or adjust your plan.
-              </div>
-            );
-          } else if (projectedFinish <= effectiveTarget) {
-            // On track — this is positive, not a warning. Show outside the collapsible.
+        // Global conflicts
+        const futureDatesWithTasks = Object.keys(tasks).filter(d => d >= today).sort();
+        let totalConflicts = 0;
+        const conflictDates = [];
+        for (const d of futureDatesWithTasks) {
+          const dt = safeArr(tasks[d]).sort((a, b) => (parseTime(a.time)?.mins ?? 9999) - (parseTime(b.time)?.mins ?? 9999));
+          let dayConf = 0;
+          for (let i = 0; i < dt.length; i++) {
+            const as = parseTime(dt[i].time), ae = parseTime(dt[i].endTime);
+            if (!as || !ae) continue;
+            for (let j = i + 1; j < dt.length; j++) {
+              const bs = parseTime(dt[j].time), be = parseTime(dt[j].endTime);
+              if (!bs || !be) continue;
+              if (as.mins < be.mins && ae.mins > bs.mins) { totalConflicts++; dayConf++; }
+            }
           }
+          if (dayConf > 0) conflictDates.push({ date: d, count: dayConf });
         }
 
-        // Time Conflict Detection — scan today's tasks
-        const todayTasks = safeArr(tasks[today]).sort((a,b)=>(parseTime(a.time)?.mins??9999)-(parseTime(b.time)?.mins??9999));
-        const overlaps = [];
-        for (let i=0; i<todayTasks.length; i++) {
-          const a = todayTasks[i], as = parseTime(a.time), ae = parseTime(a.endTime);
-          if(!as||!ae) continue;
-          for (let j=i+1; j<todayTasks.length; j++) {
-            const b = todayTasks[j], bs = parseTime(b.time), be = parseTime(b.endTime);
-            if(!bs||!be) continue;
-            if(as.mins < be.mins && ae.mins > bs.mins) overlaps.push({a:a.title, b:b.title, aTime:`${a.time}\u2013${a.endTime}`, bTime:`${b.time}\u2013${b.endTime}`});
-          }
-        }
-        if (overlaps.length > 0) {
-          alerts.push(
-            <div key="today-conflicts" style={{padding:"10px 14px",borderRadius:10,background:T.redD,border:`1px solid ${T.red}33`,fontSize:fs(11),color:T.red,marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                <span style={{fontWeight:700}}>{'\u26A0\uFE0F'} {overlaps.length} time conflict{overlaps.length>1?"s":""} in today{'\u2019'}s schedule</span>
-                <button onClick={()=>{setDate(today);setPage("daily")}} style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${T.red}55`,background:T.red+"22",color:T.red,fontSize:fs(11),fontWeight:600,cursor:"pointer"}}>Fix in Schedule {"\u2192"}</button>
-              </div>
-              {overlaps.slice(0,3).map((o,i) => (
-                <div key={i} style={{fontSize:fs(10),opacity:0.85,marginBottom:2}}>
-                  {o.aTime} "{o.a.slice(0,30)}" overlaps with {o.bTime} "{o.b.slice(0,30)}"
-                </div>
+        if (totalConflicts > 0) alerts.push(
+          <div key="conflicts" style={{ padding: '12px 14px', borderRadius: 10, background: T.redD, border: `1px solid ${T.red}33`, marginBottom: 8 }}>
+            <div style={{ fontSize: fs(12), color: T.red, fontWeight: 700 }}>⚠️ {totalConflicts} time overlap{totalConflicts > 1 ? 's' : ''} across {conflictDates.length} day{conflictDates.length > 1 ? 's' : ''}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+              {conflictDates.slice(0, 5).map(cd => (
+                <button key={cd.date} onClick={() => { setDate(cd.date); setPage('daily'); }} style={{ padding: '5px 10px', borderRadius: 6,
+                  border: `1px solid ${T.red}55`, background: T.red + '22', color: T.red, fontSize: fs(11), fontWeight: 600, cursor: 'pointer' }}>
+                  {new Date(cd.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ({cd.count})
+                </button>
               ))}
-              {overlaps.length > 3 && <div style={{fontSize:fs(9),opacity:0.7}}>+{overlaps.length-3} more conflicts</div>}
+            </div>
+          </div>
+        );
+
+        // Velocity warning
+        const twoWeeksAgo = new Date(); twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+        const recentMins = sessions.filter(s => new Date(s.date + 'T12:00:00') >= twoWeeksAgo).reduce((s, x) => s + (x.mins || 0), 0);
+        const avgHrsPerDay14 = Math.round((recentMins / 60 / 14) * 10) / 10;
+        const hrsPerDay = data.studyHoursPerDay || 4;
+        if (avgHrsPerDay14 > 0 && avgHrsPerDay14 < hrsPerDay * 0.8) {
+          alerts.push(
+            <div key="velocity" style={{ padding: '10px 14px', borderRadius: 10, background: T.orangeD, border: `1px solid ${T.orange}33`, fontSize: fs(12), color: T.orange, marginBottom: 8 }}>
+              ⚠️ Your 14-day average ({avgHrsPerDay14}h/day) is below target ({hrsPerDay}h/day).
             </div>
           );
         }
 
         if (alerts.length === 0) return null;
-
-        const visibleAlerts = alertsExpanded ? alerts : [alerts[0]];
-        const hiddenCount = alerts.length - 1;
-
+        const visible = alertsExpanded ? alerts : [alerts[0]];
         return (
-          <div style={{marginBottom:16}}>
-            {visibleAlerts}
-            {hiddenCount > 0 && !alertsExpanded && (
-              <button onClick={()=>setAlertsExpanded(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 14px",fontSize:fs(11),color:T.soft,cursor:"pointer",fontWeight:600,width:"100%",textAlign:"center",marginTop:2}}>
-                {hiddenCount} more alert{hiddenCount>1?"s":""} {"\u25BC"}
-              </button>
-            )}
-            {alertsExpanded && alerts.length > 1 && (
-              <button onClick={()=>setAlertsExpanded(false)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 14px",fontSize:fs(11),color:T.soft,cursor:"pointer",fontWeight:600,width:"100%",textAlign:"center",marginTop:2}}>
-                Show less {"\u25B2"}
+          <div style={{ marginBottom: 16 }}>
+            {visible}
+            {alerts.length > 1 && (
+              <button onClick={() => setAlertsExpanded(!alertsExpanded)} style={{ background: 'none', border: `1px solid ${T.border}`,
+                borderRadius: 8, padding: '6px 14px', fontSize: fs(12), color: T.soft, cursor: 'pointer', fontWeight: 600, width: '100%', textAlign: 'center', marginTop: 2 }}>
+                {alertsExpanded ? 'Show less ▲' : `${alerts.length - 1} more alert${alerts.length > 2 ? 's' : ''} ▼`}
               </button>
             )}
           </div>
         );
       })()}
 
-      {/* On Track positive indicator — shown outside collapsible */}
-      {(() => {
-        const projectedFinish = scheduleFinish || estFinish;
-        if (!projectedFinish || !effectiveTarget) return null;
-        if (projectedFinish <= effectiveTarget) {
-          const source = scheduleFinish ? "schedule" : "estimate";
-          const finishLabel = new Date(projectedFinish+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
-          return (
-            <div style={{padding:"10px 14px",borderRadius:10,background:T.accentD,border:`1px solid ${T.accent}33`,fontSize:fs(11),color:T.accent,marginBottom:16}}>
-              {'\u2705'} On track! {source==="schedule"?"Last scheduled study day":"Estimated finish"}: {finishLabel} {'\u2014'} {diffDays(projectedFinish, effectiveTarget)} days before your target completion date.
+      {/* ── 7. EXAM READINESS ────────────────────────────────── */}
+      {examHistory.length > 0 && (() => {
+        const byCourse = {};
+        examHistory.forEach(e => {
+          if (!byCourse[e.courseId]) byCourse[e.courseId] = [];
+          byCourse[e.courseId].push(e);
+        });
+        const entries = Object.entries(byCourse).map(([cid, exams]) => {
+          const course = courses.find(c => c.id === cid);
+          const sorted = exams.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+          const latest = sorted[sorted.length - 1];
+          const trend = sorted.length >= 2 ? (latest.score > sorted[sorted.length - 2].score ? 'up' : latest.score < sorted[sorted.length - 2].score ? 'down' : 'flat') : null;
+          return { course, sorted, latest, trend, cid };
+        });
+        if (entries.length === 0) return null;
+        return (
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 18, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: fs(16), fontWeight: 700, margin: 0 }}>Exam Readiness</h3>
+              <Btn small v="ghost" onClick={() => setPage('quiz')}>Take Practice Exam →</Btn>
             </div>
-          );
-        }
-        return null;
-      })()}
-
-      {/* Per-Course Study Time */}
-      {Object.keys(courseHours).length > 0 && (
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-          <h3 style={{fontSize:fs(14),fontWeight:700,marginBottom:10}}>{"\ud83d\udcda"} Study Time by Course</h3>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {Object.entries(courseHours).sort((a,b)=>b[1]-a[1]).map(([name,mins]) => {
-              const course = courses.find(c => c.name === name);
-              const estHrs = course?.averageStudyHours || 0;
-              const studied = Math.round(mins/6)/10;
-              const pct = estHrs > 0 ? Math.min(100, Math.round((studied/estHrs)*100)) : 0;
+            {entries.map(({ course, sorted, latest, trend, cid }) => {
+              const pct = Math.round((latest.score || 0) * 100);
               return (
-                <div key={name} style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:fs(11),color:T.text,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{name}</span>
-                  <div style={{width:80,height:6,borderRadius:3,background:T.bg2,overflow:"hidden",flexShrink:0}}>
-                    <div style={{width:`${pct}%`,height:"100%",background:pct>=80?T.accent:pct>=40?T.blue:T.orange,borderRadius:3}}/>
+                <div key={cid} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: fs(13), fontWeight: 600, minWidth: 60 }}>{course?.courseCode || 'Unknown'}</span>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {sorted.slice(-4).map((e, i) => (
+                      <span key={i} style={{ fontSize: fs(12), color: Math.round(e.score * 100) >= 80 ? T.accent : T.dim, fontWeight: 600 }}>
+                        {Math.round(e.score * 100)}%{i < sorted.slice(-4).length - 1 ? ' →' : ''}
+                      </span>
+                    ))}
                   </div>
-                  <span style={{fontSize:fs(10),color:T.accent,fontWeight:600,minWidth:35,textAlign:"right"}}>{studied}h</span>
-                  {estHrs>0&&<span style={{fontSize:fs(9),color:T.dim,minWidth:30}}>/{estHrs}h</span>}
+                  <Badge color={trend === 'up' ? T.accent : trend === 'down' ? T.orange : T.dim}
+                    bg={(trend === 'up' ? T.accent : trend === 'down' ? T.orange : T.dim) + '22'}>
+                    {trend === 'up' ? '▲ Improving' : trend === 'down' ? '▼ Declining' : 'Stable'}
+                  </Badge>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {/* Course List (compact read-only) */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <h3 style={{fontSize:fs(14),fontWeight:700}}>Courses ({courses.length})</h3>
-        <div style={{display:"flex",gap:4}}>
-          {["all","not_started","in_progress","completed"].map(f => (
-            <button key={f} onClick={()=>setFilter(f)} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:fs(10),fontWeight:f===filter?700:400,cursor:"pointer",
-              background:f===filter?T.accentD:"transparent",color:f===filter?T.accent:T.dim}}>
-              {f==="all"?"All":f==="not_started"?"Not Started":f==="in_progress"?"In Progress":"Done"}
-            </button>
-          ))}
+      {/* ── 8. STREAK + ACHIEVEMENTS ─────────────────────────── */}
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Ic.IcFire s={26} />
+          <div>
+            <div style={{ fontSize: fs(16), fontWeight: 800 }}>{streak.currentStreak}-day streak</div>
+            <div style={{ fontSize: fs(12), color: T.dim }}>Best: {streak.longestStreak} days</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: fs(16), fontWeight: 800, color: T.accent }}>{Math.round(sessions.reduce((s, x) => s + (x.mins || 0), 0) / 60)}h</div>
+            <div style={{ fontSize: fs(11), color: T.dim }}>total studied</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: fs(16), fontWeight: 800, color: T.purple }}>{completedCourses.length}</div>
+            <div style={{ fontSize: fs(11), color: T.dim }}>courses done</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: fs(16), fontWeight: 800, color: T.blue }}>{doneCU}</div>
+            <div style={{ fontSize: fs(11), color: T.dim }}>CU earned</div>
+          </div>
         </div>
       </div>
-      {filtered.length === 0 ? (
-        <div style={{padding:"30px",textAlign:"center",color:T.dim,fontSize:fs(13)}}>
-          {courses.length===0?"No courses yet. ":"No courses match this filter. "}
-          <span style={{color:T.accent,cursor:"pointer",textDecoration:"underline"}} onClick={()=>{if(courses.length===0)setPage("courses");else setFilter("all")}}>{courses.length===0?"Go to My Courses":"Show all"}</span>
-        </div>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:16}}>
-          {filtered.map((c,i)=>(
-            <div key={c.id} className="sf-card" style={{background:T.card,border:`1px solid ${expanded[c.id]?T.accent+"44":T.border}`,borderRadius:10,overflow:"hidden"}}>
-              <div style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setExpanded(e=>({...e,[c.id]:!e[c.id]}))}>
-                <div style={{width:4,height:32,borderRadius:2,background:STATUS_C[c.status]||T.dim,flexShrink:0}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                    <span style={{fontSize:fs(12),fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-                    <Badge color={STATUS_C[c.status]||T.dim} bg={(STATUS_C[c.status]||T.dim)+"22"}>{STATUS_L[c.status]||c.status}</Badge>
-                    {hasCtx(c)?<Badge color={T.accent} bg={T.accentD}>ENRICHED</Badge>:c.status!=="completed"&&<Badge color={T.orange} bg={T.orangeD}>NEEDS ENRICHMENT</Badge>}
-                  </div>
-                  <div style={{fontSize:fs(10),color:T.dim,display:"flex",gap:8,marginTop:2}}>
-                    <span>{c.credits||0} CU</span>
-                    <span>{"\u2605".repeat(c.difficulty||0)}{"\u2606".repeat(5-(c.difficulty||0))}</span>
-                    {c.assessmentType&&<span>{c.assessmentType}</span>}
-                    {courseHours[c.name]&&<span style={{color:T.accent}}>{"\u23F1"} {Math.round((courseHours[c.name]||0)/6)/10}h studied</span>}
-                  </div>
-                </div>
-                <span style={{fontSize:fs(10),color:T.dim,transition:"transform .2s",transform:expanded[c.id]?"rotate(180deg)":"rotate(0)",flexShrink:0}}>{"\u25BC"}</span>
-              </div>
-              {expanded[c.id] && (
-                <div style={{padding:"0 14px 12px",borderTop:`1px solid ${T.border}`}}>
-                  <ErrorBoundary><CourseDetail c={c}/></ErrorBoundary>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+
     </div>
   );
 };

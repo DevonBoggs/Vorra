@@ -45,10 +45,157 @@ const AmbientPage = () => {
   const [discLastQ, setDiscLastQ] = useState("");
   const [discNextPage, setDiscNextPage] = useState("");
   const [discType, setDiscType] = useState("video");
+  const [discSort, setDiscSort] = useState("relevance"); // relevance | views | date | duration
 
   // Chat panel state (live chat only, comments removed)
   const [chatPanel, setChatPanel] = useState(true);
   const [chatAvail, setChatAvail] = useState(true);
+
+  // ── Quick Focus + Ambient Mixer + Sleep Timer state ──
+  const [sleepTimer, setSleepTimer] = useState(0); // minutes remaining, 0 = off
+  const [sleepTimerActive, setSleepTimerActive] = useState(false);
+  const sleepRef = useRef(null);
+  const [showMixer, setShowMixer] = useState(false);
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [savePresetName, setSavePresetName] = useState('');
+  const [savePresetEmoji, setSavePresetEmoji] = useState('🎵');
+
+  // Custom presets — stored in localStorage, loaded into state
+  const customPresetsKey = 'vorra-audio-presets';
+  const [customPresets, setCustomPresets] = useState(() => { try { return JSON.parse(localStorage.getItem(customPresetsKey) || '[]'); } catch (_) { return []; } });
+  const saveCustomPresets = (presets) => { setCustomPresets(presets); try { localStorage.setItem(customPresetsKey, JSON.stringify(presets)); } catch (_) {} };
+
+  // Icon lookup for presets
+  const PRESET_ICON_LIST = [
+    { id: 'rain', label: 'Rain' }, { id: 'cafe', label: 'Cafe' }, { id: 'fire', label: 'Fire' },
+    { id: 'ocean', label: 'Ocean' }, { id: 'forest', label: 'Forest' }, { id: 'moon', label: 'Moon' },
+    { id: 'piano', label: 'Piano' }, { id: 'headphones', label: 'Music' }, { id: 'brain', label: 'Focus' },
+    { id: 'vinyl', label: 'Vinyl' }, { id: 'guitar', label: 'Guitar' }, { id: 'thunder', label: 'Storm' },
+    { id: 'star', label: 'Star' }, { id: 'wave', label: 'Wave' }, { id: 'sunset', label: 'Sunset' },
+    { id: 'space', label: 'Space' }, { id: 'gamepad', label: 'Gaming' }, { id: 'zen', label: 'Zen' },
+    { id: 'bird', label: 'Birds' }, { id: 'sleep', label: 'Sleep' }, { id: 'noise', label: 'Noise' },
+    { id: 'crystal', label: 'Crystal' }, { id: 'violin', label: 'Violin' }, { id: 'mix', label: 'Mix' },
+  ];
+  const renderPresetIcon = (iconId, size = 24, color) => {
+    const IconComp = Ic.PRESET_ICONS?.[iconId];
+    return IconComp ? <IconComp s={size} c={color || T.accent} /> : <span style={{ fontSize: size }}>{iconId || '🎵'}</span>;
+  };
+
+  // Presets — each uses real YouTube streams (multi-stacked up to 4)
+  const FOCUS_PRESETS = [
+    { id: 'lofi-rain', name: 'Lo-fi + Rain', icon: 'rain', streams: [
+      { vid: 'jfKfPfyJRdk', name: 'Lofi Girl', cat: 'lofi-beats', type: 'live' },
+      { vid: 'mPZkdNFkNps', name: 'Rain on Window', cat: 'ambient-rain', type: 'video' },
+    ], volumes: { 0: 30, 1: 7 } },
+    { id: 'cafe-study', name: 'Cafe Study', icon: 'cafe', streams: [
+      YT_STREAMS.find(s => s.cat === 'jazz-cafe'),
+      YT_STREAMS.find(s => s.cat === 'ambient-cafe'),
+    ].filter(Boolean) },
+    { id: 'brown-noise', name: 'Brown Noise', icon: 'noise', streams: [
+      YT_STREAMS.find(s => s.cat === 'noise-brown'),
+    ].filter(Boolean) },
+    { id: 'cozy-night', name: 'Cozy Rainy Night', icon: 'moon', streams: [
+      { vid: 'zW5wpJY1rgQ', name: 'Cozy Rainy Night Jazz', cat: 'jazz-night', type: 'video' },
+      { vid: 'mPZkdNFkNps', name: 'Rain on Window', cat: 'ambient-rain', type: 'video' },
+    ], volumes: { 0: 30, 1: 7 } },
+    { id: 'nature', name: 'Nature Focus', icon: 'forest', streams: [
+      { vid: '43olDlb-qFA', name: 'Nature Sounds', cat: 'ambient-nature', type: 'video' },
+      { vid: 'bN6PNAN3ZCc', name: 'Forest Birds', cat: 'ambient-nature', type: 'video' },
+      { vid: 'jKtofppPJFk', name: 'Forest River Stream', cat: 'ambient-river', type: 'live' },
+    ], volumes: { 0: 20, 1: 7, 2: 7 } },
+  ];
+
+  const AMBIENT_SOUNDS = [
+    { id: 'rain', name: 'Rain', emoji: '🌧️' },
+    { id: 'storm', name: 'Storm', emoji: '⛈️' },
+    { id: 'cafe', name: 'Cafe', emoji: '☕' },
+    { id: 'fire', name: 'Fire', emoji: '🔥' },
+    { id: 'ocean', name: 'Ocean', emoji: '🌊' },
+    { id: 'forest', name: 'Forest', emoji: '🌲' },
+    { id: 'keys', name: 'Piano', emoji: '🎹' },
+    { id: 'typing', name: 'Typing', emoji: '⌨️' },
+    { id: 'night', name: 'Night', emoji: '🌙' },
+    { id: 'brown', name: 'Brown Noise', emoji: '🟤' },
+  ];
+
+  // Last-used audio state (persist to localStorage)
+  const lastPresetKey = 'vorra-last-audio-preset';
+  const saveLastPreset = (presetId) => { try { localStorage.setItem(lastPresetKey, presetId); } catch (_) {} };
+  const getLastPreset = () => { try { return localStorage.getItem(lastPresetKey); } catch (_) { return null; } };
+
+  // Sleep timer tick
+  useEffect(() => {
+    if (sleepRef.current) clearInterval(sleepRef.current);
+    if (!sleepTimerActive || sleepTimer <= 0) return;
+    sleepRef.current = setInterval(() => {
+      setSleepTimer(prev => {
+        if (prev <= 1) {
+          // Time's up — fade out all audio
+          audioStop();
+          ytClearAll();
+          setAmbientLayers({});
+          setSleepTimerActive(false);
+          toast('Sleep timer: audio stopped', 'info');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 60000); // tick every minute
+    return () => clearInterval(sleepRef.current);
+  }, [sleepTimerActive, sleepTimer]);
+
+  // Apply a quick focus preset
+  const applyPreset = (preset) => {
+    // Stop current audio
+    audioStop();
+    ytClearAll();
+    // Start streams after brief delay (ytClearAll has a 300ms fade animation)
+    setTimeout(() => {
+      const streams = preset.streams || [];
+      streams.forEach((s, i) => {
+        setTimeout(() => {
+          ytAddStream(s);
+          // Apply custom volumes if specified
+          if (preset.volumes && preset.volumes[i] !== undefined) {
+            setTimeout(() => ytSetVolume(preset.volumes[i], s.vid), 500);
+          }
+        }, i * 300); // stagger stream additions
+      });
+      // Fallback to SomaFM if specified
+      if (preset.soma) audioPlay(preset.soma.id);
+    }, 400);
+    saveLastPreset(preset.id);
+    toast(`${preset.emoji} ${preset.name}`, 'success');
+  };
+
+  // Resume last preset
+  const resumeLast = () => {
+    const lastId = getLastPreset();
+    const preset = FOCUS_PRESETS.find(p => p.id === lastId);
+    if (preset) applyPreset(preset);
+    else if (audio.playing) audioPauseToggle();
+    else toast('No previous session to resume', 'info');
+  };
+
+  // Toggle ambient layer
+  const toggleLayer = (id) => {
+    setAmbientLayers(prev => {
+      const next = { ...prev };
+      if (next[id] !== undefined) delete next[id];
+      else next[id] = 0.5; // default 50% volume
+      return next;
+    });
+  };
+  const setLayerVolume = (id, vol) => {
+    setAmbientLayers(prev => ({ ...prev, [id]: vol }));
+  };
+
+  // Time of day for gradient
+  const hour = new Date().getHours();
+  const todGradient = hour >= 6 && hour < 12 ? `linear-gradient(180deg, #0f1a2a 0%, ${T.bg} 30%)`
+    : hour >= 12 && hour < 17 ? `linear-gradient(180deg, #0d1520 0%, ${T.bg} 30%)`
+    : hour >= 17 && hour < 21 ? `linear-gradient(180deg, #1a0d2e 0%, ${T.bg} 30%)`
+    : `linear-gradient(180deg, #0a0a1a 0%, ${T.bg} 30%)`;
 
   // Update chat availability when active stream changes
   useEffect(() => {
@@ -97,6 +244,7 @@ const AmbientPage = () => {
         const views = parseInt(it.statistics?.viewCount || 0);
         const viewStr = views > 1000000 ? (views/1000000).toFixed(1)+'M' : views > 1000 ? Math.round(views/1000)+'K' : views > 0 ? String(views) : '';
         const pub = it.snippet?.publishedAt ? new Date(it.snippet.publishedAt).getFullYear() : '';
+        const durationSec = match ? (parseInt(match[1] || 0) * 3600 + parseInt(match[2] || 0) * 60 + parseInt(match[3] || 0)) : 0;
         return {
           vid: it.id, title: it.snippet?.title || 'Untitled',
           channel: it.snippet?.channelTitle || '',
@@ -104,10 +252,20 @@ const AmbientPage = () => {
           duration: durStr, views: viewStr ? viewStr + ' views' : '',
           published: pub ? String(pub) : '',
           isLive: it.snippet?.liveBroadcastContent === 'live',
+          // Raw values for sorting
+          viewCount: views,
+          publishedAt: it.snippet?.publishedAt || '',
+          durationSec,
         };
       });
 
-      setDiscResults(prev => pageToken ? [...prev, ...results] : results);
+      setDiscResults(prev => {
+        if (!pageToken) return results;
+        // Deduplicate by vid when loading more
+        const existing = new Set(prev.map(r => r.vid));
+        const newOnly = results.filter(r => !existing.has(r.vid));
+        return [...prev, ...newOnly];
+      });
       setDiscNextPage(data.nextPageToken || '');
     } catch(e) {
       toast("Search failed: " + e.message, "warn");
@@ -160,7 +318,13 @@ const AmbientPage = () => {
     const q = ytSearch.trim().toLowerCase();
     ytBase = ytBase.filter(s => s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q) || (ytStats[s.vid]?.title||'').toLowerCase().includes(q));
   }
-  const ytLiveUnsorted = ytBase.filter(s => !ytHealth[s.vid] || ytHealth[s.vid].ok);
+  // Dedup by video ID — prevent duplicate streams from showing
+  const seenVids = new Set();
+  const ytLiveUnsorted = ytBase.filter(s => {
+    if (seenVids.has(s.vid)) return false;
+    seenVids.add(s.vid);
+    return !ytHealth[s.vid] || ytHealth[s.vid].ok;
+  });
   const ytLive = [...ytLiveUnsorted].sort((a,b) => {
     if (ytSort === "viewers") return (ytStats[b.vid]?.viewers||0) - (ytStats[a.vid]?.viewers||0) || (b.pop||3)-(a.pop||3);
     if (ytSort === "views") return (ytStats[b.vid]?.views||0) - (ytStats[a.vid]?.views||0) || (b.pop||3)-(a.pop||3);
@@ -196,35 +360,156 @@ const AmbientPage = () => {
   }, [ytStreams.length]);
 
   return (
-    <div className="fade">
-      {/* Header + tabs inline */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+    <div className="fade" style={{ background: todGradient, minHeight: '100%', margin: '-16px -20px', padding: '16px 20px' }}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
           <Ic.IcMusic s={22} c={T.accent}/>
           <h1 style={{fontSize:fs(22),fontWeight:800,background:`linear-gradient(135deg,${T.accent},${T.blue},${T.purple})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Study Radio</h1>
         </div>
-        {/* Health check progress bar */}
-        {checkProgress.active && (
-          <div style={{marginBottom:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-              <Ic.Spin s={12}/><span style={{fontSize:fs(10),color:T.soft}}>{checkProgress.phase} ({checkProgress.done}/{checkProgress.total})</span>
+        {/* Sleep timer */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {sleepTimerActive && <Badge color={T.purple} bg={T.purpleD}>{sleepTimer}m left</Badge>}
+          <select value={sleepTimerActive ? sleepTimer : 0} onChange={e => {
+            const mins = Number(e.target.value);
+            if (mins > 0) { setSleepTimer(mins); setSleepTimerActive(true); toast(`Sleep timer: ${mins} minutes`, 'info'); }
+            else { setSleepTimerActive(false); setSleepTimer(0); }
+          }} style={{ padding: '5px 10px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: fs(10) }}>
+            <option value={0}>Sleep timer: Off</option>
+            <option value={30}>30 min</option>
+            <option value={60}>1 hour</option>
+            <option value={90}>1.5 hours</option>
+            <option value={120}>2 hours</option>
+            <option value={180}>3 hours</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ═══ QUICK FOCUS ═══ */}
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+        <div style={{ fontSize: fs(13), fontWeight: 700, color: T.text, marginBottom: 10 }}>Quick Focus</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+          {[...FOCUS_PRESETS, ...customPresets].map(p => (
+            <div key={p.id} style={{ position: 'relative' }}
+              onContextMenu={p.custom ? (e) => {
+                e.preventDefault();
+                if (confirm(`Delete preset "${p.name}"?`)) {
+                  saveCustomPresets(customPresets.filter(cp => cp.id !== p.id));
+                  toast('Preset deleted', 'info');
+                }
+              } : undefined}>
+              <button onClick={() => applyPreset(p)}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.boxShadow = `0 4px 12px ${T.accent}22`; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = 'none'; }}
+                style={{ width: '100%', padding: '16px 10px 12px', borderRadius: 10, border: `1.5px solid ${T.border}`, background: T.input, cursor: 'pointer', textAlign: 'center', transition: 'all .15s' }}>
+                <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center' }}>{renderPresetIcon(p.icon || p.emoji, 28)}</div>
+                <div style={{ fontSize: fs(11), fontWeight: 600, color: T.text, lineHeight: 1.2 }}>{p.name}</div>
+                {p.streams && <div style={{ fontSize: fs(8), color: T.dim, marginTop: 3 }}>{p.streams.length} stream{p.streams.length !== 1 ? 's' : ''}</div>}
+              </button>
+              {p.custom && (
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`Delete preset "${p.name}"?`)) {
+                    saveCustomPresets(customPresets.filter(cp => cp.id !== p.id));
+                    toast('Preset deleted', 'info');
+                  }
+                }}
+                  style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', border: `1px solid ${T.red}44`, background: T.card, color: T.red, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, opacity: 0 }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '0'}
+                  title="Delete preset (right-click also works)">×</button>
+              )}
             </div>
-            <div style={{height:3,background:T.input,borderRadius:2,overflow:"hidden"}}>
-              <div style={{height:"100%",background:`linear-gradient(90deg,${T.accent},${T.blue})`,borderRadius:2,width:`${checkProgress.total?Math.round(checkProgress.done/checkProgress.total*100):0}%`,transition:"width .3s ease"}}/>
+          ))}
+          {/* + Save Current card */}
+          <button onClick={() => {
+            if (ytStreams.length === 0 && !audio.playing) { toast('Play some streams first, then save as a preset', 'info'); return; }
+            setShowSavePreset(true); setSavePresetName(''); setSavePresetEmoji('🎵');
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.dim; }}
+            style={{ width: '100%', padding: '14px 10px', borderRadius: 10, border: `2px dashed ${T.border}`, background: 'transparent', cursor: 'pointer', textAlign: 'center', transition: 'all .15s', color: T.dim }}>
+            <div style={{ fontSize: 22, marginBottom: 6, lineHeight: 1 }}>+</div>
+            <div style={{ fontSize: fs(10), fontWeight: 600, lineHeight: 1.2 }}>Save Current</div>
+          </button>
+        </div>
+        {/* Inline save preset form */}
+        {showSavePreset && (
+          <div style={{ marginTop: 10, padding: '14px 16px', background: T.panel, border: `1.5px solid ${T.accent}44`, borderRadius: 12 }}>
+            <div style={{ fontSize: fs(11), fontWeight: 600, color: T.text, marginBottom: 8 }}>Choose an icon:</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+              {PRESET_ICON_LIST.map(ic => (
+                <button key={ic.id} onClick={() => setSavePresetEmoji(ic.id)} title={ic.label} style={{
+                  width: 36, height: 36, borderRadius: 8, border: `1.5px solid ${savePresetEmoji === ic.id ? T.accent : 'transparent'}`,
+                  background: savePresetEmoji === ic.id ? T.accentD : T.input, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .1s',
+                }}>{renderPresetIcon(ic.id, 20, savePresetEmoji === ic.id ? T.accent : T.soft)}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: T.accentD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {renderPresetIcon(savePresetEmoji, 24, T.accent)}
+              </div>
+              <input value={savePresetName} onChange={e => setSavePresetName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && savePresetName.trim()) { document.getElementById('vorra-save-preset-btn')?.click(); } }}
+                placeholder="Preset name..." autoFocus
+                style={{ flex: 1, padding: '8px 12px', fontSize: fs(12), borderRadius: 8, border: `1px solid ${T.border}`, background: T.input, color: T.text }} />
+              <Btn small onClick={() => {
+                if (!savePresetName.trim()) { toast('Enter a name', 'info'); return; }
+                const newPreset = {
+                  id: `custom_${Date.now()}`, name: savePresetName.trim(), icon: savePresetEmoji, custom: true,
+                  streams: ytStreams.map(s => ({ vid: s.vid, name: s.name, cat: s.cat || '', type: s.type || 'video' })),
+                  volumes: Object.fromEntries(ytStreams.map((s, i) => [i, s.volume ?? 100])),
+                  soma: audio.playing ? audio.stationId : null,
+                };
+                saveCustomPresets([...customPresets, newPreset]);
+                setShowSavePreset(false);
+                toast(`Preset "${savePresetName.trim()}" saved!`, 'success');
+              }} id="vorra-save-preset-btn">Save</Btn>
+              <Btn small v="ghost" onClick={() => setShowSavePreset(false)}>Cancel</Btn>
             </div>
           </div>
         )}
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <button className="sf-btn sf-tab" onClick={()=>setMainTab("youtube")} style={{padding:"8px 18px",borderRadius:10,cursor:"pointer",fontSize:fs(13),fontWeight:700,border:`2px solid ${mainTab==="youtube"?"#ff4444":T.border}`,background:mainTab==="youtube"?"#ff444418":T.card,color:mainTab==="youtube"?"#ff4444":T.soft,display:"flex",alignItems:"center",gap:7}}>
-            <Ic.YT s={18} c={mainTab==="youtube"?"#ff4444":T.dim}/> YouTube ({ALL_YT.length})
-          </button>
-          <button className="sf-btn sf-tab" onClick={()=>setMainTab("discover")} style={{padding:"8px 18px",borderRadius:10,cursor:"pointer",fontSize:fs(13),fontWeight:700,border:`2px solid ${mainTab==="discover"?T.purple:T.border}`,background:mainTab==="discover"?T.purpleD:T.card,color:mainTab==="discover"?T.purple:T.soft,display:"flex",alignItems:"center",gap:7}}>
-            <Ic.IcSearch s={18} c={mainTab==="discover"?T.purple:T.dim}/> Discover
-          </button>
-          <button className="sf-btn sf-tab" onClick={()=>setMainTab("somafm")} style={{padding:"8px 18px",borderRadius:10,cursor:"pointer",fontSize:fs(13),fontWeight:700,border:`2px solid ${mainTab==="somafm"?T.accent:T.border}`,background:mainTab==="somafm"?T.accentD:T.card,color:mainTab==="somafm"?T.accent:T.soft,display:"flex",alignItems:"center",gap:7}}>
-            <Ic.Radio s={18} c={mainTab==="somafm"?T.accent:T.dim}/> SomaFM ({STATIONS.length})
-          </button>
+      </div>
+
+      {/* Ambient mixer removed — presets use multi-stream stacking instead */}
+
+      {/* Health check progress */}
+      {checkProgress.active && (
+        <div style={{marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+            <Ic.Spin s={12}/><span style={{fontSize:fs(10),color:T.soft}}>{checkProgress.phase} ({checkProgress.done}/{checkProgress.total})</span>
+          </div>
+          <div style={{height:3,background:T.input,borderRadius:2,overflow:"hidden"}}>
+            <div style={{height:"100%",background:`linear-gradient(90deg,${T.accent},${T.blue})`,borderRadius:2,width:`${checkProgress.total?Math.round(checkProgress.done/checkProgress.total*100):0}%`,transition:"width .3s ease"}}/>
+          </div>
         </div>
+      )}
+
+      {/* ═══ SOURCE TABS ═══ */}
+      <div style={{ display: 'flex', background: T.panel, borderRadius: 12, padding: 3, marginBottom: 12, border: `1px solid ${T.border}` }}>
+        {[
+          { key: 'youtube', label: 'YouTube', count: ALL_YT.length, icon: Ic.YT, color: '#ff4444' },
+          { key: 'discover', label: 'Discover', icon: Ic.IcSearch, color: T.purple },
+          { key: 'somafm', label: 'SomaFM', count: STATIONS.length, icon: Ic.Radio, color: T.accent },
+        ].map(tab => {
+          const active = mainTab === tab.key;
+          return (
+            <button key={tab.key} onClick={() => setMainTab(tab.key)} style={{
+              flex: 1, padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+              background: active ? `${tab.color}18` : 'transparent',
+              color: active ? tab.color : T.soft,
+              fontSize: fs(13), fontWeight: active ? 700 : 500,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'all .15s',
+              boxShadow: active ? `inset 0 0 0 1.5px ${tab.color}44` : 'none',
+            }}>
+              <tab.icon s={16} c={active ? tab.color : T.dim} />
+              {tab.label}
+              {tab.count && <span style={{ fontSize: fs(10), opacity: 0.7 }}>({tab.count})</span>}
+            </button>
+          );
+        })}
       </div>
       {/*  YouTube Tab  */}
       {/* YouTube Tab — stays mounted to preserve audio */}
@@ -245,17 +530,24 @@ const AmbientPage = () => {
                   <iframe data-yt-slot={i} src={`http://127.0.0.1:19532/yt-proxy?v=${s.vid}`}
                     style={{width:"100%",height:ytStreams.length<=2?380:220,border:"none",display:"block",transition:"height .3s ease"}}
                     allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowFullScreen/>
-                  <div style={{padding:"6px 10px",display:"flex",alignItems:"center",justifyContent:"space-between",background:T.card}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flex:1,overflow:"hidden"}}>
+                  <div style={{padding:"6px 10px",display:"flex",alignItems:"center",justifyContent:"space-between",background:T.card,gap:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flex:1,overflow:"hidden",minWidth:0}}>
                       <span style={{fontSize:fs(8),fontWeight:700,padding:"1px 5px",borderRadius:3,background:detType==='live'?'#e00':'#555',color:'#fff',flexShrink:0}}>{detType==='live'?'LIVE':'VIDEO'}</span>
                       <span style={{fontSize:fs(11),fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
                     </div>
-                    {st && <div style={{display:"flex",gap:6,fontSize:fs(9),color:T.dim,flexShrink:0,marginRight:6}}>
+                    {/* Per-stream volume slider */}
+                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,minWidth:100}}>
+                      <span style={{fontSize:fs(9),color:T.dim}}>🔊</span>
+                      <input type="range" min={0} max={100} value={s.volume ?? 100}
+                        onChange={e => ytSetVolume(Number(e.target.value), s.vid)}
+                        style={{width:70,accentColor:T.accent,height:4,cursor:"pointer"}}/>
+                      <span style={{fontSize:fs(9),color:T.dim,minWidth:24,textAlign:"right",fontFamily:"'JetBrains Mono',monospace"}}>{s.volume ?? 100}</span>
+                    </div>
+                    {st && <div style={{display:"flex",gap:6,fontSize:fs(9),color:T.dim,flexShrink:0}}>
                       {st.viewers>0&&<span>👁 {fmtNum(st.viewers)}</span>}
                       {st.views>0&&<span>▶ {fmtNum(st.views)}</span>}
-                      {st.channelTitle&&<span style={{color:T.soft}}>{st.channelTitle.slice(0,15)}</span>}
                     </div>}
-                    <div style={{display:"flex",gap:4}}>
+                    <div style={{display:"flex",gap:4,flexShrink:0}}>
                       <button onClick={()=>ytPauseToggle(s.vid)} style={{background:"none",border:"none",color:s.paused?T.accent:T.soft,cursor:"pointer",padding:"4px"}}>{s.paused?<Ic.IcPlay s={18} c={T.accent}/>:<Ic.IcPause s={18} c={T.soft}/>}</button>
                       <button onClick={()=>ytRemoveStream(s.vid)} style={{background:"none",border:"none",color:T.red,cursor:"pointer",padding:"4px"}}><Ic.IcX s={18} c={T.red}/></button>
                     </div>
@@ -310,41 +602,82 @@ const AmbientPage = () => {
           </div>
         )}
 
-        {/* Filter + Sort bar */}
+        {/* ═══ FILTER BAR ═══ */}
         <div style={{marginBottom:12}}>
-          {/* Parent categories */}
-          <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-            <button className="sf-chip" onClick={()=>setYtFilterCat("all")} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${ytFilterCat==="all"?T.accent:T.border}`,background:ytFilterCat==="all"?T.accentD:T.input,color:ytFilterCat==="all"?T.accent:T.soft}}>All ({ALL_YT.length})</button>
-            <button className="sf-chip" onClick={()=>setYtFilterCat("live")} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:700,border:`1.5px solid ${ytFilterCat==="live"?"#e00":T.border}`,background:ytFilterCat==="live"?"#e0001a":T.input,color:ytFilterCat==="live"?"#fff":"#e00",display:"flex",alignItems:"center",gap:4}}><Ic.IcLive s={12}/> Live{liveNowCount>0?` (${liveNowCount})`:""}</button>
-            <button className="sf-chip" onClick={()=>setYtFilterCat("custom")} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${ytFilterCat==="custom"?T.blue:T.border}`,background:ytFilterCat==="custom"?`${T.blue}22`:T.input,color:ytFilterCat==="custom"?T.blue:T.soft,display:"flex",alignItems:"center",gap:4}}><Ic.IcUser s={12} c={ytFilterCat==="custom"?T.blue:T.soft}/> My{customStreams.length>0?` (${customStreams.length})`:""}</button>
+          {/* Row 1: Categories */}
+          <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+            {[
+              { key: 'all', label: `All (${ALL_YT.length})`, color: T.accent },
+              { key: 'live', label: `Live${liveNowCount > 0 ? ` (${liveNowCount})` : ''}`, color: '#e00', icon: Ic.IcLive },
+              { key: 'custom', label: `My${customStreams.length > 0 ? ` (${customStreams.length})` : ''}`, color: T.blue, icon: Ic.IcUser },
+            ].map(f => {
+              const active = ytFilterCat === f.key;
+              return (
+                <button key={f.key} onClick={() => setYtFilterCat(f.key)} style={{
+                  padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: fs(11), fontWeight: 600,
+                  border: `1.5px solid ${active ? f.color : T.border}`,
+                  background: active ? `${f.color}18` : T.card,
+                  color: active ? f.color : T.soft,
+                  display: 'flex', alignItems: 'center', gap: 5, transition: 'all .12s',
+                }}>{f.icon && <f.icon s={12} c={active ? f.color : T.dim} />}{f.label}</button>
+              );
+            })}
+            <div style={{ width: 1, height: 20, background: T.border, margin: '0 2px' }} />
             {YT_PARENT_CATS.map(p => {
               const count = YT_STREAMS.filter(s => s.cat.startsWith(p.key)).length;
-              const active = ytFilterCat === p.key || ytFilterCat.startsWith(p.key+"-");
-              const YtIcons = {lofi:Ic.YtLofi,jazz:Ic.YtJazz,classical:Ic.YtClassical,ambient:Ic.YtAmbient,synth:Ic.YtSynth,focus:Ic.YtFocus,chill:Ic.YtChill,sleep:Ic.CatAmbient,world:Ic.CatWorld};
+              const active = ytFilterCat === p.key || ytFilterCat.startsWith(p.key + "-");
+              const YtIcons = { lofi: Ic.YtLofi, jazz: Ic.YtJazz, classical: Ic.YtClassical, ambient: Ic.YtAmbient, synth: Ic.YtSynth, focus: Ic.YtFocus, chill: Ic.YtChill, asmr: Ic.IcMusic, sleep: Ic.CatAmbient, world: Ic.CatWorld };
               const CatIcon = YtIcons[p.key];
-              return <button key={p.key} onClick={()=>setYtFilterCat(p.key)} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${active?T.accent:T.border}`,background:active?T.accentD:T.input,color:active?T.accent:T.soft,display:"flex",alignItems:"center",gap:4}}>{CatIcon?<CatIcon s={14}/>:null} {p.label} ({count})</button>;
+              return (
+                <button key={p.key} onClick={() => setYtFilterCat(p.key)} style={{
+                  padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: fs(11), fontWeight: active ? 700 : 500,
+                  border: `1.5px solid ${active ? T.accent : 'transparent'}`,
+                  background: active ? T.accentD : 'transparent',
+                  color: active ? T.accent : T.soft,
+                  display: 'flex', alignItems: 'center', gap: 4, transition: 'all .12s',
+                }}>{CatIcon && <CatIcon s={13} />}{p.label} <span style={{ fontSize: fs(9), opacity: 0.6 }}>({count})</span></button>
+              );
             })}
-            <div style={{flex:1}}/>
-            {/* [UI] Sort buttons with SVG icons */}
-            <div style={{display:"flex",gap:2,background:T.input,borderRadius:6,padding:2,border:`1px solid ${T.border}`}}>
+          </div>
+          {/* Row 2: Sort + Search + Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', background: T.panel, borderRadius: 8, padding: 2, border: `1px solid ${T.border}` }}>
               {[
-                {k:"popular",icon:Ic.IcCrown,label:"Popular"},
-                {k:"viewers",icon:Ic.IcEye,label:"Viewers"},
-                {k:"views",icon:Ic.IcChart,label:"Views"},
-                {k:"name",icon:Ic.IcAZ,label:"A-Z"},
-                {k:"category",icon:Ic.IcGrid,label:"Cat"},
-                {k:"duration",icon:Ic.Clock,label:"Length"},
+                { k: "popular", icon: Ic.IcCrown, label: "Popular" },
+                { k: "viewers", icon: Ic.IcEye, label: "Viewers" },
+                { k: "views", icon: Ic.IcChart, label: "Views" },
+                { k: "name", icon: Ic.IcAZ, label: "A-Z" },
+                { k: "category", icon: Ic.IcGrid, label: "Cat" },
+                { k: "duration", icon: Ic.Clock, label: "Length" },
               ].map(o => (
-                <button key={o.k} onClick={()=>setYtSort(o.k)} title={o.label} style={{padding:"3px 7px",borderRadius:4,border:"none",cursor:"pointer",background:ytSort===o.k?T.accentD:"transparent",color:ytSort===o.k?T.accent:T.dim,display:"flex",alignItems:"center",gap:3,fontSize:fs(9),fontWeight:ytSort===o.k?600:400,transition:"all .15s"}}>
-                  <o.icon s={11} c={ytSort===o.k?T.accent:T.dim}/> {o.label}
-                </button>
+                <button key={o.k} onClick={() => setYtSort(o.k)} title={o.label} style={{
+                  padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  background: ytSort === o.k ? T.accentD : 'transparent',
+                  color: ytSort === o.k ? T.accent : T.dim,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  fontSize: fs(10), fontWeight: ytSort === o.k ? 700 : 500, transition: 'all .12s',
+                }}><o.icon s={12} c={ytSort === o.k ? T.accent : T.dim} />{o.label}</button>
               ))}
             </div>
-            <button onClick={()=>setShowFavs(!showFavs)} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${showFavs?T.yellow:T.border}`,background:showFavs?`${T.yellow}22`:T.input,color:showFavs?T.yellow:T.dim}}>{showFavs?"★ Favs":"☆ Favs"}</button>
-            <button onClick={()=>setShowCustomInput(p=>!p)} style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:fs(11),fontWeight:600,border:`1.5px solid ${showCustomInput?T.blue:T.border}`,background:showCustomInput?`${T.blue}22`:T.input,color:showCustomInput?T.blue:T.dim,display:"flex",alignItems:"center",gap:4}}><Ic.IcPlus s={11} c={showCustomInput?T.blue:T.dim}/> Add URL</button>
-            <div style={{flex:1}}/>
-            <input value={ytSearch} onChange={e=>setYtSearch(e.target.value)} placeholder="Search streams..." style={{width:160,padding:"4px 10px",fontSize:fs(11),borderRadius:6,border:`1px solid ${T.border}`,background:T.input,color:T.text}}/>
-            {ytSearch && <button onClick={()=>setYtSearch("")} style={{background:"none",border:"none",color:T.dim,cursor:"pointer",fontSize:fs(11)}}>Clear</button>}
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setShowFavs(!showFavs)} style={{
+              padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: fs(11), fontWeight: 600,
+              border: `1.5px solid ${showFavs ? '#f59e0b' : T.border}`,
+              background: showFavs ? '#f59e0b18' : T.card, color: showFavs ? '#f59e0b' : T.dim,
+              transition: 'all .12s',
+            }}>{showFavs ? "★ Favorites" : "☆ Favorites"}</button>
+            <button onClick={() => setShowCustomInput(p => !p)} style={{
+              padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: fs(11), fontWeight: 600,
+              border: `1.5px solid ${showCustomInput ? T.blue : T.border}`,
+              background: showCustomInput ? `${T.blue}18` : T.card, color: showCustomInput ? T.blue : T.dim,
+              display: 'flex', alignItems: 'center', gap: 4, transition: 'all .12s',
+            }}><Ic.IcPlus s={11} c={showCustomInput ? T.blue : T.dim} /> Add URL</button>
+            <div style={{ position: 'relative' }}>
+              <input value={ytSearch} onChange={e => setYtSearch(e.target.value)} placeholder="Search streams..."
+                style={{ width: 180, padding: '7px 12px 7px 32px', fontSize: fs(11), borderRadius: 8, border: `1px solid ${T.border}`, background: T.input, color: T.text }} />
+              <Ic.IcSearch s={12} c={T.dim} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+              {ytSearch && <button onClick={() => setYtSearch("")} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: T.dim, cursor: 'pointer' }}><Ic.X s={10} /></button>}
+            </div>
           </div>
           {/* Subcategories — show when a parent is selected */}
           {ytFilterCat !== "all" && (() => {
@@ -617,9 +950,34 @@ const AmbientPage = () => {
           {/* Results grid */}
           {discResults.length > 0 && (
             <div>
-              <div style={{fontSize:fs(11),color:T.dim,marginBottom:8}}>{discResults.length} results for "{discLastQ}"</div>
+              {/* Sort/filter bar for results */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: fs(11), color: T.dim }}>{discResults.length} results for "{discLastQ}"</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: fs(10), color: T.dim }}>Sort:</span>
+                <div style={{ display: 'flex', background: T.panel, borderRadius: 7, padding: 2, border: `1px solid ${T.border}` }}>
+                  {[
+                    { k: 'relevance', label: 'Relevant' },
+                    { k: 'views', label: 'Most Viewed' },
+                    { k: 'date', label: 'Newest' },
+                    { k: 'duration', label: 'Longest' },
+                  ].map(s => (
+                    <button key={s.k} onClick={() => setDiscSort(s.k)} style={{
+                      padding: '4px 10px', borderRadius: 5, border: 'none', cursor: 'pointer',
+                      background: discSort === s.k ? T.purpleD : 'transparent',
+                      color: discSort === s.k ? T.purple : T.dim,
+                      fontSize: fs(10), fontWeight: discSort === s.k ? 700 : 500, transition: 'all .12s',
+                    }}>{s.label}</button>
+                  ))}
+                </div>
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
-                {discResults.map(r => {
+                {[...discResults].sort((a, b) => {
+                  if (discSort === 'views') return (parseInt(b.viewCount || '0') || 0) - (parseInt(a.viewCount || '0') || 0);
+                  if (discSort === 'date') return (b.publishedAt || '').localeCompare(a.publishedAt || '');
+                  if (discSort === 'duration') return (b.durationSec || 0) - (a.durationSec || 0);
+                  return 0; // relevance = original order from YouTube API
+                }).map(r => {
                   const alreadyInLib = YT_STREAMS.some(s=>s.vid===r.vid) || customStreams.some(s=>s.vid===r.vid);
                   const isPlaying = ytStreams.some(s=>s.vid===r.vid);
                   return (

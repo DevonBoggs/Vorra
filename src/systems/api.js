@@ -10,7 +10,7 @@ import { repairTruncatedJSON } from "../utils/jsonRepair.js";
 import { deriveStartTime as deriveStartTimeFromAvailability, getEffectiveHours as getEffectiveHoursFromConfig } from "../utils/availabilityCalc.js";
 
 // ── Constants ────────────────────────────────────────────────────────
-export const APP_VERSION = "7.4.0";
+export const APP_VERSION = "8.0.0";
 
 // Strip API keys from error messages to prevent accidental leakage
 function sanitizeErrorText(text) {
@@ -20,6 +20,13 @@ function sanitizeErrorText(text) {
     .replace(/sk-[a-zA-Z0-9_-]{20,}/g, 'sk-***')
     .replace(/gsk_[a-zA-Z0-9_-]{20,}/g, 'gsk_***')
     .replace(/xai-[a-zA-Z0-9_-]{20,}/g, 'xai-***')
+    .replace(/AIza[a-zA-Z0-9_-]{20,}/g, 'AIza***')
+    .replace(/nano-[a-zA-Z0-9_-]{20,}/g, 'nano-***')
+    .replace(/csk-[a-zA-Z0-9_-]{20,}/g, 'csk-***')
+    .replace(/cpk-[a-zA-Z0-9_-]{20,}/g, 'cpk-***')
+    .replace(/fw_[a-zA-Z0-9_-]{20,}/g, 'fw_***')
+    .replace(/pplx-[a-zA-Z0-9_-]{20,}/g, 'pplx-***')
+    .replace(/shuttle-[a-zA-Z0-9_-]{20,}/g, 'shuttle-***')
     .replace(/Bearer\s+[a-zA-Z0-9_-]{20,}/gi, 'Bearer ***')
     .slice(0, 200);
 }
@@ -267,8 +274,15 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
       return { text: fallbackText || "(Model returned no message)", toolCalls: [], stopReason: "stop" };
     }
     let text = msg.content || "";
-    // Strip <think>...</think> blocks from thinking models
+    // Extract and preserve <think>...</think> blocks, also check reasoning_content field
+    let thinking = '';
+    const thinkMatches = text.match(/<think>([\s\S]*?)<\/think>/g);
+    if (thinkMatches) {
+      thinking = thinkMatches.map(m => m.replace(/<\/?think>/g, '').trim()).join('\n\n');
+    }
     text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    // Some models put reasoning in a separate field (e.g. DeepSeek, Qwen)
+    if (!thinking && msg.reasoning_content) thinking = msg.reasoning_content;
     const finishReason = data.choices?.[0]?.finish_reason;
     if (finishReason === "length") {
       dlog('warn','api','Response was TRUNCATED (finish_reason=length). Increase max_tokens or simplify the request.');
@@ -294,7 +308,7 @@ export async function callAIWithTools(profile, systemPrompt, messages, imageData
       }
     });
     bgLog({ type: 'text', content: `🔍 Parsed: ${text.length} chars text, ${toolCalls.length} tool calls, finish=${finishReason}${msg.content ? '' : ' (no content)'}${toolCalls.length > 0 ? ` [${toolCalls.map(tc => `${tc.name}(${Math.round(JSON.stringify(tc.input).length/1024*10)/10}KB)`).join(', ')}]` : ''}` });
-    return { text, toolCalls, stopReason: finishReason };
+    return { text, toolCalls, stopReason: finishReason, thinking };
   }
 }
 
@@ -408,13 +422,15 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
   const STREAM_READ_TIMEOUT_MS = 90000; // 90s — if no data arrives for this long, assume stalled
 
   try {
+    // Reusable timeout — one timer, reset on each chunk (prevents thousands of dangling timers)
+    let streamTimeoutId = null;
+    const createStreamTimeout = () => new Promise((_, reject) => {
+      if (streamTimeoutId) clearTimeout(streamTimeoutId);
+      streamTimeoutId = setTimeout(() => reject(new Error('Stream read timeout — no data received for 90s. The provider may not support streaming tool calls.')), STREAM_READ_TIMEOUT_MS);
+    });
     while (true) {
-      // Race reader.read() against a timeout to prevent indefinite hangs
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Stream read timeout — no data received for 90s. The provider may not support streaming tool calls.')), STREAM_READ_TIMEOUT_MS)
-      );
-      const { done, value } = await Promise.race([reader.read(), timeoutPromise]);
-      if (done) break;
+      const { done, value } = await Promise.race([reader.read(), createStreamTimeout()]);
+      if (done) { clearTimeout(streamTimeoutId); break; }
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split("\n");
@@ -481,6 +497,7 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
       }
     }
   } catch (e) {
+    clearTimeout(streamTimeoutId);
     dlog('error','api',`Stream read error: ${e.message}`);
     try { reader.cancel(); } catch(_) {}
     // If we timed out with very little data, fall back to non-streaming
@@ -491,7 +508,10 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
     }
   }
 
-  // Parse accumulated tool calls
+  // Parse accumulated tool calls — extract thinking content
+  let thinking = '';
+  const thinkMatches = fullText.match(/<think>([\s\S]*?)<\/think>/g);
+  if (thinkMatches) thinking = thinkMatches.map(m => m.replace(/<\/?think>/g, '').trim()).join('\n\n');
   const text = fullText.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
   dlog('debug','api',`Stream raw tool data: ${JSON.stringify(Object.fromEntries(Object.entries(toolCallMap).map(([k,v])=>[k,{name:v.name,id:v.id,argsLen:v.arguments.length,argsPreview:v.arguments.slice(0,200)}])))}`);
   const toolCalls = Object.values(toolCallMap).map(tc => {
@@ -502,11 +522,11 @@ export async function callAIStream(profile, systemPrompt, messages, imageData = 
     return { id: tc.id, name: tc.name, input };
   }).filter(tc => tc.name);
 
-  dlog('api','api',`Stream complete: ${text.length} chars, ${toolCalls.length} tools, stop=${stopReason}`);
+  dlog('api','api',`Stream complete: ${text.length} chars, ${toolCalls.length} tools, stop=${stopReason}${thinking ? `, thinking: ${thinking.length} chars` : ''}`);
   bgLog({ type: 'text', content: `🔍 Stream: ${text.length} chars text, ${toolCalls.length} tool calls, stop=${stopReason}${text.length === 0 && toolCalls.length === 0 ? ' ⚠️ EMPTY RESPONSE' : ''}${toolCalls.length > 0 ? ` [${toolCalls.map(tc => `${tc.name}(${Math.round(JSON.stringify(tc.input).length/1024*10)/10}KB)`).join(', ')}]` : ''}` });
   if (stopReason === "length") dlog('warn','api','Stream was TRUNCATED (stop=length)');
 
-  return { text, toolCalls, stopReason };
+  return { text, toolCalls, stopReason, thinking };
 }
 
 // Continue conversation after tool execution (send tool results back)
@@ -569,19 +589,34 @@ export async function continueAfterTools(profile, systemPrompt, messages, toolCa
     return { text, toolCalls:moreCalls, stopReason:data.stop_reason };
   } else {
     const msg = data.choices?.[0]?.message;
-    if (!msg) return { text:"(no response)", toolCalls:[], stopReason:"stop" };
-    let text = (msg.content||"").replace(/<think>[\s\S]*?<\/think>/g,'').trim();
+    if (!msg) return { text:"(no response)", toolCalls:[], stopReason:"stop", thinking:'' };
+    const rawContent = msg.content || "";
+    let thinking = '';
+    const thinkM = rawContent.match(/<think>([\s\S]*?)<\/think>/g);
+    if (thinkM) thinking = thinkM.map(m => m.replace(/<\/?think>/g, '').trim()).join('\n\n');
+    if (!thinking && msg.reasoning_content) thinking = msg.reasoning_content;
+    let text = rawContent.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
     const moreCalls = safeArr(msg.tool_calls).map(tc => {
       try { return { id:tc.id, name:tc.function.name, input: typeof tc.function?.arguments==='string'?JSON.parse(tc.function.arguments):(tc.function?.arguments||{}) }; }
       catch(e) { return { id:tc.id, name:tc.function?.name||'unknown', input:{} }; }
     });
-    return { text, toolCalls:moreCalls, stopReason:data.choices?.[0]?.finish_reason };
+    return { text, toolCalls:moreCalls, stopReason:data.choices?.[0]?.finish_reason, thinking };
   }
 }
 
 // ----------------------------------------------------------------------
 // SYSTEM PROMPT (deep context)
 // ----------------------------------------------------------------------
+// Slim one-line summary for non-selected courses (saves ~500-800 tokens per course)
+export function fmtCtxSlim(c, idx, creditLabel = 'credits') {
+  let s = `${idx+1}. ${c.name} (${c.courseCode || ''}, ${c.credits||0} ${creditLabel}, ${STATUS_L[c.status]||c.status}, diff ${c.difficulty||3}/5)`;
+  if (c.assessmentType) s += ` [${c.assessmentType}]`;
+  if (c.averageStudyHours) s += ` ~${c.averageStudyHours}h`;
+  if (c.examDate) s += ` | Exam: ${c.examDate}`;
+  return s;
+}
+
+// Full enrichment context for the selected/focused course
 export function fmtCtx(c, idx, creditLabel = 'credits') {
   let s = `${idx+1}. ${c.name} (${c.credits||0} ${creditLabel}, ${STATUS_L[c.status]||c.status}, diff ${c.difficulty||3}/5)`;
   if (c.assessmentType) s += ` [${c.assessmentType}]`;
@@ -589,7 +624,7 @@ export function fmtCtx(c, idx, creditLabel = 'credits') {
   if (safeArr(c.competencies).length>0) s += `\n     Competencies: ${safeArr(c.competencies).map(x=>`${x.code||''} ${x.title} (${x.weight||'?'})`).join('; ')}`;
   if (safeArr(c.topicBreakdown).length>0) s += `\n     Topics: ${safeArr(c.topicBreakdown).map(t=>`${t.topic} [${t.weight}]`).join('; ')}`;
   if (safeArr(c.knownFocusAreas).length>0) s += `\n     Focus: ${safeArr(c.knownFocusAreas).join('; ')}`;
-  if (safeArr(c.examTips).length>0) s += `\n     Tips: ${safeArr(c.examTips).slice(0,3).join('; ')}`;
+  if (safeArr(c.examTips).length>0) s += `\n     Tips: ${safeArr(c.examTips).join('; ')}`;
   if (c.averageStudyHours) s += `\n     ~${c.averageStudyHours}h avg`;
   if (c.passRate) s += ` | ${c.passRate}`;
   if (c.preAssessmentScore != null) s += `\n     Pre-assessment: ${c.preAssessmentScore}%`;
@@ -599,6 +634,42 @@ export function fmtCtx(c, idx, creditLabel = 'credits') {
   if (safeArr(c.hardestConcepts).length>0) s += `\n     Hardest: ${safeArr(c.hardestConcepts).join('; ')}`;
   if (safeArr(c.studyOrder).length>0) s += `\n     Study order: ${safeArr(c.studyOrder).join(' → ')}`;
   if (c.examDate) s += `\n     Exam date: ${c.examDate}`;
+  if (safeArr(c.learningObjectives).length>0) s += `\n     Objectives: ${safeArr(c.learningObjectives).join('; ')}`;
+  if (safeArr(c.keyTermsAndConcepts).length>0) s += `\n     Key terms: ${safeArr(c.keyTermsAndConcepts).map(t => typeof t === 'object' ? `${t.term}${t.definition ? ': '+t.definition : ''}` : t).join(', ')}`;
+  if (safeArr(c.commonMistakes).length>0) s += `\n     Common mistakes: ${safeArr(c.commonMistakes).join('; ')}`;
+  if (safeArr(c.mnemonics).length>0) s += `\n     Mnemonics: ${safeArr(c.mnemonics).map(m => typeof m === 'object' ? `${m.concept||m.term||'?'}: ${m.mnemonic||m.aid||'?'}` : String(m)).join('; ')}`;
+  if (safeArr(c.instructorTips).length>0) s += `\n     Instructor tips: ${safeArr(c.instructorTips).map(t => typeof t === 'object' ? (t.tip || t.text || JSON.stringify(t)) : String(t)).join('; ')}`;
+  if (safeArr(c.communityInsights).length>0) s += `\n     Community insights: ${safeArr(c.communityInsights).map(t => typeof t === 'object' ? (t.insight || t.text || JSON.stringify(t)) : String(t)).join('; ')}`;
+  if (safeArr(c.officialResources).length>0) s += `\n     Resources: ${safeArr(c.officialResources).map(r => typeof r === 'object' ? `${r.name||r.title||'?'}${r.url ? ' ('+r.url+')' : ''}` : String(r)).join('; ')}`;
+  if (safeArr(c.recommendedExternal).length>0) s += `\n     External resources: ${safeArr(c.recommendedExternal).map(r => typeof r === 'object' ? `${r.name||r.title||'?'}${r.url ? ' ('+r.url+')' : ''}` : String(r)).join('; ')}`;
+  if (c.studyGuideNotes) s += `\n     Study guide: ${typeof c.studyGuideNotes === 'string' ? c.studyGuideNotes : typeof c.studyGuideNotes === 'object' ? JSON.stringify(c.studyGuideNotes) : ''}`;
+  if (safeArr(c.weeklyMilestones).length>0) s += `\n     Milestones: ${safeArr(c.weeklyMilestones).map(m => typeof m === 'object' ? `Wk${m.week||'?'}: ${m.goals||m.goal||m.description||'?'}` : String(m)).join('; ')}`;
+  if (c.timeAllocation) s += `\n     Time allocation: ${Array.isArray(c.timeAllocation) ? c.timeAllocation.map(t => typeof t === 'object' ? `${t.topic||'?'}: ${t.percentage||t.hours||'?'}${typeof t.percentage==='number'?'%':''}` : String(t)).join(', ') : typeof c.timeAllocation === 'string' ? c.timeAllocation : ''}`;
+  if (c.practiceTestNotes) s += `\n     Practice test notes: ${typeof c.practiceTestNotes === 'string' ? c.practiceTestNotes : safeArr(c.practiceTestNotes).map(n => typeof n === 'object' ? (n.note || n.text || JSON.stringify(n)) : String(n)).join('; ')}`;
+  if (c.oaDetails && typeof c.oaDetails === 'object' && Object.keys(c.oaDetails).length > 0) {
+    const oa = c.oaDetails;
+    const parts = [];
+    if (oa.questionCount) parts.push(`${oa.questionCount} questions`);
+    if (oa.timeLimit) parts.push(String(oa.timeLimit).match(/\d+\s*(h|m|min)/i) ? oa.timeLimit : `${oa.timeLimit} min`);
+    if (oa.passingScore) parts.push(`passing: ${String(oa.passingScore).replace(/%+$/, '')}%`);
+    if (oa.format) parts.push(oa.format);
+    if (oa.proctoring) parts.push(oa.proctoring);
+    if (parts.length > 0) s += `\n     OA details: ${parts.join(', ')}`;
+  } else if (c.oaDetails && typeof c.oaDetails === 'string') { s += `\n     OA details: ${c.oaDetails}`; }
+  if (c.paDetails && typeof c.paDetails === 'object' && (c.paDetails.taskDescription || c.paDetails.rubricSummary || c.paDetails.submissionFormat)) {
+    const pa = c.paDetails;
+    const parts = [];
+    if (pa.taskDescription) parts.push(pa.taskDescription);
+    if (pa.rubricSummary) parts.push(`Rubric: ${pa.rubricSummary}`);
+    if (pa.submissionFormat) parts.push(`Format: ${pa.submissionFormat}`);
+    s += `\n     PA details: ${parts.join(' | ')}`;
+  } else if (c.paDetails && typeof c.paDetails === 'string') { s += `\n     PA details: ${c.paDetails}`; }
+  if (c.personalConfidence != null && c.personalConfidence !== '' && !(typeof c.personalConfidence === 'object' && Object.keys(c.personalConfidence).length === 0)) {
+    s += `\n     Confidence: ${typeof c.personalConfidence === 'object' ? (c.personalConfidence.level || c.personalConfidence.score || '') : c.personalConfidence}/5`;
+  }
+  if (safeArr(c.attemptHistory).length>0) s += `\n     Attempts: ${safeArr(c.attemptHistory).map(a => `${a.date||'?'}: ${a.result||'?'}`).join('; ')}`;
+  if (safeArr(c.prerequisites).length>0) s += `\n     Prerequisites: ${safeArr(c.prerequisites).join(', ')}`;
+  if (safeArr(c.relatedCourses).length>0) s += `\n     Related: ${safeArr(c.relatedCourses).join(', ')}`;
   if (c.topics) s += `\n     Topics: ${c.topics}`;
   if (c.notes) s += `\n     Notes: ${c.notes}`;
   return s;
@@ -682,7 +753,7 @@ export function universityContextBlock(profile) {
   return block;
 }
 
-export function buildSystemPrompt(data, ctx = "") {
+export function buildSystemPrompt(data, ctx = "", selectedCourseId = null) {
   const courses = data.courses || [];
   const active = courses.filter(c => c.status !== "completed");
   const done = courses.filter(c => c.status === "completed");
@@ -694,7 +765,11 @@ export function buildSystemPrompt(data, ctx = "") {
   const uniLabel = uniObj?.shortName || uniObj?.name || (typeof uniObj === 'string' && uniObj ? uniObj : 'their university');
   const creditLabel = uniObj?.creditUnitLabel || uniObj?.creditUnit || 'credits';
 
-  const activeStr = active.length > 0 ? active.map((c,i) => fmtCtx(c,i,creditLabel)).join("\n\n") : "No remaining courses.";
+  // Full enrichment for selected course (or #1 priority if none selected), slim for others
+  const activeStr = active.length > 0 ? active.map((c, i) => {
+    const isSelected = selectedCourseId ? c.id === selectedCourseId : i === 0;
+    return isSelected ? fmtCtx(c, i, creditLabel) : fmtCtxSlim(c, i, creditLabel);
+  }).join("\n\n") : "No remaining courses.";
   const doneStr = done.length > 0 ? done.map(c => `  ✅ ${c.name} (${c.credits} ${creditLabel})`).join("\n") : "None completed yet.";
 
   const exDates = safeArr(data.exceptionDates);
@@ -710,19 +785,28 @@ export function buildSystemPrompt(data, ctx = "") {
     ? deriveStartTimeFromAvailability(data.plannerConfig)
     : (data.studyStartTime || '08:00');
 
-  // Calculate estimates for context
-  const totalEstHours = active.reduce((s, c) => s + (c.averageStudyHours > 0 ? c.averageStudyHours : ([0,20,35,50,70,100][c.difficulty||3]||50)), 0);
-  const rawDays = Math.ceil(totalEstHours / hrsPerDay);
+  // Calculate estimates — prefer queue totals (actual generated plan) over course estimates (rough)
+  const queue = data.taskQueue || [];
+  const queueStudyTasks = queue.filter(t => t.category !== 'break');
+  const queueTotalMins = queueStudyTasks.reduce((s, t) => s + (t.estimatedMins || 60), 0);
+  const queueDoneMins = queueStudyTasks.filter(t => t.done).reduce((s, t) => s + (t.actualMins || t.estimatedMins || 60), 0);
+  const queueRemainingHrs = Math.round((queueTotalMins - queueDoneMins) / 60 * 10) / 10;
+  const courseEstHours = active.reduce((s, c) => s + (c.averageStudyHours > 0 ? c.averageStudyHours : ([0,20,35,50,70,100][c.difficulty||3]||50)), 0);
+  // Use queue hours if plan exists, otherwise fall back to course estimates
+  const totalEstHours = queue.length > 0 ? queueRemainingHrs : courseEstHours;
+  const rawDays = hrsPerDay > 0 ? Math.ceil(totalEstHours / hrsPerDay) : 0;
 
   return `You are Vorra v${APP_VERSION}, an AI study & life planner and tutor for a student${uniObj ? ` at ${uniLabel}` : ""}.
 Today: ${fmtDateLong(todayStr())}.
 
 TOOLS AVAILABLE (always use tools for actions, never raw JSON):
-- add_tasks: Schedule time-blocked tasks on specific dates
+- add_tasks: Add tasks to the student's calendar for a specific date (for non-plan items like appointments, reminders)
 - add_courses: Add courses with deep context (deduplicates automatically)
 - update_courses: Update course status/details by name match
 - enrich_course_context: Generate comprehensive assessment intelligence for courses
-- generate_study_plan: Create multi-day calendar with concrete study tasks
+- create_lesson_plan: Create a structured lesson plan for a course (WHAT to learn, in what order, with units and topics) — this is the PRIMARY tool for study planning. The lesson plan is converted to an ordered task queue that the student works through at their own pace.
+
+STUDY SYSTEM: Vorra uses a queue-based study model. The AI generates a lesson plan per course (via create_lesson_plan), which is converted into an ordered task queue. The student completes tasks in order at their own pace — tasks are NOT assigned to specific calendar dates. The Daily Planner shows the next N tasks from the queue based on available study hours. Do NOT use generate_study_plan or create_schedule_outline — these are legacy tools.
 
 COURSE STUDY ORDER (user-prioritized, #1 = do first):
 ${activeStr}
@@ -732,7 +816,7 @@ ${doneStr}
 
 DEGREE STATS:
 - Total: ${totalCU} ${creditLabel} | Completed: ${doneCU} ${creditLabel} | Remaining: ${remainCU} ${creditLabel} (${active.length} courses)
-- Est. total study hours remaining: ~${totalEstHours}h (at current pace: ~${rawDays} study days)
+- Est. study hours remaining: ~${totalEstHours}h${queue.length > 0 ? ` (from ${queueStudyTasks.length} tasks in queue)` : ' (course estimates)'} — ~${rawDays} study days at current pace
 - Study hours/day: ${hrsPerDay}h
 - Study start: ${startDate} at ${derivedStartTime} | Target completion: ${earlyFinishDate || "Not set"} | Term end: ${data.targetDate || "Not set"}
 - Exception dates (no studying): ${(() => {

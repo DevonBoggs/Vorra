@@ -1,4 +1,4 @@
-// Vorra v7.3.0 — AI-powered study & life planner
+// Vorra v8.0.0 — AI-powered study & life planner
 // Restructured App Shell — imports from extracted modules
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -138,7 +138,8 @@ function useCssInjection(T) {
 .sf-station:hover{transform:translateY(-3px);box-shadow:0 8px 30px rgba(0,0,0,.3);border-color:${T.accent}55 !important}
 .sf-station:active{transform:translateY(0)}
 .sf-station-playing{animation:pulse 2s infinite}
-.sf-nav:hover{background:${T.cardH} !important;transform:translateX(2px)}
+.sf-nav:hover{background:${T.cardH} !important}
+.sf-nav:hover+.sf-nav-tip{opacity:1 !important}
 .sf-nav{transition:all .15s ease !important}
 .sf-glow{animation:glow 2s ease-in-out infinite}
 .sf-yt-card{transition:transform .25s cubic-bezier(.4,0,.2,1),box-shadow .25s ease,border-color .25s ease,opacity .3s ease}
@@ -226,6 +227,15 @@ export default function App() {
   const focus = useFocus();
   const favs = useFavs();
 
+  // Tick for sidebar exam generation/active exam elapsed timer
+  const [, setGenTick] = useState(0);
+  useEffect(() => {
+    if (data.examGenerating || data.activeExam) {
+      const id = setInterval(() => setGenTick(t => t + 1), 1000);
+      return () => clearInterval(id);
+    }
+  }, [!!data.examGenerating, !!data.activeExam]);
+
   // First-run onboarding wizard (replaces standalone AI disclaimer)
   const [showOnboarding, setShowOnboarding] = useState(() => !data.onboardingComplete && !localStorage.getItem('vorra-ai-ack'));
 
@@ -235,7 +245,7 @@ export default function App() {
   // Sidebar resize handler
   useEffect(() => {
     const onMove = e => { if (!resizing.current) return; const w = Math.max(180, Math.min(360, e.clientX)); setSideW(w); };
-    const onUp = () => { resizing.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+    const onUp = () => { resizing.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; if (sideRef.current) sideRef.current.style.transition = ''; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
@@ -287,7 +297,7 @@ export default function App() {
     if (data.theme && data.theme !== getThemeName()) {
       setThemeGlobal(data.theme);
     }
-    if (data.fontScale) { setFontScale(data.fontScale); }
+    setFontScale(data.fontScale || 115); // 115% default for readability
   }, [data.theme, data.fontScale]);
 
   // Track recent pages for command palette
@@ -389,148 +399,216 @@ export default function App() {
         <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmdAction} courses={data.courses || []} recentPages={recentPages} data={data} />
 
         {/* ══ SIDEBAR ══════════════════════════════════════════════ */}
-        <aside ref={sideRef} style={{ width: sideCollapsed ? 56 : sideW, minWidth: sideCollapsed ? 56 : 180, maxWidth: 360, height: "100vh", background: `linear-gradient(180deg, ${T.panel}, ${T.bg2})`, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, position: "relative", transition: sideCollapsed ? "none" : "width .2s cubic-bezier(.4,0,.2,1)" }}>
-          <div className="fade" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
+        <aside ref={sideRef} style={{ width: sideCollapsed ? 56 : sideW, minWidth: sideCollapsed ? 56 : 180, maxWidth: 360, height: "100vh", background: `linear-gradient(180deg, ${T.panel}, ${T.bg2} 60%, ${T.bg})`, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", transition: `width ${sideCollapsed ? '150ms' : '200ms'} cubic-bezier(.4,0,.2,1)` }}>
 
+          {/* ── ZONE 1: Fixed Top (Logo + Status) ──────────── */}
+          <div style={{ flexShrink: 0 }}>
             {/* Logo */}
-            <div style={{ padding: sideCollapsed ? "16px 8px" : "20px 22px 16px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0, borderBottom: `1px solid ${T.border}`, background: `linear-gradient(180deg, ${T.accent}06, transparent)` }}>
-              {!sideCollapsed && <>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${T.accent}20, ${T.blue}20)`, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${T.accent}25` }}>
-                  <Ic.Grad s={20} c={T.accent} />
-                </div>
-                <div>
-                  <span style={{ fontSize: fs(19), fontWeight: 800, background: `linear-gradient(135deg,${T.accent},${T.blue})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.5px", display: "block", lineHeight: 1.1 }}>Vorra</span>
-                  <div style={{ fontSize: fs(9), color: T.dim, marginTop: 1, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 500 }}>Study & Life Planner</div>
-                </div>
-              </>}
-              {sideCollapsed && <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${T.accent}15, ${T.blue}15)`, display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.Grad s={18} c={T.accent} /></div>}
+            <div style={{ padding: sideCollapsed ? "14px 8px" : "16px 18px 12px", display: "flex", alignItems: "center", gap: 11, borderBottom: `1px solid ${T.border}`, background: `linear-gradient(180deg, ${T.accent}06, transparent)` }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: `linear-gradient(135deg, ${T.accent}18, ${T.blue}18)`, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${T.accent}20`, flexShrink: 0 }}>
+                <Ic.Logo s={24} />
+              </div>
+              {!sideCollapsed && <div>
+                <span style={{ fontSize: fs(18), fontWeight: 800, background: `linear-gradient(135deg,${T.accent},${T.blue})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.5px", display: "block", lineHeight: 1.1 }}>Vorra</span>
+                <div style={{ fontSize: fs(9), color: T.dim, marginTop: 1, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 500 }}>Study & Life Planner</div>
+              </div>}
             </div>
 
-            {/* Nav items */}
-            <div style={{ flex: 1, overflowY: "auto", padding: sideCollapsed ? "6px 4px" : "8px 10px", display: "flex", flexDirection: "column", gap: 1 }}>
-              {NAV.map(n => {
-                const active = page === n.key;
-                const IC = n.icon;
-                return (
-                  <button key={n.key} className="sf-nav" onClick={() => setPage(n.key)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: sideCollapsed ? "10px 0" : "9px 14px", borderRadius: 9, cursor: "pointer", background: active ? `${n.color}18` : "transparent", border: "none", color: active ? n.color : T.soft, justifyContent: sideCollapsed ? "center" : "flex-start", position: "relative", transition: "all .15s ease" }}>
-                    {active && !sideCollapsed && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 3, borderRadius: "0 3px 3px 0", background: n.color, boxShadow: `0 0 8px ${n.color}66` }} />}
-                    <div style={{ width: sideCollapsed ? 34 : 28, height: sideCollapsed ? 34 : 28, borderRadius: 8, background: active ? `${n.color}15` : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s ease", flexShrink: 0 }}>
-                      <IC s={sideCollapsed ? 18 : 16} c={active ? n.color : T.dim} />
+            {/* Compact Status Bar — timer + exam + generation + streak (only when active) */}
+            {(timer.running || data.activeExam || (data.studyStreak?.currentStreak > 0)) && (
+              <div style={{ padding: sideCollapsed ? "6px 4px" : "8px 14px", borderBottom: `1px solid ${T.border}`, background: `${T.accent}06` }}>
+                {/* Active exam indicator */}
+                {data.activeExam && !timer.running && (() => {
+                  // Compute live elapsed from startedAt when exam page isn't active
+                  const savedTime = data.activeExam.examTime || 0;
+                  const started = data.activeExam.startedAt;
+                  const elapsed = started && page !== 'quiz' ? savedTime + Math.floor((Date.now() - new Date(started).getTime()) / 1000) - savedTime : savedTime;
+                  const displaySecs = Math.max(0, savedTime);
+                  const fmtExamTime = `${Math.floor(displaySecs / 60)}:${String(displaySecs % 60).padStart(2, '0')}`;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: (data.studyStreak?.currentStreak > 0) && !sideCollapsed ? 4 : 0, cursor: "pointer" }} onClick={() => setPage("quiz")}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.orange, boxShadow: `0 0 8px ${T.orange}`, flexShrink: 0, animation: "pulse 2s infinite" }} />
+                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 800, color: T.orange, fontSize: fs(sideCollapsed ? 10 : 14) }}>{fmtExamTime}</span>
+                      {!sideCollapsed && <span style={{ color: T.dim, fontSize: fs(10), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>Exam in progress</span>}
+                      {!sideCollapsed && <Ic.Quiz s={12} c={T.orange} />}
                     </div>
-                    {!sideCollapsed && <span style={{ fontSize: fs(13), fontWeight: active ? 650 : 450, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: active ? "0.01em" : 0 }}>{n.label}</span>}
-                    {active && sideCollapsed && <div style={{ position: "absolute", left: 2, top: "20%", bottom: "20%", width: 3, borderRadius: 2, background: n.color, boxShadow: `0 0 6px ${n.color}66` }} />}
-                  </button>
-                );
-              })}
-              <div style={{ height: 1, background: T.border, margin: "8px 6px", opacity: 0.6 }} />
-              <button className="sf-nav" onClick={() => setPage("settings")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: sideCollapsed ? "10px 0" : "9px 14px", borderRadius: 9, cursor: "pointer", background: page === "settings" ? `${T.text}10` : "transparent", border: "none", color: page === "settings" ? T.text : T.soft, justifyContent: sideCollapsed ? "center" : "flex-start", position: "relative", transition: "all .15s ease" }}>
-                {page === "settings" && !sideCollapsed && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 3, borderRadius: "0 3px 3px 0", background: T.text, boxShadow: `0 0 8px ${T.text}33` }} />}
-                <div style={{ width: sideCollapsed ? 34 : 28, height: sideCollapsed ? 34 : 28, borderRadius: 8, background: page === "settings" ? `${T.text}10` : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s ease", flexShrink: 0 }}>
-                  <Ic.Gear s={sideCollapsed ? 18 : 16} c={page === "settings" ? T.text : T.dim} />
-                </div>
-                {!sideCollapsed && <span style={{ fontSize: fs(13), fontWeight: page === "settings" ? 650 : 450 }}>Settings</span>}
-              </button>
-            </div>
-
-            {/* Mini Calendar */}
-            {!sideCollapsed && (
-              <div style={{ padding: "6px 10px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
-                <button onClick={() => setCalOpen(!calOpen)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", color: T.soft, cursor: "pointer", padding: "4px 4px", fontSize: fs(11), fontWeight: 600 }}>
-                  <span>{"\ud83d\udcc5"} Calendar</span>
-                  <span style={{ fontSize: fs(9), color: T.dim }}>{calOpen ? "\u25b2" : "\u25bc"}</span>
-                </button>
-                {calOpen && <MiniCal date={date} setDate={setDate} tasks={data.tasks || {}} />}
+                  );
+                })()}
+                {timer.running && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: data.studyStreak?.currentStreak > 0 && !sideCollapsed ? 4 : 0 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: timer.paused ? T.orange : T.accent, boxShadow: timer.paused ? "none" : `0 0 8px ${T.accent}`, flexShrink: 0, animation: timer.paused ? "none" : "pulse 2s infinite" }} />
+                    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 800, color: timer.remaining <= 60000 && timer.durationMs > 0 ? T.orange : T.accent, fontSize: fs(sideCollapsed ? 10 : 14) }}>{fmtElapsed(timer.durationMs > 0 ? timer.remaining : timer.elapsed)}</span>
+                    {!sideCollapsed && <span style={{ color: T.dim, fontSize: fs(10), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{timer.taskTitle}</span>}
+                    {!sideCollapsed && <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                      <button onClick={timerPause} style={{ background: T.input, border: `1px solid ${T.border}`, borderRadius: 5, padding: "2px 6px", cursor: "pointer", lineHeight: 0 }}>{timer.paused ? <Ic.IcPlay s={9} c={T.accent} /> : <Ic.IcPause s={9} c={T.soft} />}</button>
+                      <button onClick={timerStop} style={{ background: T.redD, border: "none", borderRadius: 5, padding: "2px 6px", cursor: "pointer", lineHeight: 0 }}><Ic.IcStop s={9} c={T.red} /></button>
+                    </div>}
+                  </div>
+                )}
+                {data.studyStreak?.currentStreak > 0 && !sideCollapsed && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: fs(10) }}>
+                    <Ic.IcFire s={12} />
+                    <span style={{ color: T.orange, fontWeight: 700 }}>{data.studyStreak.currentStreak}-day streak</span>
+                  </div>
+                )}
+                {data.studyStreak?.currentStreak > 0 && sideCollapsed && (
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: timer.running ? 4 : 0 }}>
+                    <Ic.IcFire s={12} />
+                  </div>
+                )}
               </div>
             )}
+          </div>
 
-            {/* AI Connection panel */}
-            <div onClick={() => setProfilePicker(!profilePicker)} style={{ padding: sideCollapsed ? "8px 4px" : "12px 14px", borderTop: `1px solid ${T.border}`, flexShrink: 0, cursor: "pointer", background: profile ? `${T.accent}08` : T.input, transition: "background .15s" }}>
-              {sideCollapsed ? (
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: profile ? (apiStatus ? T.accent : T.orange) : T.red, boxShadow: profile && apiStatus ? `0 0 8px ${T.accent}` : "none" }} />
+          {/* ── ZONE 2: Scrollable Middle (Nav + Calendar) ── */}
+          <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: sideCollapsed ? "6px 4px" : "8px 10px", display: "flex", flexDirection: "column", gap: 1, flex: 1 }}>
+              {/* Grouped navigation */}
+              {[
+                { label: "Study", items: NAV.filter(n => n.group === "study") },
+                { label: "Tools", items: NAV.filter(n => n.group === "tools") },
+              ].map((group, gi) => (
+                <div key={group.label}>
+                  {/* Section label */}
+                  {!sideCollapsed ? (
+                    <div style={{ padding: gi === 0 ? "4px 14px 2px" : "8px 14px 2px", fontSize: fs(9), fontWeight: 700, color: T.dim, letterSpacing: "1.2px", textTransform: "uppercase", userSelect: "none" }}>{group.label}</div>
+                  ) : gi > 0 ? (
+                    <div style={{ height: 1, background: T.border, margin: "4px 10px", opacity: 0.4 }} />
+                  ) : null}
+
+                  {group.items.map((n, ni) => {
+                    const active = page === n.key;
+                    const IC = n.icon;
+                    const globalIdx = NAV.indexOf(n);
+                    const isMac = navigator.platform?.includes("Mac");
+                    const shortcut = `${isMac ? "⌘" : "Ctrl"}+${globalIdx + 1}`;
+
+                    // Badges
+                    const queue = data.taskQueue || [];
+                    const todayStr_ = new Date().toISOString().split("T")[0];
+                    let badge = null;
+                    if (n.key === "daily") {
+                      const hasDoneToday = queue.some(t => t.done && t.doneDate === todayStr_);
+                      const hasPending = queue.some(t => !t.done && t.category !== "break");
+                      if (hasDoneToday || hasPending) badge = { type: "dot", color: hasDoneToday ? T.accent : T.orange };
+                    }
+                    if (n.key === "quiz" && (data.examHistory || []).length > 0) {
+                      const last = (data.examHistory || []).slice(-1)[0];
+                      if (last) badge = { type: "text", value: Math.round(last.score * 100) + "%", color: last.score >= 0.8 ? T.accent : T.orange };
+                    }
+
+                    return (
+                      <div key={n.key} style={{ position: "relative" }}>
+                        <button className="sf-nav" onClick={() => setPage(n.key)} style={{ width: "100%", display: "flex", alignItems: "center", gap: sideCollapsed ? 0 : 10, padding: sideCollapsed ? "7px 0" : "6px 14px", borderRadius: 8, cursor: "pointer", background: active ? `${n.color}18` : "transparent", border: "none", color: active ? n.color : T.soft, justifyContent: sideCollapsed ? "center" : "flex-start", position: "relative", transition: "background .12s ease, color .12s ease" }}>
+                          {active && !sideCollapsed && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 3, borderRadius: "0 3px 3px 0", background: n.color, boxShadow: `0 0 8px ${n.color}66` }} />}
+                          <div style={{ width: sideCollapsed ? 32 : 24, height: sideCollapsed ? 32 : 24, borderRadius: 6, background: active ? `${n.color}15` : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .12s ease", flexShrink: 0 }}>
+                            <IC s={sideCollapsed ? 16 : 14} c={active ? n.color : T.dim} />
+                          </div>
+                          {!sideCollapsed && <>
+                            <span style={{ fontSize: fs(13), fontWeight: active ? 650 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>{n.label}</span>
+                            {/* Badge */}
+                            {badge && badge.type === "dot" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: badge.color, boxShadow: `0 0 5px ${badge.color}55`, flexShrink: 0 }} />}
+                            {badge && badge.type === "text" && <span style={{ fontSize: fs(9), fontWeight: 700, color: badge.color, background: `${badge.color}18`, padding: "1px 5px", borderRadius: 4, flexShrink: 0 }}>{badge.value}</span>}
+                          </>}
+                          {active && sideCollapsed && <div style={{ position: "absolute", left: 2, top: "20%", bottom: "20%", width: 3, borderRadius: 2, background: n.color, boxShadow: `0 0 6px ${n.color}66` }} />}
+                        </button>
+                        {/* Tooltip in collapsed mode */}
+                        {sideCollapsed && <div className="sf-nav-tip" style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 8, padding: "5px 10px", borderRadius: 7, background: T.card, border: `1px solid ${T.border}`, color: T.text, fontSize: fs(11), fontWeight: 600, whiteSpace: "nowrap", zIndex: 9999, boxShadow: `0 4px 16px rgba(0,0,0,.35)`, pointerEvents: "none", opacity: 0, transition: "opacity .12s ease" }}>
+                          {n.label}
+                          <span style={{ marginLeft: 8, fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono',monospace" }}>{shortcut}</span>
+                        </div>}
+                      </div>
+                    );
+                  })}
                 </div>
-              ) : (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: profile ? 6 : 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: profile ? (apiStatus ? T.accent : T.orange) : T.red, boxShadow: profile && apiStatus ? `0 0 8px ${T.accent}` : "none", flexShrink: 0 }} />
-                      <div style={{ fontSize: fs(11), fontWeight: 700, color: T.soft, letterSpacing: "0.5px", textTransform: "uppercase" }}>AI Connection</div>
-                    </div>
-                    <span style={{ fontSize: fs(10), color: T.dim, transition: "transform .2s", transform: profilePicker ? "rotate(180deg)" : "none" }}>{"\u25bc"}</span>
+              ))}
+
+              {/* Settings — separated */}
+              <div style={{ height: 1, background: T.border, margin: "4px 6px", opacity: 0.5 }} />
+              <div style={{ position: "relative" }}>
+                <button className="sf-nav" onClick={() => setPage("settings")} style={{ width: "100%", display: "flex", alignItems: "center", gap: sideCollapsed ? 0 : 10, padding: sideCollapsed ? "7px 0" : "6px 14px", borderRadius: 8, cursor: "pointer", background: page === "settings" ? `${T.text}10` : "transparent", border: "none", color: page === "settings" ? T.text : T.soft, justifyContent: sideCollapsed ? "center" : "flex-start", position: "relative", transition: "background .12s ease" }}>
+                  {page === "settings" && !sideCollapsed && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 3, borderRadius: "0 3px 3px 0", background: T.text, boxShadow: `0 0 8px ${T.text}33` }} />}
+                  <div style={{ width: sideCollapsed ? 32 : 24, height: sideCollapsed ? 32 : 24, borderRadius: 6, background: page === "settings" ? `${T.text}10` : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Ic.Gear s={sideCollapsed ? 16 : 14} c={page === "settings" ? T.text : T.dim} />
                   </div>
-                  {profile ? (
-                    <div style={{ marginLeft: 18 }}>
-                      <div style={{ fontSize: fs(13), fontWeight: 700, color: apiStatus ? T.accent : T.orange, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.name}</div>
-                      <div className="mono" style={{ fontSize: fs(10), color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.model}</div>
-                    </div>
-                  ) : (
-                    <div style={{ marginLeft: 18, fontSize: fs(11), color: T.orange }}>No profile connected</div>
-                  )}
-                </>
-              )}
+                  {!sideCollapsed && <span style={{ fontSize: fs(13), fontWeight: page === "settings" ? 650 : 500, textAlign: "left", flex: 1 }}>Settings</span>}
+                </button>
+                {sideCollapsed && <div className="sf-nav-tip" style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 8, padding: "5px 10px", borderRadius: 7, background: T.card, border: `1px solid ${T.border}`, color: T.text, fontSize: fs(11), fontWeight: 600, whiteSpace: "nowrap", zIndex: 9999, boxShadow: `0 4px 16px rgba(0,0,0,.35)`, pointerEvents: "none", opacity: 0, transition: "opacity .12s ease" }}>
+                  Settings
+                  <span style={{ marginLeft: 8, fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono',monospace" }}>{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+,</span>
+                </div>}
+              </div>
             </div>
 
-            {/* Profile picker dropdown */}
-            {profilePicker && !sideCollapsed && (
-              <div style={{ padding: "4px 10px 8px", borderTop: `1px solid ${T.border}`, background: T.panel, flexShrink: 0, maxHeight: 280, overflowY: "auto" }}>
+            {/* Mini Calendar with slide animation */}
+            {!sideCollapsed && (
+              <div style={{ padding: "6px 10px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
+                <button onClick={() => setCalOpen(!calOpen)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", color: T.soft, cursor: "pointer", padding: "4px 4px", fontSize: fs(11), fontWeight: 600, transition: "color .15s" }} onMouseEnter={e => e.currentTarget.style.color = T.text} onMouseLeave={e => e.currentTarget.style.color = T.soft}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Ic.IcCal s={13} c={T.dim} /> Calendar</span>
+                  <span style={{ fontSize: fs(9), color: T.dim, transition: "transform .25s ease", transform: calOpen ? "rotate(180deg)" : "rotate(0)" }}>{"\u25bc"}</span>
+                </button>
+                <div style={{ overflow: "hidden", maxHeight: calOpen ? 220 : 0, opacity: calOpen ? 1 : 0, transition: "max-height .3s cubic-bezier(.4,0,.2,1), opacity .25s ease" }}>
+                  <MiniCal date={date} setDate={setDate} tasks={data.tasks || {}} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── ZONE 3: Fixed Bottom (AI + Media) ──────────── */}
+          <div style={{ flexShrink: 0 }}>
+            {/* Profile picker dropdown — opens ABOVE the connection bar */}
+            <div style={{ overflow: "hidden", maxHeight: profilePicker && !sideCollapsed ? 280 : 0, opacity: profilePicker && !sideCollapsed ? 1 : 0, transition: "max-height .3s cubic-bezier(.4,0,.2,1), opacity .2s ease" }}>
+              <div style={{ padding: "4px 10px 8px", borderBottom: `1px solid ${T.border}`, background: T.panel }}>
                 {(data.profiles || []).length > 0 ? (data.profiles || []).map(p => {
                   const isActive = p.id === data.activeProfileId;
                   return (
                     <div key={p.id} style={{ marginBottom: 3 }}>
-                      <button onClick={(e) => { e.stopPropagation(); setData(d => ({ ...d, activeProfileId: p.id })); dlog('info', 'profile', `Switched to ${p.name}`); toast(`Active: ${p.name}`, "success"); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: isActive ? T.accentD : T.input, border: `1.5px solid ${isActive ? T.accent + "55" : "transparent"}`, width: "100%", textAlign: "left", transition: "all .1s" }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: isActive ? T.accent : T.dim, boxShadow: isActive ? `0 0 6px ${T.accent}` : "none", flexShrink: 0 }} />
+                      <button onClick={(e) => { e.stopPropagation(); setData(d => ({ ...d, activeProfileId: p.id })); dlog('info', 'profile', `Switched to ${p.name}`); toast(`Active: ${p.name}`, "success"); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 8, cursor: "pointer", background: isActive ? T.accentD : T.input, border: `1.5px solid ${isActive ? T.accent + "55" : "transparent"}`, width: "100%", textAlign: "left", transition: "all .15s ease" }}>
+                        <div style={{ width: 7, height: 7, borderRadius: "50%", background: isActive ? T.accent : T.dim, boxShadow: isActive ? `0 0 6px ${T.accent}` : "none", flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: fs(12), fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                          <div style={{ fontSize: fs(11), fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
                           <div style={{ fontSize: fs(9), color: T.dim, fontFamily: "'JetBrains Mono',monospace" }}>{p.model?.slice(0, 24)}</div>
                         </div>
                         {isActive && <span style={{ fontSize: fs(8), color: T.accent, fontWeight: 800, letterSpacing: "0.5px" }}>ACTIVE</span>}
                       </button>
-                      {/* Model selector for active profile */}
-                      {isActive && (
-                        <div style={{ padding: "6px 10px 4px 28px", display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
-                          <span style={{ fontSize: fs(9), color: T.dim, fontWeight: 600, whiteSpace: "nowrap" }}>MODEL</span>
-                          <input
-                            value={p.model || ""}
-                            onChange={e => { const newModel = e.target.value; setData(d => ({ ...d, profiles: d.profiles.map(pr => pr.id === p.id ? { ...pr, model: newModel } : pr) })); }}
-                            placeholder="model name"
-                            style={{ fontSize: fs(10), padding: "4px 8px", borderRadius: 6, background: T.input, border: `1px solid ${T.border}`, color: T.text, fontFamily: "'JetBrains Mono',monospace", flex: 1, minWidth: 0 }}
-                          />
-                        </div>
-                      )}
                     </div>
                   );
                 }) : (
                   <button onClick={(e) => { e.stopPropagation(); setPage("settings"); setProfilePicker(false); }} style={{ width: "100%", padding: "10px", borderRadius: 8, border: `1px dashed ${T.accent}44`, background: "transparent", color: T.accent, fontSize: fs(11), cursor: "pointer", fontWeight: 600 }}>+ Add AI Profile</button>
                 )}
               </div>
-            )}
+            </div>
 
-            {/* Unified Media Player (extracted component) */}
-            <MediaPlayer audioIndicator={audioIndicator} ytStreams={ytStreams} favs={favs} />
-
-            {/* Study timer in sidebar */}
-            {timer.running && (
-              <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, background: T.accentD }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontSize: fs(22), fontWeight: 800, color: timer.remaining <= 60000 && timer.durationMs > 0 ? T.orange : T.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmtElapsed(timer.durationMs > 0 ? timer.remaining : timer.elapsed)}</div>
-                    <div style={{ fontSize: fs(10), color: T.soft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{timer.taskTitle}</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <button onClick={timerPause} style={{ background: T.input, border: `1px solid ${T.border}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer" }}>{timer.paused ? <Ic.IcPlay s={10} c={T.accent} /> : <Ic.IcPause s={10} c={T.soft} />}</button>
-                    <button onClick={timerStop} style={{ background: T.redD, border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer" }}><Ic.IcStop s={10} c={T.red} /></button>
-                  </div>
+            {/* AI Connection panel — click to expand profiles ABOVE */}
+            <div onClick={() => setProfilePicker(!profilePicker)} style={{ padding: sideCollapsed ? "8px 4px" : "10px 14px", borderTop: `1px solid ${T.border}`, cursor: "pointer", background: profile ? `${T.accent}06` : T.input, transition: "background .2s ease" }}>
+              {sideCollapsed ? (
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: profile ? (apiStatus ? T.accent : T.orange) : T.red, boxShadow: profile && apiStatus ? `0 0 8px ${T.accent}` : "none", transition: "all .3s ease" }} />
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, transition: "all .15s ease" }}>
+                  <div style={{ width: 9, height: 9, borderRadius: "50%", background: profile ? (apiStatus ? T.accent : T.orange) : T.red, boxShadow: profile && apiStatus ? `0 0 8px ${T.accent}` : "none", flexShrink: 0, transition: "all .3s ease" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: fs(12), fontWeight: 700, color: profile ? (apiStatus ? T.accent : T.orange) : T.red, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", transition: "color .2s ease" }}>
+                      {profile ? profile.name : "No AI connected"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: fs(9), color: T.dim, transition: "transform .25s ease", transform: profilePicker ? "rotate(180deg)" : "rotate(0)" }}>{"\u25b2"}</span>
+                </div>
+              )}
+            </div>
 
-          </div>{/* close fade wrapper */}
+            {/* Media Player */}
+            <MediaPlayer audioIndicator={audioIndicator} ytStreams={ytStreams} favs={favs} />
+          </div>
 
           {/* Resize handle */}
-          {!sideCollapsed && <div onMouseDown={() => { resizing.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 10 }} />}
-          {/* Collapse toggle */}
-          <button onClick={() => { setSideCollapsed(!sideCollapsed); if (!sideCollapsed) setSideW(56); else setSideW(bp.sideW); }} style={{ position: "absolute", top: 14, right: -13, width: 26, height: 26, borderRadius: "50%", background: T.card, border: `1.5px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 11, fontSize: 9, color: T.dim, boxShadow: `0 2px 12px rgba(0,0,0,.25), 0 0 0 1px ${T.bg}`, transition: "all .2s cubic-bezier(.4,0,.2,1)" }}>{sideCollapsed ? <Ic.ChevR s={12} /> : <Ic.ChevL s={12} />}</button>
+          {!sideCollapsed && <div onMouseDown={() => { resizing.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; if (sideRef.current) sideRef.current.style.transition = 'none'; }} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 10 }} />}
         </aside>
+        {/* Collapse toggle — outside aside so overflow:hidden doesn't clip it */}
+        <button onClick={() => { setSideCollapsed(!sideCollapsed); if (!sideCollapsed) setSideW(56); else setSideW(bp.sideW); }} style={{ position: "absolute", top: "50%", right: -13, transform: "translateY(-50%)", width: 28, height: 28, borderRadius: "50%", background: T.card, border: `2px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 20, color: T.soft, boxShadow: `0 2px 12px rgba(0,0,0,.3), 0 0 0 1px ${T.bg}`, transition: "all .2s cubic-bezier(.4,0,.2,1)" }} onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; e.currentTarget.style.boxShadow = `0 2px 16px rgba(0,0,0,.4), 0 0 0 1px ${T.accent}33`; }} onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.soft; e.currentTarget.style.boxShadow = `0 2px 12px rgba(0,0,0,.3), 0 0 0 1px ${T.bg}`; }}>{sideCollapsed ? <Ic.ChevR s={12} /> : <Ic.ChevL s={12} />}</button>
+        </div>
 
         {/* ══ MAIN CONTENT ═════════════════════════════════════════ */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
@@ -551,6 +629,29 @@ export default function App() {
               {page === "settings" && <SettingsPage data={data} setData={setData} setPage={setPage} Btn={Btn} />}
             </div>
           </main>
+
+          {/* Bottom-anchored exam generation / active exam bar */}
+          {(data.examGenerating || (data.activeExam && page !== 'quiz')) && (
+            <div onClick={() => setPage("quiz")} style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5, padding: "8px 20px", background: `linear-gradient(180deg, transparent, ${T.panel})`, cursor: "pointer" }}>
+              <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderRadius: 12, background: T.card, border: `1px solid ${data.examGenerating ? T.purple + '44' : T.orange + '44'}`, boxShadow: `0 -4px 20px rgba(0,0,0,.3)` }}>
+                {data.examGenerating ? <Ic.Spin s={16} /> : <Ic.Quiz s={16} c={T.orange} />}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: fs(13), fontWeight: 700, color: data.examGenerating ? T.purple : T.orange }}>
+                    {data.examGenerating ? 'Generating Practice Exam...' : 'Exam Paused'}
+                  </div>
+                  <div style={{ fontSize: fs(11), color: T.dim }}>
+                    {data.examGenerating
+                      ? `${data.examGenerating.courseName || 'Course'} · ${(() => { const s = Math.floor((Date.now() - new Date(data.examGenerating.startedAt).getTime()) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; })()}`
+                      : `${data.activeExam?.questions?.length || 0} questions · ${(() => { const s = data.activeExam?.examTime || 0; return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; })()} elapsed`
+                    }
+                  </div>
+                </div>
+                <span style={{ fontSize: fs(12), color: data.examGenerating ? T.purple : T.orange, fontWeight: 600 }}>
+                  {data.examGenerating ? '' : 'Resume →'}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Focus mode overlay */}

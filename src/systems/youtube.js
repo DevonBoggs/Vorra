@@ -410,6 +410,8 @@ export async function checkYtStreamHealth() {
 // Listen for YouTube error/ready messages from proxy iframes
 if (typeof window !== 'undefined') {
   window.addEventListener('message', (e) => {
+    // Validate origin — only accept messages from our local server
+    if (e.origin !== 'http://127.0.0.1:19532' && e.origin !== window.location.origin) return;
     if (!e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'yt-error') {
       const code = e.data.code;

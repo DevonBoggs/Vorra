@@ -31,6 +31,7 @@ export const INIT = {
   planPrompt: '', // User's additional context for plan generation
   onboardingComplete: false,
   examHistory: [],
+  activeExam: null, // persisted in-progress exam state
   termHistory: [],
   dashboardWidgets: null,
 };

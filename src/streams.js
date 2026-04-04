@@ -10,6 +10,7 @@ export const YT_PARENT_CATS = [
   { key:"synth",label:"Electronic" },
   { key:"focus",label:"Focus" },
   { key:"chill",label:"Chill" },
+  { key:"asmr",label:"ASMR" },
   { key:"sleep",label:"Sleep" },
   { key:"world",label:"World" },
 ];
@@ -60,7 +61,10 @@ export const YT_CATS = [
   { key:"sleep-deep",label:"Deep Sleep",parent:"sleep" },
   { key:"sleep-delta",label:"Delta Waves",parent:"sleep" },
   { key:"sleep-lucid",label:"Lucid Dreaming",parent:"sleep" },
-  { key:"sleep-asmr",label:"ASMR",parent:"sleep" },
+  { key:"asmr-sleep",label:"Sleep ASMR",parent:"asmr" },
+  { key:"asmr-cafe",label:"Cafe ASMR",parent:"asmr" },
+  { key:"asmr-nature",label:"Nature ASMR",parent:"asmr" },
+  { key:"asmr-tingle",label:"Tingles",parent:"asmr" },
   { key:"heal-freq",label:"Healing Hz",parent:"sleep" },
   { key:"heal-relax",label:"Relaxation",parent:"sleep" },
   { key:"heal-spa",label:"Spa",parent:"sleep" },
@@ -95,6 +99,7 @@ export const YT_STREAMS = [
   s("lofi-retro","1980s & 90s Lofi Hip Hop Mix |","1980s & 90s Lofi Hip Hop Mix | Nostalgic","lzvZ3CELCL4",3,"video"),
   // --- Sad Lofi ---
   s("lofi-sad","Lonely Days [sad lofi]","Lonely Days [sad lofi]","O7RG-B6N1Vw",3,"video"),
+  s("lofi-sad","sad lofi radio - beats for rai","sad lofi radio - beats for rainy days","P6Segk8cr-c",5,"live"),
 
   // === JAZZ ===
   // --- Jazz Cafe ---
@@ -134,32 +139,33 @@ export const YT_STREAMS = [
 
   // === AMBIENT ===
   // --- Rain ---
-  s("ambient-rain","sad lofi radio - beats for rai","sad lofi radio - beats for rainy days","P6Segk8cr-c",5,"live"),
-  s("ambient-rain","Rain on Window","Gentle rain on glass","mPZkdNFkNps",4,"video"),
+  s("ambient-rain","Rain on Window","Gentle rain on glass - pure rain sounds, no music","mPZkdNFkNps",4,"video"),
+  s("ambient-rain","Rain Sounds for Sleep","Heavy rain sounds 24/7 for sleeping and relaxation","q76bMs-NwRk",4,"live"),
   // --- Storms ---
   s("ambient-storm","Heavy Rain and Thunder Sounds ","Heavy Rain and Thunder Sounds for Sleepi","0V0SKiiFZMs",5,"live"),
   s("ambient-storm","Thunderstorm Rain Sounds for S","Thunderstorm Rain Sounds for Sleeping - ","M7IW6xtVxuw",5,"live"),
   // --- Rain Cafe ---
-  s("ambient-raincafe","Cozy Evening Rain Cafe Vibes -","Cozy Evening Rain Cafe Vibes - Cafe ASMR","MM_hG2z6gRs",3,"video"),
-  s("ambient-raincafe","Cozy Rainy Evening - Relaxing ","Cozy Rainy Evening - Relaxing Jazz Music","AGtye69u67c",3,"video"),
+  s("ambient-raincafe","Cozy Rainy Evening","Relaxing Jazz Music with rain and cozy cafe atmosphere","AGtye69u67c",3,"video"),
+  s("ambient-raincafe","Rainy Night Coffee Shop","Rain and coffee shop ambience for studying","cJHNojyov9w",3,"video"),
   // --- Ocean ---
   s("ambient-ocean","Ocean Waves White Noise for Sl","Ocean Waves White Noise for Sleeping 10 ","JekUNGo-RVk",4,"video"),
   s("ambient-ocean","Ocean Waves for Sleep | relaxi","Ocean Waves for Sleep | relaxing beach s","K-NtrkLy7U4",3,"video"),
   // --- River ---
-  s("ambient-river","Forest Stream Flowing Sound 24","Forest Stream Flowing Sound 24/7. Relaxi","jKtofppPJFk",5,"live"),
-  s("ambient-river","Lofi Girl Live Stream - Chill ","Lofi Girl Live Stream - Chill Beats, Sof","83ILtWq7HX0",5,"live"),
+  s("ambient-river","Forest Stream Flowing Sound 24","Forest Stream Flowing Sound 24/7. Relaxing river and nature sounds","jKtofppPJFk",5,"live"),
+  s("ambient-river","Gentle River Sounds","Peaceful creek sounds for relaxation and focus","IvjMgVS2kgQ",4,"video"),
   // --- Nature ---
-  s("ambient-nature","Live: Crackling Campfire & Soo","Live: Crackling Campfire & Soothing Cric","vR7rWIs4wbc",5,"live"),
-  s("ambient-nature","Spring Forest Ambience - Natur","Spring Forest Ambience - Nature Sounds, ","bN6PNAN3ZCc",4,"video"),
+  s("ambient-nature","Spring Forest Ambience","Nature Sounds - Birds Singing, Forest Atmosphere","bN6PNAN3ZCc",4,"video"),
+  s("ambient-nature","Morning Bird Songs","Relaxing bird sounds in nature for focus and calm","rYoZgpAEkFs",4,"video"),
   // --- Fire/Cozy ---
-  s("ambient-fire","Fireplace & Rain","Cozy fire + rainfall","3sL0omwElxw",4,"video"),
-  s("ambient-fire","Cozy Fireplace 4K (12 HOURS). ","Cozy Fireplace 4K (12 HOURS). Fireplace ","J-0cGMDo1mU",4,"video"),
+  s("ambient-fire","Crackling Campfire & Crickets","Live crackling campfire with soothing night cricket sounds","vR7rWIs4wbc",5,"live"),
+  s("ambient-fire","Fireplace & Rain","Cozy fireplace with rainfall sounds","3sL0omwElxw",4,"video"),
+  s("ambient-fire","Cozy Fireplace 4K (12 HOURS)","12 hours of crackling fireplace sounds","J-0cGMDo1mU",4,"video"),
   // --- Cafe Ambience ---
-  s("ambient-cafe","Coffee Shop Ambience | Cafe Ba","Coffee Shop Ambience | Cafe Background N","uiMXGIG_DQo",3,"video"),
-  s("ambient-cafe","ASMR Coffee Shop Sound | NO MU","ASMR Coffee Shop Sound | NO MUSIC | Coff","qU8o3_T5y5M",3,"video"),
+  s("ambient-cafe","Coffee Shop Ambience","Cafe background noise - chatter, cups, espresso machines","uiMXGIG_DQo",3,"video"),
+  s("ambient-cafe","Paris Cafe Ambience","French cafe sounds with light rain outside","8dSTEL19mGs",3,"video"),
   // --- Space ---
-  s("ambient-space","Space Ambient","Cosmic ambient soundscapes","S_MOd40zlYU",4,"video"),
-  s("ambient-space","Going to Space Lofi","Space lofi mixtape","8vOZYwsm8X0",4,"video"),
+  s("ambient-space","Space Ambient","Cosmic ambient soundscapes - deep space drones","S_MOd40zlYU",4,"video"),
+  s("ambient-space","NASA Deep Space Sounds","Actual space sounds recorded by NASA spacecraft","IQL53eQ0cNA",3,"video"),
   // --- Dark Ambient ---
   s("ambient-dark","Ad-Free Dark Ambient Mix - 12 ","Ad-Free Dark Ambient Mix - 12 Hours of D","8yc2mzZfmJI",4,"video"),
   // --- Ethereal ---
@@ -208,17 +214,25 @@ export const YT_STREAMS = [
 
   // === SLEEP ===
   // --- Deep Sleep ---
-  s("sleep-deep","Cozy Fireplace  24/7 - Crackli","Cozy Fireplace  24/7 - Crackling Fire So","CZUe5P8R_X8",5,"live"),
-  s("sleep-deep","8 Hour Deep Sleep Music: Sleep","8 Hour Deep Sleep Music: Sleep Meditatio","v-Ryb13PUIs",4,"video"),
+  s("sleep-deep","8 Hour Deep Sleep Music","Deep Sleep Music: Sleep Meditation Music, Relaxing Music","v-Ryb13PUIs",4,"video"),
+  s("sleep-deep","10 Hour Sleep Music","Calming deep sleep music for insomnia relief","rvaqPPjGLz4",4,"video"),
   // --- Delta Waves ---
   s("sleep-delta","10 Hours Deep SLEEP Music, [2.","10 Hours Deep SLEEP Music, [2.8 Hz] DELT","TaDKA-b8sk8",4,"video"),
   s("sleep-delta","8 Hour Deep Sleep Music: Delta","8 Hour Deep Sleep Music: Delta Waves, Re","txQ6t4yPIM0",4,"video"),
   // --- Lucid Dreaming ---
   s("sleep-lucid","10 Hours of Deep Relaxing Musi","10 Hours of Deep Relaxing Music for Slee","22q2O_fibaU",4,"video"),
   s("sleep-lucid","8 Hour Lucid Dreaming Sleep Mu","8 Hour Lucid Dreaming Sleep Music NOW WI","EPaQWg1yUMw",4,"video"),
-  // --- ASMR ---
-  s("sleep-asmr","ASMR Tingles for When You Need","ASMR Tingles for When You Need to SLEEP ","xKl3aI3IU9Q",3,"video"),
-  s("sleep-asmr","Extremely Tingly ASMR (for Sle","Extremely Tingly ASMR (for Sleep)","pHg3ytkLWuI",3,"video"),
+  // === ASMR ===
+  // --- Sleep ASMR ---
+  s("asmr-sleep","ASMR Tingles for Sleep","ASMR Tingles for When You Need to SLEEP","xKl3aI3IU9Q",3,"video"),
+  s("asmr-sleep","Extremely Tingly ASMR","Extremely Tingly ASMR for Sleep and Relaxation","pHg3ytkLWuI",3,"video"),
+  // --- Cafe ASMR ---
+  s("asmr-cafe","ASMR Coffee Shop Sound","ASMR Coffee Shop Sound | NO MUSIC | Coffee Shop Ambience","qU8o3_T5y5M",3,"video"),
+  s("asmr-cafe","Cozy Rain Cafe ASMR","Cozy Evening Rain Cafe Vibes - Cafe ASMR sounds","MM_hG2z6gRs",3,"video"),
+  // --- Nature ASMR ---
+  s("asmr-nature","ASMR Forest Walk","Relaxing forest walk ASMR - crunching leaves, birds","wSzpSqYOTRc",3,"video"),
+  // --- Tingles ---
+  s("asmr-tingle","Best ASMR Triggers","The Best ASMR Triggers for Instant Relaxation","Sda1rFn2fAk",3,"video"),
   // --- Healing Hz ---
   s("heal-freq","432 Hz Deep Healing Frequency ","432 Hz Deep Healing Frequency | Golden H","nLr7dHZqxng",4,"video"),
   s("heal-freq","Gregorian Chants at 432Hz | 3 ","Gregorian Chants at 432Hz | 3 Hours of H","W-hrBhA4XkM",4,"video"),

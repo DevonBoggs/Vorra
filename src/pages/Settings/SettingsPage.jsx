@@ -522,10 +522,10 @@ const SettingsPage = ({ data, setData, setPage }) => {
             <div style={{fontSize:fs(12),fontWeight:600,color:T.soft,marginBottom:8}}>Font Size</div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:fs(11),color:T.dim}}>A</span>
-              <input type="range" min="75" max="300" step="5" value={data.fontScale||100} onChange={e=>{const v=Number(e.target.value);setFontScale(v);setData(d=>({...d,fontScale:v}))}} style={{flex:1,accentColor:T.accent}}/>
+              <input type="range" min="75" max="300" step="5" value={data.fontScale||115} onChange={e=>{const v=Number(e.target.value);setFontScale(v);setData(d=>({...d,fontScale:v}))}} style={{flex:1,accentColor:T.accent}}/>
               <span style={{fontSize:fs(16),color:T.dim}}>A</span>
-              <span style={{fontSize:fs(12),fontWeight:700,color:T.accent,minWidth:36,textAlign:"center"}}>{data.fontScale||100}%</span>
-              {(data.fontScale||100)!==100&&<Btn small v="ghost" onClick={()=>{setFontScale(100);setData(d=>({...d,fontScale:100}))}}>Reset</Btn>}
+              <span style={{fontSize:fs(12),fontWeight:700,color:T.accent,minWidth:36,textAlign:"center"}}>{data.fontScale||115}%</span>
+              {(data.fontScale||115)!==115&&<Btn small v="ghost" onClick={()=>{setFontScale(115);setData(d=>({...d,fontScale:115}))}}>Reset</Btn>}
             </div>
           </div>
           <div>

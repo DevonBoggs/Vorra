@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **7.4.0**.
+Vorra is an AI-powered study & life planner — an Electron desktop app for managing courses, study plans, goals, and focus sessions. Current version: **8.0.0**.
 
 ## Tech Stack
 

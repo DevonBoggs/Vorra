@@ -200,7 +200,7 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
     for (let i = 1; i <= 7; i++) {
       const d = new Date(); d.setDate(d.getDate() - i);
       const ds = d.toISOString().split('T')[0];
-      const incomplete = safeArr(data.tasks?.[ds]).filter(t => !t.done && t.category !== 'break');
+      const incomplete = safeArr(data.tasks?.[ds]).filter(t => !t.done && !t._deleted && t.category !== 'break');
       lookback.push(...incomplete.map(t => ({ ...t, fromDate: ds })));
     }
     return lookback;
@@ -287,13 +287,31 @@ const DailyPage=({date,tasks,setTasks,profile,data,setData,setDate,setPage})=>{
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const deleteTask = (id) => {
     const task = tasks.find(t => t.id === id);
-    // Plan tasks require 2-step confirmation
-    if (task?.planId && deleteConfirmId !== id) {
+    // All tasks require 2-step confirmation
+    if (deleteConfirmId !== id) {
       setDeleteConfirmId(id);
       return;
     }
     pushUndoSnapshot(`Delete: ${task?.title || 'task'}`, data.tasks);
     setTasks(tasks.filter(t => t.id !== id));
+
+    // Also mark matching tasks in past dates as _deleted so carry-forward won't pick them up
+    if (task) {
+      setData(d => {
+        const updated = { ...d.tasks };
+        for (const [dt, dayTasks] of Object.entries(updated)) {
+          if (dt >= date) continue; // only look at past dates
+          const match = safeArr(dayTasks).find(t =>
+            t.title === task.title && !t.done && t.category === task.category
+          );
+          if (match) {
+            updated[dt] = dayTasks.map(t => t === match ? { ...t, _deleted: true } : t);
+          }
+        }
+        return { ...d, tasks: updated };
+      });
+    }
+
     setDeleteConfirmId(null);
     toast(`Deleted "${task?.title?.slice(0, 30) || 'task'}". Press Ctrl+Z to undo.`, 'info');
   };
@@ -469,14 +487,19 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
     const c=CAT[t.category]||CAT.other,s=parseTime(t.time),e=parseTime(t.endTime),dur=s&&e?e.mins-s.mins:null,isCur=t.id===currentId;
     const hasConflict = conflicts.has(t.id);
     const isExamDay = t.category === "exam-day";
+    // Overdue detection: task has an end time that's past current time, not done, and is today
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const isOverdue = isToday && !t.done && e && e.mins < nowMins;
     return (<div className="fade sf-task"
-      style={{display:"flex",alignItems:"stretch",background:isExamDay?`${c.bg}`:t.done?`${T.input}88`:hasConflict?T.redD:T.card,border:`1.5px solid ${isExamDay?c.fg+"55":hasConflict?T.red+"55":isCur?T.accent+"55":T.border}`,borderRadius:12,overflow:"hidden",opacity:t.done?.5:1,boxShadow:isExamDay?`0 0 16px ${c.fg}18`:isCur?`0 0 20px ${T.accentD}`:"0 1px 4px rgba(0,0,0,.08)"}}>
-      <div style={{width:3,background:hasConflict?T.red:c.fg,flexShrink:0}}/>
+      style={{display:"flex",alignItems:"stretch",background:isExamDay?`${c.bg}`:t.done?`${T.input}88`:isOverdue?T.orangeD:hasConflict?T.redD:T.card,border:`1.5px solid ${isExamDay?c.fg+"55":isOverdue?T.orange+"44":hasConflict?T.red+"55":isCur?T.accent+"55":T.border}`,borderRadius:12,overflow:"hidden",opacity:t.done?.5:1,boxShadow:isExamDay?`0 0 16px ${c.fg}18`:isOverdue?`0 0 14px ${T.orange}25`:isCur?`0 0 20px ${T.accentD}`:"0 1px 4px rgba(0,0,0,.08)"}}>
+      <div style={{width:4,background:isOverdue?T.orange:hasConflict?T.red:c.fg,flexShrink:0}}/>
       <div style={{padding:"10px 14px",minWidth:100,display:"flex",flexDirection:"column",justifyContent:"center",borderRight:`1px solid ${T.border}`}}>
-        <span className="mono" style={{fontSize:fs(15),fontWeight:600,color:hasConflict?T.red:isCur?T.accent:T.text}}>{s?fmtTime(s.h,s.m):"\u2014"}</span>
-        {e&&<span className="mono" style={{fontSize:fs(12),color:T.dim}}>{'\u2192'} {fmtTime(e.h,e.m)}</span>}
+        <span className="mono" style={{fontSize:fs(15),fontWeight:600,color:isOverdue?T.orange:hasConflict?T.red:isCur?T.accent:T.text}}>{s?fmtTime(s.h,s.m):"\u2014"}</span>
+        {e&&<span className="mono" style={{fontSize:fs(12),color:isOverdue?T.orange:T.dim}}>{'\u2192'} {fmtTime(e.h,e.m)}</span>}
         {dur>0&&<span style={{fontSize:fs(11),color:T.dim,display:"flex",alignItems:"center",gap:2,marginTop:1}}><Ic.Clock/>{minsToStr(dur)}</span>}
         {hasConflict&&<span style={{fontSize:fs(10),color:T.red,fontWeight:700,marginTop:1}}>OVERLAP</span>}
+        {isOverdue&&!hasConflict&&<span style={{fontSize:fs(10),color:T.orange,fontWeight:700,marginTop:1}}>OVERDUE</span>}
       </div>
       <div style={{flex:1,padding:"10px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -492,7 +515,7 @@ RULES: Use add_tasks to create new tasks. Keep any tasks the user didn't mention
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 10px"}}>
-        {!t.done && isToday && <button className="sf-icon-btn" onClick={()=>completeEarly(t)} title="Complete early" style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:5,fontSize:fs(10),fontWeight:600}}>Done \u2713</button>}
+        {!t.done && isToday && <button className="sf-icon-btn" onClick={()=>completeEarly(t)} title="Complete early" style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:5,fontSize:fs(10),fontWeight:600}}>Done ✓</button>}
         {!t.done && <button className="sf-icon-btn" onClick={()=>{const match=(data.courses||[]).find(c=>t.title.toLowerCase().includes(c.name.toLowerCase().split(" \u2013 ")[0].split(" - ")[0])||(c.courseCode&&t.title.toLowerCase().includes(c.courseCode.toLowerCase())));timerStart(t.title,match?.name||"")}} title="Start timer" style={{background:"none",border:"none",color:_timerState.running&&_timerState.taskTitle===t.title?T.accent:T.dim,cursor:"pointer",padding:5,fontSize:fs(14)}}>⏱</button>}
         {!t.done && setPage && ["study","review","exam-prep"].includes(t.category) && <button className="sf-icon-btn" onClick={()=>setPage("chat")} title="Get Help" style={{background:"none",border:"none",color:T.blue,cursor:"pointer",padding:5,fontSize:fs(13),fontWeight:700}}>?</button>}
         {!t.done && setPage && ["exam-prep","exam-day"].includes(t.category) && <button className="sf-icon-btn" onClick={()=>setPage("quiz")} title="Practice Exam" style={{background:"none",border:"none",cursor:"pointer",padding:"2px 6px",fontSize:fs(9),fontWeight:700,color:T.purple,borderRadius:4}}>PRACTICE</button>}

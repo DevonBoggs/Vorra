@@ -40,13 +40,15 @@ export function MediaPlayer({ audioIndicator, ytStreams, favs }) {
       borderTop: `2px solid ${accentColor}33`,
       background: `linear-gradient(180deg,${isSoma && isYT ? `${T.purple}22` : isSoma ? T.accentD : T.blueD}66,${T.bg})`,
     }}>
-      {/* Visualizer */}
+      {/* Visualizer — pass YT genre + avg volume for genre-aware simulation */}
       <Visualizer
         isSoma={isSoma}
         isYT={isYT}
         somaPaused={somaPaused}
         ytAllPaused={ytAllPaused}
         levels={levels}
+        ytGenre={isYT ? (ytStreams.find(s => !s.paused)?.cat || ytStreams[0]?.cat) : undefined}
+        ytVolume={isYT ? Math.round(ytStreams.reduce((s, st) => s + (st.volume ?? 100), 0) / Math.max(1, ytStreams.length)) : undefined}
       />
 
       {/* Now playing */}
